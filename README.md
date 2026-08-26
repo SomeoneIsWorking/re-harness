@@ -1,51 +1,78 @@
-# re-harness
+# Shared agent skills
 
-The bookkeeping every reverse-engineering port in this tree needs, in one place
-instead of one fork per project.
+This repository is the portable source of truth for the user's reusable agent
+skills and the command-line tools those skills share. The checkout retains its
+historical `re-harness` repository name so existing consumers and remote URLs do
+not break; its scope is now broader than reverse engineering.
+
+## Structure
+
+| Directory | Applicability |
+|---|---|
+| `skills/global/` | Any long-lived project or repository |
+| `skills/port/` | Game-port architecture, independent of recomp/decomp strategy |
+| `skills/re/` | Ground-truth recovery from binaries, assets, emulators, or engines |
+| `skills/recomp/` | Whole-binary static-recompiler workflows |
+| `tools/` | One authoritative implementation of reusable CLIs |
+| `tests/` | Positive and negative controls for the shared instruments |
+
+See [`skills/README.md`](skills/README.md) for the complete skill taxonomy and
+[`docs/codemap.md`](docs/codemap.md) for ownership and placement.
+
+## Install agent discovery links
+
+The installer links every categorized skill into the supported discovery roots
+under the selected home directory:
+
+```text
+python3 tools/install_skills.py install --replace
+python3 tools/install_skills.py check
+```
+
+It creates relative directory symlinks in `.agents/skills`, `.codex/skills`,
+and `.claude/skills`. It leaves unrelated entries, including Codex's `.system`
+skills, untouched. `--replace` only accepts a same-named skill package with a
+matching `SKILL.md`; it refuses unrelated directories.
+
+Use `--home <directory>` before the subcommand to test an isolated installation.
+Editing an installed path edits this checkout through the symlink, so there is
+no second mutable copy to drift.
+
+## Shared information tools
 
 | Tool | Answers |
 |---|---|
-| `info.py` | **claims** (what was proven, its evidence, and whether it still holds) and **instruments** (which tools can be trusted to produce evidence). `info.py brief <words>` is one query across every registry. |
-| `re_frontier.py` | the ordered RE dependency chain — which step is real reverse engineering and which is a **hack** that jumped ahead of it. `next` gives the next ready step, `hacks` the debt list. |
-| `catalog.py` | `docs/issues/` — symptom-keyed bugs, root causes and dead ends. Consult *before* re-deriving. |
+| `tools/info.py` | What has been proven, falsified, or measured, and whether the evidence is stale |
+| `tools/project_state.py` | Whether goals, factual project state, and issue links form a coherent graph |
+| `tools/catalog.py` | Which atomic tasks, bugs, findings, blockers, and dead ends have been recorded |
+| `tools/codemap.py` | Whether source coverage and subsystem placement are mapped |
+| `tools/re_frontier.py` | Which ordered RE step is ready and which steps carry hack debt |
+| `tools/go_public.py` | Which history entries contain material that must not ship publicly |
+| `tools/safekill` | How to terminate an exact process without matching the calling shell |
 
-## Why it is shared
+The root names `info.py`, `catalog.py`, `re_frontier.py`, and
+`project_state.py` are compatibility symlinks for existing consumers. New
+integrations should invoke `tools/` directly.
 
-It was forked into every project and drifted: nine copies of `info.py` in seven
-distinct versions, ten of `re_frontier.py` in nine, eight of `catalog.py` in
-four. The forks were not deliberate variants — they were the same tool improved
-in whichever project happened to need the improvement, with none of the others
-getting it.
+These tools resolve project data from the working project, not from this
+repository. The data remains with that project:
 
-The versions seeded here are the most developed of each, chosen after checking
-that each still reads another project's data unchanged. Two improvements that
-were stranded in one fork and now apply everywhere:
+- `docs/project-goals.md` — epic-level intent;
+- `docs/project-state.md` — factual capability and outcome coverage;
+- `docs/issues/` — atomic work and investigation history;
+- `docs/codemap.md` — subsystem ownership and placement;
+- `docs/info/` — evidence claims and instrument trust;
+- `docs/re-frontier.md` — specialized RE dependency ordering.
 
-- `info.py` warns that `[holds]` means *unchallenged, not current*, and prints
-  the codemap section.
-- `re_frontier.py` reports its denominator — "none of the 36 parsed steps is
-  ready" rather than a bare "(none)", so "nothing is ready" and "nothing was
-  parsed" stop looking alike.
+## Verify changes
 
-## How a port uses it
+Run the complete local gate from this checkout:
 
-Every tool resolves the project from the **working directory**, never from its
-own location, so one copy serves every port. Run them from the port's root.
+```text
+python3 tests/run.py
+python3 tools/project_state.py --root .
+```
 
-The tools live here; the **data stays in the port** — `docs/info/claims/`,
-`docs/info/instruments/`, `docs/issues/`, `docs/re-frontier.md`.
-
-`pc/xmen2` consumes it through three-line shims in its `tools/` (so every
-existing command and doc keeps working) that locate this repo via its
-`tools/shared_dir.py`. That resolver refuses and names every path it tried
-rather than falling back to a vendored copy — a stale in-tree copy silently
-winning is the failure this split exists to end.
-
-## Migration status
-
-Consuming this repo: `pc/xmen2`.
-
-Still on their own forks: `psx/*`, `gameboy/ffa`, `x360/gears1`, `pc/openbl2`,
-`zelda3d`. Each needs its output diffed against its fork before switching —
-the data format proved compatible for xmen2, but that was checked, not assumed,
-and it should be checked per project rather than taken on faith.
+The test suite exercises both positive and negative controls, including an
+isolated three-root skill installation. An empty corpus cannot masquerade as a
+successful search.

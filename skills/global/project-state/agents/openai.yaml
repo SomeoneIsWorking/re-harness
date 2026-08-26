@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project State"
+  short_description: "Track verified, partial, blocked, and missing outcomes"
+  default_prompt: "Consult and update the factual project-state inventory."

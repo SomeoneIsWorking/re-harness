@@ -1,0 +1,1 @@
+../../../tools/go_public.py
