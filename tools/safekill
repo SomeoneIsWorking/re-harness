@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# safekill — kill processes WITHOUT the `pkill -f` self-match trap.
+#
+# The trap: an agent's Bash command runs as `zsh -c '<the entire script text>'`, so the literal
+# command text (including any pattern) is in the wrapper shell's OWN command line. `pkill -f <pat>`
+# / `pgrep -f <pat>` match the full command line, so they match and SIGKILL that wrapper shell —
+# truncating the command mid-run. Match by process NAME (comm) instead, and never kill self/ancestors.
+#
+# Usage:
+#   safekill <name>          kill all procs whose executable name matches <name> (substring of comm),
+#                            excluding this script, its shell, and their ancestors. NEVER uses -f.
+#   safekill -p <pid>...     kill specific PIDs (the safest form — kill exactly what you launched).
+#   safekill -n <name>       dry run: list what WOULD be killed, kill nothing.
+set -u
+
+mode_kill=1
+if [ "${1:-}" = "-n" ]; then mode_kill=0; shift; fi
+
+if [ "${1:-}" = "-p" ]; then
+  shift
+  for p in "$@"; do
+    [ "$mode_kill" = 1 ] && kill -9 "$p" 2>/dev/null && echo "killed pid $p" || echo "would kill pid $p"
+  done
+  exit 0
+fi
+
+name="${1:?usage: safekill <name> | safekill -p <pid>... | safekill -n <name>}"
+
+# Build the exclusion set: this script's PID, its whole ancestor chain (shell, wrapper, claude, ...).
+exclude=" $$ "
+pid=$$
+for _ in 1 2 3 4 5 6 7 8; do
+  pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  [ -z "$pid" ] || [ "$pid" = 0 ] && break
+  exclude="$exclude$pid "
+done
+
+# pgrep WITHOUT -f matches the process name (comm), so the `zsh`/`claude` wrapper never matches
+# unless you literally pass its name. Then drop anything in the ancestor-exclusion set for safety.
+hits=$(pgrep "$name" 2>/dev/null)
+[ -z "$hits" ] && { echo "no process matching name '$name'"; exit 0; }
+
+for p in $hits; do
+  case "$exclude" in *" $p "*) continue;; esac
+  if [ "$mode_kill" = 1 ]; then kill -9 "$p" 2>/dev/null && echo "killed $p ($(ps -o comm= -p "$p" 2>/dev/null))"
+  else echo "would kill $p ($(ps -o comm= -p "$p" 2>/dev/null))"; fi
+done

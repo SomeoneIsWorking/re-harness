@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Goals"
+  short_description: "Maintain epic-level project intent and success"
+  default_prompt: "Consult and update the epic-level project goals."

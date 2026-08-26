@@ -23,6 +23,13 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+TOOLS = os.path.join(ROOT, "tools")
+SCRATCH = os.path.join(ROOT, "scratch", "tests")
+os.makedirs(SCRATCH, exist_ok=True)
+
+
+def tempdir():
+    return tempfile.TemporaryDirectory(dir=SCRATCH)
 
 
 def run(args, cwd):
@@ -50,15 +57,59 @@ def issues_corpus(root, title):
     d = os.path.join(root, "docs", "issues")
     os.makedirs(d)
     with open(os.path.join(d, "0001-a-bug.md"), "w") as f:
-        f.write("---\nid: 1\ntitle: %s\nstatus: open\n"
+        f.write("---\nid: 1\ntitle: %s\nstatus: open\nstate_items: S001\n"
                 "symptom: the widget emits a spurious frobnicator\n"
                 "tags: widget\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n"
                 % title)
 
 
+def state_corpus(root, state="verified"):
+    docs = os.path.join(root, "docs")
+    os.makedirs(os.path.join(docs, "issues"), exist_ok=True)
+    with open(os.path.join(docs, "project-goals.md"), "w") as f:
+        f.write("# Goals\n\n## G001 — Frobnication\n")
+    with open(os.path.join(docs, "project-state.md"), "w") as f:
+        f.write(
+            "# Project state\n\n## Current focus\n\n**S001 — frobstate**\n\n"
+            "## Capability inventory\n\n"
+            "| ID | Capability or outcome | State | Factual dependency | Goals |\n"
+            "|---|---|---|---|---|\n"
+            f"| S001 | frobstate capability | {state} | — | G001 |\n\n"
+            f"## State details and evidence\n\n### S001 — frobstate: {state}\n\n"
+            "Evidence: observed a positive and negative frobnication.\n"
+        )
+    with open(os.path.join(docs, "issues", "0001-frob.md"), "w") as f:
+        f.write("---\nid: 1\ntitle: Frob\nstatus: open\nstate_items: S001\n---\n")
+
+
 def main():
     fails = 0
-    print("re-harness selftest")
+    print("shared-skills selftest")
+
+    oversized = []
+    for name in sorted(os.listdir(TOOLS)):
+        if not name.endswith(".py"):
+            continue
+        path = os.path.join(TOOLS, name)
+        with open(path, encoding="utf-8") as source:
+            lines = sum(1 for _ in source)
+        if lines > 1200:
+            oversized.append(f"{path}: {lines} lines (limit 1200)")
+    fails += check(
+        "structure: first-party Python tools stay bounded",
+        not oversized,
+        "\n".join(oversized),
+    )
+
+    # --- compatibility names: old and canonical paths are one implementation
+    for name in ("catalog.py", "info.py", "project_state.py", "re_frontier.py"):
+        root_entry = os.path.join(ROOT, name)
+        canonical = os.path.join(TOOLS, name)
+        fails += check(
+            f"compatibility: {name} resolves to tools/",
+            os.path.realpath(root_entry) == os.path.realpath(canonical),
+            f"{root_entry} -> {os.path.realpath(root_entry)}; expected {canonical}",
+        )
 
     # --- re_frontier: defer to its own, stronger selftest -------------------
     rc, out = run([os.path.join(ROOT, "re_frontier.py"), "selftest"], ROOT)
@@ -66,13 +117,13 @@ def main():
                    rc == 0 and "selftest OK" in out, out)
 
     # --- info.py: must FIND a claim, and must not invent one ---------------
-    with tempfile.TemporaryDirectory() as d:
+    with tempdir() as d:
         claims_corpus(d, "the widget is proven to frobnicate")
         rc, out = run([os.path.join(ROOT, "info.py"), "brief", "frobnicate"], d)
         fails += check("info.py: finds a claim that is there",
                        rc == 0 and "C001" in out, out)
 
-    with tempfile.TemporaryDirectory() as d:
+    with tempdir() as d:
         claims_corpus(d, "the widget is proven to frobnicate")
         rc, out = run([os.path.join(ROOT, "info.py"), "brief", "zzzznotaword"], d)
         fails += check("info.py: reports NO match for a word not present",
@@ -80,30 +131,135 @@ def main():
 
     # An empty tree must not read as "nothing has ever been proven" without
     # saying so -- that is the negative this tool must never fake.
-    with tempfile.TemporaryDirectory() as d:
+    with tempdir() as d:
         rc, out = run([os.path.join(ROOT, "info.py"), "brief", "frobnicate"], d)
         fails += check("info.py: no corpus does not produce a false hit",
                        "C001" not in out, out)
 
     # --- catalog.py: must FIND an issue, and must not invent one -----------
-    with tempfile.TemporaryDirectory() as d:
+    # Direct file search must include a newly-created, untracked state document.
+    with tempdir() as d:
+        state_corpus(d)
+        rc, out = run([os.path.join(ROOT, "info.py"), "brief", "frobstate"], d)
+        fails += check("info.py: finds untracked project state",
+                       rc == 0 and "PROJECT STATE" in out and "S001" in out, out)
+
+    # --- project state: valid links pass and an invalid state fails ----------
+    with tempdir() as d:
+        state_corpus(d)
+        rc, out = run([os.path.join(ROOT, "project_state.py"), "--root", d], ROOT)
+        fails += check("project_state.py: accepts a coherent state graph",
+                       rc == 0 and "0 problem(s)" in out, out)
+
+    with tempdir() as d:
+        state_corpus(d, state="done")
+        rc, out = run([os.path.join(ROOT, "project_state.py"), "--root", d], ROOT)
+        fails += check("project_state.py: rejects an invalid state",
+                       rc == 1 and "invalid state 'done'" in out, out)
+
+    with tempdir() as d:
         issues_corpus(d, "Widget emits a spurious frobnicator")
         rc, out = run([os.path.join(ROOT, "catalog.py"), "search", "frobnicator"], d)
         fails += check("catalog.py: finds an issue that is there",
                        rc == 0 and "#1" in out, out)
 
-    with tempfile.TemporaryDirectory() as d:
+    with tempdir() as d:
         issues_corpus(d, "Widget emits a spurious frobnicator")
         rc, out = run([os.path.join(ROOT, "catalog.py"), "search", "zzzznotaword"], d)
         fails += check("catalog.py: reports NO match for an absent symptom",
                        "#1" not in out, out)
 
-    with tempfile.TemporaryDirectory() as d:
+    with tempdir() as d:
         rc, out = run([os.path.join(ROOT, "catalog.py"), "search", "frobnicator"], d)
         fails += check("catalog.py: no corpus does not produce a false hit",
                        "#1" not in out, out)
 
-    print("re-harness selftest: %s (%d check(s) failed)"
+    with tempdir() as d:
+        rc, out = run([os.path.join(ROOT, "catalog.py"), "list"], d)
+        fails += check(
+            "catalog.py: missing corpus is not an empty catalog",
+            rc != 0 and "searched NOTHING" in out,
+            out,
+        )
+
+    with tempdir() as d:
+        issues_corpus(d, "Widget emits a spurious frobnicator")
+        rc, out = run([os.path.join(ROOT, "catalog.py"), "list", "--state-item", "S001"], d)
+        fails += check("catalog.py: filters by project-state link",
+                       rc == 0 and "#1" in out and "<S001>" in out, out)
+
+    with tempdir() as d:
+        os.makedirs(os.path.join(d, "docs", "issues"))
+        catalog = os.path.join(ROOT, "catalog.py")
+        rc, out = run(
+            [catalog, "add", "Tagged issue", "--tag", "reported", "--tag", "rendering"],
+            d,
+        )
+        first_rc, first_out = run([catalog, "list", "--tag", "reported"], d)
+        second_rc, second_out = run([catalog, "list", "--tag", "rendering"], d)
+        fails += check(
+            "catalog.py: repeated tags accumulate",
+            rc == 0 and first_rc == 0 and second_rc == 0
+            and "#1" in first_out and "#1" in second_out,
+            out + first_out + second_out,
+        )
+
+    # --- installer: all supported homes converge, and tampering is detected --
+    with tempdir() as d:
+        system_dir = os.path.join(d, ".codex", "skills", ".system")
+        os.makedirs(system_dir)
+        marker = os.path.join(system_dir, "owned-by-codex")
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write("preserve me\n")
+        installer = os.path.join(TOOLS, "install_skills.py")
+        rc, out = run([installer, "--home", d, "install"], ROOT)
+        expected = 17 * 3
+        links = []
+        for agent in (".agents", ".codex", ".claude"):
+            root = os.path.join(d, agent, "skills")
+            links.extend(
+                os.path.join(root, name)
+                for name in os.listdir(root)
+                if os.path.islink(os.path.join(root, name))
+            )
+        relative = all(not os.path.isabs(os.readlink(path)) for path in links)
+        fails += check(
+            "installer: creates every relative discovery link",
+            rc == 0 and len(links) == expected and relative,
+            out + f"\nlinks={len(links)}, expected={expected}, relative={relative}",
+        )
+        fails += check(
+            "installer: preserves vendor-owned system skills",
+            os.path.isfile(marker),
+            out,
+        )
+        rc, out = run([installer, "--home", d, "check"], ROOT)
+        fails += check("installer: verifies an intact installation", rc == 0, out)
+
+        tampered = os.path.join(d, ".agents", "skills", "codemap")
+        os.unlink(tampered)
+        os.symlink("../wrong-target", tampered)
+        rc, out = run([installer, "--home", d, "check"], ROOT)
+        fails += check(
+            "installer: detects a non-canonical discovery link",
+            rc == 1 and "codemap: not canonical" in out,
+            out,
+        )
+
+    with tempdir() as d:
+        collision = os.path.join(d, ".agents", "skills", "codemap")
+        os.makedirs(collision)
+        with open(os.path.join(collision, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: unrelated\n---\n")
+        installer = os.path.join(TOOLS, "install_skills.py")
+        rc, out = run([installer, "--home", d, "install", "--replace"], ROOT)
+        fails += check(
+            "installer: refuses an unrelated same-named directory",
+            rc == 2 and "refusing to replace unrelated directory" in out,
+            out,
+        )
+
+    print("shared-skills selftest: %s (%d check(s) failed)"
           % ("FAILED" if fails else "PASSED", fails))
     return fails
 
