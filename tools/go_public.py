@@ -559,8 +559,8 @@ def gen_rules(cwd):
     # default. Uncomment deliberately, after checking what the token actually matches.
     lines.append("# also consider bare usernames (uncomment ONLY after checking what they match:")
     lines.append("#   git grep -I -n <name> $(git rev-list --all) -- | head)")
-    lines.append(f"# {USERNAME}==>user")
-    lines.append(f"# {USERNAME_ALT}==>user")
+    for name in HUNT_NAMES:
+        lines.append(f"# {name}==>user")
     return "\n".join(lines)
 
 
