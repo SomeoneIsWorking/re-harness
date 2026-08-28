@@ -46,6 +46,30 @@ the shipped binary does not depend on a machine-specific runtime path; preserve 
 build rule and fail by naming the missing shared checkout or glyph instead of substituting text or a
 private copy.
 
+## README and release-facing documentation
+
+Every game-port project maintains a useful root `README.md` for a new player or contributor. Keep
+these concerns explicit and separate:
+
+- what the port is and its honest current status;
+- the user-visible features it implements;
+- enhancements over the vanilla/original game, clearly labelled as additions rather than implied
+  original behavior;
+- setup from a fresh clone, including supported platforms, exact native dependencies, user-supplied
+  game-file requirements, and the supported launcher command; and
+- a small gallery of intentional, current screenshots under `docs/screenshots/` when visual output
+  is part of the project.
+
+Screenshots are curated product documentation, not a diagnostic frame corpus. Capture them from the
+current intended product path, caption the state they show, and do not use known-broken or stale
+intermediate output to imply completeness. They may document the running game, but never replace
+the rule that copyrighted game files and reconstructable game assets stay out of the repository.
+Use a representative practical display size; a 4K capture is not itself a feature, and resolution
+support belongs in the setup/status text when it is actually supported.
+Update the README in the same change whenever a user-facing feature, supported setup path, launcher,
+or visible enhancement changes. Keep detailed evidence and unfinished coverage in the project's
+state/evidence docs instead of turning the README into a work log.
+
 ## Ownership map
 
 Prefer cohesive peer subsystems such as:
