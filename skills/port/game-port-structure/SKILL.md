@@ -70,6 +70,33 @@ Update the README in the same change whenever a user-facing feature, supported s
 or visible enhancement changes. Keep detailed evidence and unfinished coverage in the project's
 state/evidence docs instead of turning the README into a work log.
 
+## Portable release setup and storage
+
+For an AppImage or APK release, the first launch is a product setup flow, not a terminal workflow.
+When the required ROM/EXE is absent, show a native setup screen with a Browse action and a platform
+file picker, validate the selection, and persist the path or URI in the platform's user configuration
+or app-data store. Environment variables and command-line paths may remain developer overrides, but
+must not be required by players. AppImages use their desktop launcher; SDL3 Android ports use the
+Android Activity/Storage Access Framework bridge and retain URI permission when needed. Neither
+package may include unlicensed game content.
+
+An Android port also needs an authored touch-control owner before release. Map virtual controls
+through the same action/input policy as physical controllers, with documented reachability, safe-area
+insets, scale-aware hit regions, multi-touch, pause/cancel behavior, and hide/reconfigure behavior
+when a controller is connected. The Activity must not become a second input implementation.
+
+Treat Android performance as an evidence gate. Qualify named device classes using frame-time
+percentiles, sustained thermal behavior, memory, loading, and rendering/audio correctness. Desktop
+results, including Apple Silicon laptop results, do not predict Android performance; publish the
+device/renderer/settings matrix and keep the APK state partial until it exists.
+
+Saves and settings must use one per-application OS user-data resolver (XDG on Linux, Application
+Support on macOS, app-data APIs on Windows/Android), never the checkout, current working directory,
+AppImage mount, or scratch. Put the resolver in a shared library when that library owns the boundary;
+otherwise keep a narrow consumer module and avoid copying the policy between ports. When a reusable
+resolver or picker capability is missing from Lucent, extend and test Lucent first, then consume it
+from the port rather than creating divergent implementations.
+
 ## Ownership map
 
 Prefer cohesive peer subsystems such as:
