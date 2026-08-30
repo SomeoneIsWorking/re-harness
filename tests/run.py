@@ -155,6 +155,13 @@ def main():
     fails += check("re_frontier: its own edit-preservation selftest",
                    rc == 0 and "selftest OK" in out, out)
 
+    rc, out = run([os.path.join(ROOT, "info.py"), "claim", "check", "--selftest"], ROOT)
+    fails += check(
+        "info.py: its own symbol/history selftest",
+        rc == 0 and "shallow history" in out and "selftest PASSED" in out,
+        out,
+    )
+
     # --- info.py: must FIND a claim, and must not invent one ---------------
     with tempdir() as d:
         claims_corpus(d, "the widget is proven to frobnicate")

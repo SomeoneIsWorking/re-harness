@@ -51,6 +51,10 @@ no second mutable copy to drift.
 | `tools/cleanup-files` | How to remove an explicit set of in-tree files without partial cleanup |
 | `tools/safekill` | How to terminate an exact process without matching the calling shell |
 
+Claim staleness needs complete Git history because its symbol evidence comes from `git log -L`.
+`tools/info.py claim check` refuses shallow repositories; CI checkouts must fetch full history (for
+`actions/checkout`, use `fetch-depth: 0`) rather than treating a shallow boundary as a code change.
+
 The root names `info.py`, `catalog.py`, `re_frontier.py`, and
 `project_state.py` are compatibility symlinks for existing consumers. New
 integrations should invoke `tools/` directly.

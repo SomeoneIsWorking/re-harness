@@ -55,5 +55,6 @@ every categorized skill, and every public shared tool into all supported agent h
 
 Evidence: `tests/run.py` exercises finding and not inventing claims, state items, and issues;
 validates accepted and rejected state graphs; proves claim baselines are identical across distinct
-host timezones; runs the RE frontier's edit-preservation self-test; proves scoped cleanup; and proves
-instruction, skill, and tool installer success and tamper detection.
+host timezones; proves the claim checker refuses shallow history rather than manufacturing symbol
+movement at the checkout boundary; runs the RE frontier's edit-preservation self-test; proves scoped
+cleanup; and proves instruction, skill, and tool installer success and tamper detection.
