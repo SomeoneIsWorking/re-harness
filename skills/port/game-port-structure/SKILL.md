@@ -80,6 +80,14 @@ must not be required by players. AppImages use their desktop launcher; SDL3 Andr
 Android Activity/Storage Access Framework bridge and retain URI permission when needed. Neither
 package may include unlicensed game content.
 
+Accept the title's primary ROM/EXE directly and accept a ZIP containing exactly one matching primary
+file at any folder depth. Validate archive paths, entry counts, compressed and expanded byte budgets,
+checksums, executable/ROM identity, and every required sibling asset before replacing a previously
+valid selection. Lucent owns reusable safe ZIP discovery/extraction and bounded archive mechanics;
+the port owns title identity and complete-install validation. Android may copy a transient SAF
+selection into bounded app-private staging instead of retaining external URI access; commit that
+staging only after native validation succeeds, and preserve the prior valid install on failure.
+
 An Android port also needs an authored touch-control owner before release. Map virtual controls
 through the same action/input policy as physical controllers, with documented reachability, safe-area
 insets, scale-aware hit regions, multi-touch, pause/cancel behavior, and hide/reconfigure behavior
@@ -122,6 +130,10 @@ Before landing, verify:
 - New behavior is reachable through its real user-facing path, not a hidden feature flag.
 - The structure checker passes and reports exact files/counts on failure.
 - Unit tests cover pure policies and a focused end-to-end run covers integration.
+- Package tests reject embedded game content and exercise direct-file, nested-ZIP, duplicate-match,
+  unsafe-path, incomplete-install, and over-budget selections through the shipping setup owner.
+- A release APK is signed and signature-verified, and remains unreleased until its named-device
+  correctness/performance matrix passes.
 - Shared UI art resolves from `port-assets`, passes that repository's checks, and is not duplicated.
 - The codemap names each new owner, interface, and current or intended location.
 - Project state records any verified, partial, blocked, or missing capability change and its evidence.
