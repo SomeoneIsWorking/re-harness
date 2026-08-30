@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Remove explicit files inside the current working tree after validating all targets."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def validate_targets(arguments: list[str], root: Path) -> list[Path]:
+    targets: list[Path] = []
+    for argument in arguments:
+        target = Path(argument)
+        if not target.exists():
+            raise ValueError(f"{argument} does not exist; refusing partial cleanup")
+        if target.is_dir():
+            raise ValueError(f"{argument} is a directory; this helper removes files only")
+        if target.name in {".", ".."}:
+            raise ValueError(f"invalid target {argument}; refusing")
+
+        resolved_parent = target.parent.resolve()
+        if resolved_parent != root and root not in resolved_parent.parents:
+            raise ValueError(f"{argument} is outside {root}; refusing")
+        targets.append(target)
+    return targets
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="cleanup-files",
+        description="remove explicit files inside the current working tree",
+    )
+    parser.add_argument("paths", nargs="*")
+    args = parser.parse_args(argv)
+
+    if not args.paths:
+        print(
+            "cleanup-files: pass one or more explicit file paths; cleaned NOTHING",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        targets = validate_targets(args.paths, Path.cwd().resolve())
+    except ValueError as exc:
+        print(f"cleanup-files: {exc}", file=sys.stderr)
+        return 2
+
+    for argument, target in zip(args.paths, targets, strict=True):
+        target.unlink()
+        print(f"cleanup-files: removed {argument}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

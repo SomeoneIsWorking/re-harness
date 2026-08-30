@@ -1,8 +1,8 @@
-# Shared agent-skills repository
+# Shared agent configuration repository
 
-This repository is the canonical source for the user's portable skills and
-their reusable CLIs. Installed agent homes contain symlinks into this checkout;
-do not edit installed copies as separate authorities.
+This repository is the canonical source for the user's portable global instructions, skills, and
+reusable CLIs. Agent homes and `~/repo/AGENTS.md` contain symlinks into this checkout; do not edit
+installed paths as separate authorities.
 
 ## Information
 
@@ -30,6 +30,6 @@ skill as recomp-specific merely because its first consumer is a recomp project.
 
 ## Installation
 
-`tools/install_skills.py` is the only installer. It links every skill into
-`.agents/skills`, `.codex/skills`, and `.claude/skills` under the selected home.
-It must never touch `.codex/skills/.system` or replace an unrelated directory.
+`tools/install_skills.py` is the only installer. It links the global instruction file, every skill,
+and every public shared tool into `.agents`, `.codex`, and `.claude`, plus the `~/repo` instruction
+scope. It must never touch vendor-owned files or replace an unrelated directory.

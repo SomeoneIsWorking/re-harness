@@ -101,6 +101,44 @@ def main():
         "\n".join(oversized),
     )
 
+    # --- cleanup-files: validate the whole explicit set before unlinking -----
+    cleanup = os.path.join(TOOLS, "cleanup-files")
+    with tempdir() as d:
+        victim = os.path.join(d, "victim.txt")
+        with open(victim, "w", encoding="utf-8") as target:
+            target.write("remove me\n")
+        rc, out = run([cleanup, "victim.txt"], d)
+        fails += check(
+            "cleanup-files: removes an explicit in-tree file",
+            rc == 0 and not os.path.exists(victim) and "removed victim.txt" in out,
+            out,
+        )
+
+    with tempdir() as d:
+        victim = os.path.join(d, "victim.txt")
+        os.mkdir(os.path.join(d, "directory"))
+        with open(victim, "w", encoding="utf-8") as target:
+            target.write("must survive\n")
+        rc, out = run([cleanup, "victim.txt", "directory"], d)
+        fails += check(
+            "cleanup-files: refuses partial cleanup on an invalid target",
+            rc == 2 and os.path.exists(victim) and "directory" in out,
+            out,
+        )
+
+    with tempdir() as d:
+        work = os.path.join(d, "work")
+        os.mkdir(work)
+        outside = os.path.join(d, "outside.txt")
+        with open(outside, "w", encoding="utf-8") as target:
+            target.write("must survive\n")
+        rc, out = run([cleanup, "../outside.txt"], work)
+        fails += check(
+            "cleanup-files: refuses a target outside the working tree",
+            rc == 2 and os.path.exists(outside) and "outside" in out,
+            out,
+        )
+
     # --- compatibility names: old and canonical paths are one implementation
     for name in ("catalog.py", "info.py", "project_state.py", "re_frontier.py"):
         root_entry = os.path.join(ROOT, name)
@@ -242,9 +280,30 @@ def main():
             )
         relative = all(not os.path.isabs(os.readlink(path)) for path in links)
         fails += check(
-            "installer: creates every relative discovery link",
+            "installer: creates every relative skill discovery link",
             rc == 0 and len(links) == expected and relative,
             out + f"\nlinks={len(links)}, expected={expected}, relative={relative}",
+        )
+        instruction_links = (
+            os.path.join(d, ".agents", "AGENTS.md"),
+            os.path.join(d, ".codex", "AGENTS.md"),
+            os.path.join(d, ".claude", "CLAUDE.md"),
+            os.path.join(d, "repo", "AGENTS.md"),
+        )
+        tool_links = tuple(
+            os.path.join(d, agent, "bin", name)
+            for agent in (".agents", ".codex", ".claude")
+            for name in (
+                "catalog.py", "cleanup-files", "codemap.py", "go_public.py",
+                "info.py", "project_state.py", "re_frontier.py", "safekill",
+            )
+        )
+        shared_links = instruction_links + tool_links
+        fails += check(
+            "installer: links every global instruction and tool",
+            all(os.path.islink(path) for path in shared_links)
+            and all(not os.path.isabs(os.readlink(path)) for path in shared_links),
+            out,
         )
         fails += check(
             "installer: preserves vendor-owned system skills",
@@ -261,6 +320,16 @@ def main():
         fails += check(
             "installer: detects a non-canonical discovery link",
             rc == 1 and "codemap: not canonical" in out,
+            out,
+        )
+
+        tampered_tool = os.path.join(d, ".codex", "bin", "cleanup-files")
+        os.unlink(tampered_tool)
+        os.symlink("../wrong-target", tampered_tool)
+        rc, out = run([installer, "--home", d, "check"], ROOT)
+        fails += check(
+            "installer: detects a non-canonical tool link",
+            rc == 1 and "cleanup-files: not canonical" in out,
             out,
         )
 

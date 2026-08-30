@@ -13,7 +13,7 @@ None. The initial convergence capability set is verified.
 | S003 | Reverse-engineering skills are grouped independently of recomp methodology | verified | S001 | G002 |
 | S004 | Static-recompiler-only skills are grouped under an explicit recomp scope | verified | S001 | G002 |
 | S005 | Reusable CLIs have canonical implementations and stable compatibility entry points | verified | S001 | G003 |
-| S006 | Codex, Claude, and generic agent homes can converge through safe relative links | verified | S001, S002, S003, S004 | G001, G002 |
+| S006 | Codex, Claude, and generic agent homes converge instructions, skills, and tools through safe relative links | verified | S001, S002, S003, S004, S005 | G001, G002, G003 |
 | S007 | The shared tools and installer have positive and negative verification controls | verified | S005, S006 | G001, G003 |
 
 ## State details and evidence
@@ -47,12 +47,12 @@ resolve to the same files.
 
 ### S006 — Cross-agent convergence: verified
 
-Evidence: `tools/install_skills.py` discovers every categorized package, creates
-relative links in all three supported discovery roots, verifies each resolved
-target, preserves unrelated entries, and passes its isolated-home controls.
+Evidence: `tools/install_skills.py` creates and verifies relative links from the global instruction,
+every categorized skill, and every public shared tool into all supported agent homes plus
+`~/repo/AGENTS.md`; it preserves unrelated entries and passes its isolated-home controls.
 
 ### S007 — Instrument controls: verified
 
-Evidence: `tests/run.py` exercises finding and not inventing claims, state items,
-and issues; validates accepted and rejected state graphs; runs the RE frontier's
-edit-preservation self-test; and proves installer success and tamper detection.
+Evidence: `tests/run.py` exercises finding and not inventing claims, state items, and issues;
+validates accepted and rejected state graphs; runs the RE frontier's edit-preservation self-test;
+proves scoped cleanup; and proves instruction, skill, and tool installer success and tamper detection.
