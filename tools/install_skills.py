@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install this repository's skills into supported agent skill roots."""
+"""Link this repository's global instructions, skills, and tools into agent homes."""
 
 import argparse
 import os
@@ -10,7 +10,25 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SKILLS = REPO / "skills"
-DESTINATIONS = (Path(".agents/skills"), Path(".codex/skills"), Path(".claude/skills"))
+INSTRUCTIONS = REPO / "instructions" / "AGENTS.md"
+SKILL_DESTINATIONS = (Path(".agents/skills"), Path(".codex/skills"), Path(".claude/skills"))
+INSTRUCTION_DESTINATIONS = (
+    Path(".agents/AGENTS.md"),
+    Path(".codex/AGENTS.md"),
+    Path(".claude/CLAUDE.md"),
+    Path("repo/AGENTS.md"),
+)
+TOOL_NAMES = (
+    "catalog.py",
+    "cleanup-files",
+    "codemap.py",
+    "go_public.py",
+    "info.py",
+    "project_state.py",
+    "re_frontier.py",
+    "safekill",
+)
+TOOL_DESTINATIONS = (Path(".agents/bin"), Path(".codex/bin"), Path(".claude/bin"))
 
 
 def skill_name(skill_file):
@@ -35,12 +53,35 @@ def discover():
     return found
 
 
-def destinations(home):
-    return tuple((home / relative).resolve() for relative in DESTINATIONS)
+def skill_destinations(home):
+    return tuple((home / relative).resolve() for relative in SKILL_DESTINATIONS)
+
+
+def instruction_destinations(home):
+    return tuple(home / relative for relative in INSTRUCTION_DESTINATIONS)
+
+
+def tool_destinations(home):
+    return tuple((home / relative).resolve() for relative in TOOL_DESTINATIONS)
 
 
 def points_to(target, source):
     return target.is_symlink() and target.resolve() == source
+
+
+def link_file(target, source, replace, allowed_parents):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if points_to(target, source):
+        return 0
+    if target.exists() or target.is_symlink():
+        if not replace:
+            print(f"COLLISION {target} (use --replace after reviewing it)")
+            return 0
+        safe_replace(target, target.name, allowed_parents)
+    relative = os.path.relpath(source, target.parent)
+    target.symlink_to(relative)
+    print(f"LINK {target} -> {relative}")
+    return 1
 
 
 def safe_replace(target, expected_name, allowed_parents):
@@ -60,7 +101,7 @@ def safe_replace(target, expected_name, allowed_parents):
 
 def install(home, replace):
     skills = discover()
-    roots = destinations(home)
+    roots = skill_destinations(home)
     changed = 0
     for root in roots:
         root.mkdir(parents=True, exist_ok=True)
@@ -77,13 +118,29 @@ def install(home, replace):
             target.symlink_to(relative, target_is_directory=True)
             print(f"LINK {target} -> {relative}")
             changed += 1
-    print(f"install-skills: {len(skills)} skill(s) across {len(roots)} root(s); {changed} link(s) changed")
+
+    instruction_targets = instruction_destinations(home)
+    instruction_parents = {target.parent.resolve() for target in instruction_targets}
+    for target in instruction_targets:
+        changed += link_file(target, INSTRUCTIONS.resolve(), replace, instruction_parents)
+
+    tool_roots = tool_destinations(home)
+    for root in tool_roots:
+        root.mkdir(parents=True, exist_ok=True)
+        for name in TOOL_NAMES:
+            changed += link_file(root / name, (REPO / "tools" / name).resolve(), replace, set(tool_roots))
+
+    print(
+        f"install-global: {len(skills)} skill(s), {len(instruction_targets)} instruction link(s), "
+        f"and {len(TOOL_NAMES)} tool(s) across {len(tool_roots)} bin root(s); "
+        f"{changed} link(s) changed"
+    )
     return check(home)
 
 
 def check(home):
     skills = discover()
-    roots = destinations(home)
+    roots = skill_destinations(home)
     problems = []
     for root in roots:
         for name, source in skills.items():
@@ -91,9 +148,25 @@ def check(home):
             if not points_to(target, source):
                 state = "missing" if not (target.exists() or target.is_symlink()) else "not canonical"
                 problems.append(f"{target}: {state}; expected {source}")
+
+    instruction_targets = instruction_destinations(home)
+    for target in instruction_targets:
+        if not points_to(target, INSTRUCTIONS.resolve()):
+            state = "missing" if not (target.exists() or target.is_symlink()) else "not canonical"
+            problems.append(f"{target}: {state}; expected {INSTRUCTIONS.resolve()}")
+
+    tool_roots = tool_destinations(home)
+    for root in tool_roots:
+        for name in TOOL_NAMES:
+            target = root / name
+            source = (REPO / "tools" / name).resolve()
+            if not points_to(target, source):
+                state = "missing" if not (target.exists() or target.is_symlink()) else "not canonical"
+                problems.append(f"{target}: {state}; expected {source}")
     print(
-        f"install-skills check: {len(skills)} skill(s) x {len(roots)} root(s) = "
-        f"{len(skills) * len(roots)} link(s); {len(problems)} problem(s)"
+        f"install-global check: {len(skills) * len(roots)} skill link(s), "
+        f"{len(instruction_targets)} instruction link(s), and "
+        f"{len(TOOL_NAMES) * len(tool_roots)} tool link(s); {len(problems)} problem(s)"
     )
     for problem in problems:
         print(f"  ERROR {problem}")
@@ -101,13 +174,13 @@ def check(home):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="link categorized skills into agent homes")
+    parser = argparse.ArgumentParser(description="link global instructions, skills, and tools into agent homes")
     parser.add_argument("--home", type=Path, default=Path.home(),
                         help="home directory to populate (default: current user's home)")
     sub = parser.add_subparsers(dest="command", required=True)
     install_parser = sub.add_parser("install")
     install_parser.add_argument("--replace", action="store_true",
-                                help="replace only same-named skill directories/symlinks")
+                                help="replace only known instruction, skill, and tool targets")
     sub.add_parser("check")
     args = parser.parse_args(argv)
     home = args.home.expanduser().resolve()

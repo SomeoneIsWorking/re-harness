@@ -17,7 +17,7 @@ Reusable executables live under `../../tools/`. A package that exposes one uses
 a relative symlink, so the repository retains one source of truth. Resources
 used by only one skill stay inside that package.
 
-Install or verify discovery links with:
+Install or verify the shared global instruction, skill, and tool links with:
 
 ```text
 python3 tools/install_skills.py install --replace

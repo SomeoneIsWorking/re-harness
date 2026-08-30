@@ -1,15 +1,15 @@
 # Project goals
 
-## G001 — One portable authority for reusable agent skills
+## G001 — One portable authority for global agent configuration
 
-Maintain a versioned repository that can be checked out on another machine and
-serve as the single editable source for every supported agent's shared skills.
+Maintain a versioned repository that can be checked out on another machine and serve as the single
+editable source for every supported agent's global instructions, shared skills, and reusable tools.
 
 Success conditions:
 
-- Codex, Claude, and generic agent skill roots can discover the same packages.
-- Installed discovery entries point back to this checkout instead of becoming
-  independent copies.
+- Codex, Claude, and generic agent homes discover the same instructions, skill packages, and tools.
+- Installed entries and the `~/repo` instruction scope point back to this checkout instead of
+  becoming independent copies.
 - The repository contains no dependency on one operator's absolute home path.
 
 ## G002 — Applicability is explicit and composable
