@@ -403,12 +403,20 @@ USER 2026-08-30: "Agents used scratch directories too agressively and didn't car
 - **Delete your own scratch output when the milestone that produced it lands.** A finding worth
   keeping goes into the nearest living doc as text (or a single committed reference image), not left
   as gigabytes of raw dumps. Stale scratch is dangling work under the "no dangling work" rule.
+- **One stable directory per recurring activity — reuse it, do not mint a new one per run.** A probe,
+  smoke test, verification checkout, comparison, or build gets one fixed path
+  (`scratch/<activity>/`), and each run clears or overwrites it. Never append a counter, attempt
+  letter, date, run id, `_v2`/`_final`, or `mktemp` suffix to keep the previous run's tree beside the
+  new one (`verify87`, `verify87b`, `verify87_final`, `release-checkout-run3329…` — this is the
+  pattern that filled the disk). If you genuinely need the prior run to diff against, keep exactly
+  one `<activity>.prev/` and rotate.
 - **Garbage-collect scratch with the scoped tool, never raw `rm`.** `~/.codex/bin/scratch_gc.py`
-  (canonical: `shared/re-harness/tools/scratch_gc.py`) is dry-run by default, refuses any target not
-  named `scratch` under `~/repo`, removes files older than `--days` (default 14), and prunes emptied
-  dirs; `--keep GLOB` protects active artifacts. Run it with `--apply` at natural cleanup points and
-  when a project's `scratch/` grows past ~1 GB. Check overall usage with `du -sh ~/repo/*/scratch`,
-  and remember the tmpfs quota is diagnosed with `quota -s`, not `df`.
+  (canonical: `shared/re-harness/tools/scratch_gc.py`) is dry-run by default, removes files older than
+  `--days` (default 14) and prunes emptied dirs; `--keep GLOB` protects active artifacts. Point it at
+  a specific `scratch` dir, or at any root under `~/repo` (e.g. `scratch_gc.py --apply ~/repo`) to
+  sweep every `scratch/` at any depth. It refuses targets outside `~/repo`. Run it with `--apply` at
+  natural cleanup points and when a project's `scratch/` grows past ~1 GB. Check overall usage with
+  `du -sh ~/repo/*/scratch`, and remember the tmpfs quota is diagnosed with `quota -s`, not `df`.
 
 ## Never `pkill` a shared binary name — kill by PID
 

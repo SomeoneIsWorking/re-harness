@@ -5,8 +5,10 @@ Agents write logs, frame dumps, screenshots, and build caches under a project's
 gitignored ``scratch/`` directory. Those artifacts are disposable but accumulate
 into tens of gigabytes. This tool removes stale scratch files safely:
 
-* It refuses any target that does not resolve to a directory literally named
-  ``scratch`` living inside ``~/repo`` (override the root with ``--repo-root``).
+* A target named ``scratch`` inside ``~/repo`` (any depth) is GC'd directly. Any
+  other directory under (or equal to) ``~/repo`` is treated as a search root and
+  every ``scratch`` directory beneath it is GC'd. Everything else is refused.
+  Override the root with ``--repo-root``.
 * It is dry-run by default; ``--apply`` is required to delete anything.
 * It only removes regular files whose mtime is older than ``--days`` (default 14),
   then prunes directories that became empty. Symlinks are unlinked, never followed.
@@ -30,22 +32,33 @@ def human(size: int) -> str:
     return f"{size / GIB:.2f} GiB" if size >= GIB else f"{size / 1048576:.1f} MiB"
 
 
-def resolve_target(raw: str, repo_root: Path) -> Path:
+def resolve_targets(raw: str, repo_root: Path) -> list[Path]:
     target = Path(raw).resolve()
     if not target.is_dir():
         raise ValueError(f"{raw} is not a directory")
-    if target.name != "scratch":
-        raise ValueError(f"{target} is not named 'scratch'; refusing")
-    if repo_root not in target.parents:
+    if target != repo_root and repo_root not in target.parents:
         raise ValueError(f"{target} is not under {repo_root}; refusing")
-    if target.parent == repo_root:
-        raise ValueError(f"{target} has no project directory between it and {repo_root}; refusing")
-    return target
+    if target.name == "scratch":
+        if target.parent == repo_root:
+            raise ValueError(f"{target} has no project directory between it and {repo_root}; refusing")
+        return [target]
+    found = sorted(
+        d for d in target.rglob("scratch")
+        if d.is_dir() and not d.is_symlink() and d.parent != repo_root
+    )
+    # Keep only the top-most scratch of each nested chain (a scratch inside a
+    # scratch, or one a build tree mirrored under an absolute path, is covered
+    # by its ancestor).
+    top = [d for d in found if not any(a in d.parents for a in found)]
+    if not top:
+        raise ValueError(f"no 'scratch' directories found under {target}")
+    return top
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scratch-gc", description=__doc__)
-    parser.add_argument("targets", nargs="+", help="one or more <repo>/<project>/scratch directories")
+    parser.add_argument("targets", nargs="+",
+                        help="scratch directories, or roots to search for scratch dirs (e.g. ~/repo)")
     parser.add_argument("--days", type=float, default=14.0, help="remove files older than N days (default 14)")
     parser.add_argument("--apply", action="store_true", help="actually delete (default: dry run)")
     parser.add_argument("--keep", action="append", default=[], metavar="GLOB",
@@ -58,7 +71,13 @@ def main(argv: list[str] | None = None) -> int:
     cutoff = time.time() - args.days * 86400
 
     try:
-        targets = [resolve_target(raw, repo_root) for raw in args.targets]
+        seen: set[Path] = set()
+        targets: list[Path] = []
+        for raw in args.targets:
+            for scratch in resolve_targets(raw, repo_root):
+                if scratch not in seen:
+                    seen.add(scratch)
+                    targets.append(scratch)
     except ValueError as exc:
         print(f"scratch-gc: {exc}", file=sys.stderr)
         return 2
