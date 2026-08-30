@@ -606,11 +606,23 @@ USER 2026-08-24: "Also run.sh should not run tests, agents need their own test c
   using the platform-native file picker. Validate the selected file before continuing and persist
   the resulting path or URI with the platform's user configuration/data API; environment variables
   and command-line paths remain maintainer/developer overrides, never player prerequisites.
+- **Packaged setup accepts the primary ROM/EXE directly or from one bounded nested ZIP.** Search ZIP
+  entries by content at any folder depth and accept exactly one title-identity match. Reject unsafe
+  paths, duplicate matches, unreadable or corrupt entries, excessive entry counts, and compressed or
+  expanded byte budgets before committing; validate the complete install, including required sibling
+  assets, and preserve the previous valid selection on every failure. Lucent owns reusable ZIP
+  discovery/extraction and archive bounds; each port owns title identity and complete-install policy.
 - **AppImage and APK packages never contain unlicensed game files.** Package the port, redistributable
   runtime resources, and platform glue only. Linux AppImages use the desktop launcher path; Android
   SDL3 ports use the Activity/Storage Access Framework path and persist URI permissions when the
   platform requires them. Both paths must document the exact user-supplied asset and the supported
   reset/reselection behavior.
+- **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
+  an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
+  `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
+  host's current JDK instead of requiring an older JDK because of a stale wrapper ceiling. An
+  ephemeral test key may prove assembly locally, but only the long-lived maintainer key may sign a
+  published APK.
 - **Android ports need an authored touch-control layer before release.** Map touch controls through
   the same action/input policy as physical controllers; define a reachable layout, multi-touch and
   pause/cancel behavior, safe-area/inset handling, scale-aware hit regions, and a way to hide or
