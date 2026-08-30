@@ -393,6 +393,23 @@ USER 2026-08-14: "Don't try to execute raw \"rm -rf\", codex blocks it, create a
   or newer that logger is `lucent` (`github.com/SomeoneIsWorking/lucent`, MIT, the user's) — extend it
   rather than working around it. Never scatter gated prints (`if (dbg) fprintf(…)`).
 
+USER 2026-08-30: "Agents used scratch directories too agressively and didn't care for disk size, now stale files take up much space, clean them up a bit and then make rules for this"
+
+- **`scratch/` is disposable working space with a size budget, not an archive.** Write only what the
+  current task needs, at the smallest fidelity that answers the question (sampled frames, not every
+  frame; one repro log, not a per-run pile). Reuse a fixed output path so a rerun overwrites instead
+  of accumulating. Do not copy build caches, SDKs, emulator images, oracle captures, or upstream
+  checkouts into `scratch/` when a shared or project-local canonical copy already exists.
+- **Delete your own scratch output when the milestone that produced it lands.** A finding worth
+  keeping goes into the nearest living doc as text (or a single committed reference image), not left
+  as gigabytes of raw dumps. Stale scratch is dangling work under the "no dangling work" rule.
+- **Garbage-collect scratch with the scoped tool, never raw `rm`.** `~/.codex/bin/scratch_gc.py`
+  (canonical: `shared/re-harness/tools/scratch_gc.py`) is dry-run by default, refuses any target not
+  named `scratch` under `~/repo`, removes files older than `--days` (default 14), and prunes emptied
+  dirs; `--keep GLOB` protects active artifacts. Run it with `--apply` at natural cleanup points and
+  when a project's `scratch/` grows past ~1 GB. Check overall usage with `du -sh ~/repo/*/scratch`,
+  and remember the tmpfs quota is diagnosed with `quota -s`, not `df`.
+
 ## Never `pkill` a shared binary name — kill by PID
 
 Several agents and the user's own session run the SAME binary, so `pkill -f/-x <name>` kills sibling

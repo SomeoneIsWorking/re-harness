@@ -27,6 +27,7 @@ TOOL_NAMES = (
     "project_state.py",
     "re_frontier.py",
     "safekill",
+    "scratch_gc.py",
 )
 TOOL_DESTINATIONS = (Path(".agents/bin"), Path(".codex/bin"), Path(".claude/bin"))
 
