@@ -113,7 +113,8 @@ def write(path, front, body):
     with open(path, "w") as f:
         f.write("---\n")
         for k, v in front.items():
-            f.write(f"{k}: {v}\n")
+            value = str(v)
+            f.write(f"{k}:{' ' + value if value else ''}\n")
         f.write("---\n\n" + body.rstrip() + "\n")
 
 

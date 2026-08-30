@@ -129,6 +129,24 @@ def main():
         fails += check("info.py: reports NO match for a word not present",
                        rc == 0 and "C001" not in out, out)
 
+    # Rewriting empty frontmatter values must not add a trailing separator
+    # space. This is the normal shape of a claim created without tags, and a
+    # confirmation must remain clean under a repository whitespace gate.
+    with tempdir() as d:
+        claims_corpus(d, "the widget is proven to frobnicate")
+        claim = os.path.join(d, "docs", "info", "claims", "001-a-claim.md")
+        with open(claim, encoding="utf-8") as source:
+            text = source.read().replace("tags: widget\n", "tags:\n")
+        with open(claim, "w", encoding="utf-8") as target:
+            target.write(text)
+        rc, out = run([os.path.join(ROOT, "info.py"), "claim", "confirm", "C001",
+                       "--evidence", "the negative control was repeated"], d)
+        with open(claim, encoding="utf-8") as source:
+            confirmed = source.read()
+        trailing = [line for line in confirmed.splitlines() if line.endswith((" ", "\t"))]
+        fails += check("info.py: empty frontmatter stays whitespace-clean",
+                       rc == 0 and "tags:\n" in confirmed and not trailing, out)
+
     # An empty tree must not read as "nothing has ever been proven" without
     # saying so -- that is the negative this tool must never fake.
     with tempdir() as d:
