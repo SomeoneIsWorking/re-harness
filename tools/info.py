@@ -56,6 +56,7 @@ if REAL_TOOL_DIR not in sys.path:
     sys.path.insert(0, REAL_TOOL_DIR)
 
 from brief_sources import emit_external_sources
+from info_history import shallow_repositories
 from info_time import now_stamp, timestamp_epoch
 
 ROOT = os.getcwd()
@@ -587,6 +588,12 @@ def analyse_claims(root=None, use_cache=True):
         return None, None, f"{claims_dir} contains no claim files"
     global LOG_CACHE
     index = Index(root)
+    shallow = shallow_repositories(index.repos, root, git)
+    if shallow:
+        return (None, index,
+                "claim staleness requires complete git history; shallow repository/repositories: "
+                + ", ".join(shallow)
+                + ". Fetch full history (for GitHub Actions, set actions/checkout fetch-depth: 0).")
     # The selftest runs UNCACHED on purpose: a self-test that can be satisfied from a cache is
     # testing the cache, not the detector it is supposed to keep honest.
     LOG_CACHE = LogCache(index.repos, root) if use_cache else None
@@ -904,6 +911,21 @@ def selftest():
         r3, _, reason3 = analyse_claims(os.path.join(work, "does-not-exist"), use_cache=False)
         if r3 is not None:
             fails.append("a MISSING claims dir returned a result instead of refusing")
+
+        # SHALLOW HISTORY is neither a positive nor a negative control. Git assigns surviving lines
+        # to the boundary commit, so `git log -L` would report invented symbol movement. The
+        # shipping analyser must refuse instead of emitting stale or fresh from incomplete evidence.
+        rc, boundary = git(work, "rev-list", "--max-parents=0", "HEAD")
+        if rc != 0 or not boundary.strip():
+            fails.append("could not construct the shallow-history refusal control")
+        else:
+            with open(os.path.join(work, ".git", "shallow"), "w") as f:
+                f.write(boundary.splitlines()[0] + "\n")
+            r4, _, reason4 = analyse_claims(work, use_cache=False)
+            print(f"  shallow history                                 -> "
+                  f"{'REFUSED: ' + reason4 if r4 is None else 'RETURNED ROWS'}")
+            if r4 is not None or "complete git history" not in reason4:
+                fails.append("a SHALLOW repository produced a staleness result instead of refusing")
     finally:
         ROOT, CLAIMS, INSTR = ROOT_SAVE, C_SAVE, I_SAVE
     if fails:
