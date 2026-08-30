@@ -64,6 +64,22 @@ USER 2026-08-30: "All agents do this, you gotta put some global guard rails agai
   canonical update needed to land safely. “Thorough” is not permission to burn the user's time or
   token budget without increasing confidence proportionally.
 
+## Broad project `/goal` requests mean the complete goals list
+
+USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\" or anything of sort or here in this case \"continue working on the game\" that means the goal is to achieve all the goals in the project goals list"
+
+- **Interpret a broad project `/goal` as the complete canonical project-goals objective.** Phrases
+  such as “work on the project goals,” “continue working on the project,” or “continue working on
+  the game” mean to achieve every success condition in the project's goals list, not merely finish
+  the current focus, next issue, one milestone, or one turn's implementation.
+- **Resolve the scope from project authorities before working.** Consult the canonical project goals
+  for the completion condition and the independent project-state inventory for verified, partial,
+  blocked, and missing capabilities. Keep the `/goal` active until all goal success conditions are
+  genuinely satisfied and verified, or the goal is explicitly changed by the USER.
+- **Specific goals remain specific.** Do not expand an explicitly bounded `/goal` into the entire
+  project merely because the project has a goals list; this convention applies to broad wording
+  that refers to continuing or completing the project as a whole.
+
 ## Communication
 
 - **Be brutally honest. No sycophancy, no flattery, no validating a bad idea to be agreeable.**
