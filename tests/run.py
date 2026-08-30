@@ -17,6 +17,7 @@ duplicating it.
 """
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -32,9 +33,9 @@ def tempdir():
     return tempfile.TemporaryDirectory(dir=SCRATCH)
 
 
-def run(args, cwd):
+def run(args, cwd, env=None):
     p = subprocess.run([sys.executable] + args, cwd=cwd,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
     return p.returncode, p.stdout + p.stderr
 
 
@@ -184,6 +185,27 @@ def main():
         trailing = [line for line in confirmed.splitlines() if line.endswith((" ", "\t"))]
         fails += check("info.py: empty frontmatter stays whitespace-clean",
                        rc == 0 and "tags:\n" in confirmed and not trailing, out)
+
+    timestamp_probe = (
+        "import sys; "
+        f"sys.path.insert(0, {TOOLS!r}); "
+        "from info_time import now_stamp, timestamp_epoch; "
+        "print(now_stamp()); print(timestamp_epoch('2026-08-30 03:15:45'))"
+    )
+    epochs = []
+    stamps = []
+    for zone in ("UTC0", "IST-3"):
+        rc, out = run(["-c", timestamp_probe], ROOT, {**os.environ, "TZ": zone})
+        lines = out.splitlines()
+        if rc == 0 and len(lines) == 2:
+            stamps.append(lines[0])
+            epochs.append(lines[1])
+    fails += check(
+        "info.py: claim timestamps are timezone-portable",
+        len(set(epochs)) == 1 and len(epochs) == 2
+        and all(re.search(r"[+-]\d\d:\d\d$", stamp) for stamp in stamps),
+        f"stamps={stamps!r}; epochs={epochs!r}",
+    )
 
     # An empty tree must not read as "nothing has ever been proven" without
     # saying so -- that is the negative this tool must never fake.

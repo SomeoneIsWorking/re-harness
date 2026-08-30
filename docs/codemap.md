@@ -17,6 +17,7 @@ coverage in [`project-state.md`](project-state.md). This map owns placement only
 | RE skills | Binary, asset, decompiler, frontier, and engine-pass reverse engineering | `skills/re/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | Recomp skills | Whole-binary static-recompiler methodology, initialization, codegen, overrides, and differential harness | `skills/recomp/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | Shared tools | One authoritative implementation of reusable registry and hygiene CLIs | `tools/` | individual Python/executable tools | `README.md` |
+| Claim baseline time | Owns timezone-aware evidence timestamps and deterministic parsing of legacy baselines so operators and CI agree on staleness. | `tools/info_time.py` | `now_stamp()`, `timestamp_epoch()` | `README.md` |
 | Project brief sources | Search and render project goals, state, issues, codemap, frontier, and local trackers for the information brief | `tools/brief_sources.py` | `emit_external_sources()` | `README.md` |
 | Global-surface installer | Portable instruction, skill, and tool links for Codex, Claude, generic agents, and `~/repo` | `tools/install_skills.py` | `main()` | `README.md` |
 | Compatibility entrypoints | Existing consumers that invoke root tool names | root symlinks to `tools/` | `info.py`, `catalog.py`, `re_frontier.py`, `project_state.py` | `README.md` |
