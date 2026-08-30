@@ -98,6 +98,13 @@ percentiles, sustained thermal behavior, memory, loading, and rendering/audio co
 results, including Apple Silicon laptop results, do not predict Android performance; publish the
 device/renderer/settings matrix and keep the APK state partial until it exists.
 
+Pin Android's Gradle wrapper distribution and checksum together with an Android Gradle Plugin version
+that officially supports it. Select a coherent installed JDK whose `java` and `javac` come from the
+same home and whose major version the pinned Gradle release supports. Prefer updating the maintained
+Gradle/AGP pair when that makes the host's current JDK supported; do not require an older JDK merely
+because the project retained an obsolete wrapper ceiling. Keep release signing fail-closed and use a
+clearly named ephemeral key only for local pipeline verification, never for a published APK.
+
 Saves and settings must use one per-application OS user-data resolver (XDG on Linux, Application
 Support on macOS, app-data APIs on Windows/Android), never the checkout, current working directory,
 AppImage mount, or scratch. Put the resolver in a shared library when that library owns the boundary;
@@ -134,6 +141,8 @@ Before landing, verify:
   unsafe-path, incomplete-install, and over-budget selections through the shipping setup owner.
 - A release APK is signed and signature-verified, and remains unreleased until its named-device
   correctness/performance matrix passes.
+- Android build evidence records the pinned Gradle/AGP pair, wrapper checksum, coherent JDK home, and
+  a real release assembly; a wrapper version banner alone is not assembly evidence.
 - Shared UI art resolves from `port-assets`, passes that repository's checks, and is not duplicated.
 - The codemap names each new owner, interface, and current or intended location.
 - Project state records any verified, partial, blocked, or missing capability change and its evidence.
