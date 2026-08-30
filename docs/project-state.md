@@ -54,5 +54,6 @@ every categorized skill, and every public shared tool into all supported agent h
 ### S007 — Instrument controls: verified
 
 Evidence: `tests/run.py` exercises finding and not inventing claims, state items, and issues;
-validates accepted and rejected state graphs; runs the RE frontier's edit-preservation self-test;
-proves scoped cleanup; and proves instruction, skill, and tool installer success and tamper detection.
+validates accepted and rejected state graphs; proves claim baselines are identical across distinct
+host timezones; runs the RE frontier's edit-preservation self-test; proves scoped cleanup; and proves
+instruction, skill, and tool installer success and tamper detection.

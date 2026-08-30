@@ -56,6 +56,7 @@ if REAL_TOOL_DIR not in sys.path:
     sys.path.insert(0, REAL_TOOL_DIR)
 
 from brief_sources import emit_external_sources
+from info_time import now_stamp, timestamp_epoch
 
 ROOT = os.getcwd()
 INFO = os.path.join(ROOT, "docs", "info")
@@ -69,19 +70,6 @@ SKILLS = os.environ.get("CLAUDE_SKILLS_DIR") or os.path.join(os.environ.get("HOM
 
 def today():
     return datetime.date.today().isoformat()
-
-
-def now_stamp():
-    """A SECOND-precision local timestamp for the staleness baseline.
-
-    `verified_at: 2026-08-06` parses to MIDNIGHT, so every commit made later the same day
-    counts as "since" and a claim re-verified this afternoon is reported stale against this
-    morning's work. Re-confirming then cannot clear it at all, which is the checker crying
-    wolf about the wolf it was just told was dealt with.
-
-    Date-only values are still accepted when read, so claims written before this stay valid.
-    """
-    return datetime.datetime.now().replace(microsecond=0).isoformat(sep=" ")
 
 
 def slug(s, n=48):
@@ -576,16 +564,9 @@ def claim_baseline(e, root, add_cache):
         v = (e.get(k) or "").strip()
         if not v:
             continue
-        # Full timestamp first, date-only as the fallback: a date parses to midnight, which
-        # is why same-day re-verification used to be unable to clear a same-day commit.
-        try:
-            d = datetime.datetime.fromisoformat(v)
-        except ValueError:
-            try:
-                d = datetime.datetime.fromisoformat(v[:10])
-            except ValueError:
-                continue
-        ep = int(d.timestamp())
+        ep = timestamp_epoch(v)
+        if ep is None:
+            continue
         if k in ("verified_at", "reconfirmed"):   # explicit re-verification always wins
             return ep, f"{k}: {v}"
         if base is None:                          # untracked claim file: fall back to created:
