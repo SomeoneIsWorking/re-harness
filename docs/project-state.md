@@ -15,6 +15,7 @@ None. The initial convergence capability set is verified.
 | S005 | Reusable CLIs have canonical implementations and stable compatibility entry points | verified | S001 | G003 |
 | S006 | Codex, Claude, and generic agent homes converge instructions, skills, and tools through safe relative links | verified | S001, S002, S003, S004, S005 | G001, G002, G003 |
 | S007 | The shared tools and installer have positive and negative verification controls | verified | S005, S006 | G001, G003 |
+| S008 | Global project guidance requires every maintained project and catalogue to expose a complete stateful intended-feature inventory | verified | S001, S005 | G001, G002 |
 
 ## State details and evidence
 
@@ -58,3 +59,9 @@ validates accepted and rejected state graphs; proves claim baselines are identic
 host timezones; proves the claim checker refuses shallow history rather than manufacturing symbol
 movement at the checkout boundary; runs the RE frontier's edit-preservation self-test; proves scoped
 cleanup; and proves instruction, skill, and tool installer success and tamper detection.
+
+### S008 — Required feature-state publication: verified
+
+Evidence: the canonical global instructions and `project-state` skill require a complete
+`docs/project-state.md` in every maintained project and require portfolios/catalogues to show each
+intended capability's `verified`, `partial`, `blocked`, or `missing` state from that authority.

@@ -64,23 +64,25 @@ def issues_corpus(root, title):
                 % title)
 
 
-def state_corpus(root, state="verified"):
+def state_corpus(root, state="verified", state_id="S001"):
     docs = os.path.join(root, "docs")
     os.makedirs(os.path.join(docs, "issues"), exist_ok=True)
     with open(os.path.join(docs, "project-goals.md"), "w") as f:
         f.write("# Goals\n\n## G001 — Frobnication\n")
     with open(os.path.join(docs, "project-state.md"), "w") as f:
         f.write(
-            "# Project state\n\n## Current focus\n\n**S001 — frobstate**\n\n"
+            f"# Project state\n\n## Current focus\n\n**{state_id} — frobstate**\n\n"
             "## Capability inventory\n\n"
             "| ID | Capability or outcome | State | Factual dependency | Goals |\n"
             "|---|---|---|---|---|\n"
-            f"| S001 | frobstate capability | {state} | — | G001 |\n\n"
-            f"## State details and evidence\n\n### S001 — frobstate: {state}\n\n"
+            f"| {state_id} | frobstate capability | {state} | — | G001 |\n\n"
+            f"## State details and evidence\n\n### {state_id} — frobstate: {state}\n\n"
             "Evidence: observed a positive and negative frobnication.\n"
         )
     with open(os.path.join(docs, "issues", "0001-frob.md"), "w") as f:
-        f.write("---\nid: 1\ntitle: Frob\nstatus: open\nstate_items: S001\n---\n")
+        f.write(
+            f"---\nid: 1\ntitle: Frob\nstatus: open\nstate_items: {state_id}\n---\n"
+        )
 
 
 def main():
@@ -234,6 +236,12 @@ def main():
         state_corpus(d)
         rc, out = run([os.path.join(ROOT, "project_state.py"), "--root", d], ROOT)
         fails += check("project_state.py: accepts a coherent state graph",
+                       rc == 0 and "0 problem(s)" in out, out)
+
+    with tempdir() as d:
+        state_corpus(d, state_id="S5b")
+        rc, out = run([os.path.join(ROOT, "project_state.py"), "--root", d], ROOT)
+        fails += check("project_state.py: accepts a stable suffix ID",
                        rc == 0 and "0 problem(s)" in out, out)
 
     with tempdir() as d:

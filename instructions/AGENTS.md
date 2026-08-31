@@ -80,6 +80,8 @@ USER 2026-08-30: "All agents do this, you gotta put some global guard rails agai
 
 USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\" or anything of sort or here in this case \"continue working on the game\" that means the goal is to achieve all the goals in the project goals list"
 
+USER 2026-08-31: "This portfolio doesn't reflect the projects correctly, it should list a list of intended features and show their state, if the projects don't have this info then they should be updated to have this info and the global instructions should state the necessity of this"
+
 - **Interpret a broad project `/goal` as the complete canonical project-goals objective.** Phrases
   such as “work on the project goals,” “continue working on the project,” or “continue working on
   the game” mean to achieve every success condition in the project's goals list, not merely finish
@@ -492,6 +494,18 @@ USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\
   `missing`, with evidence, exact gaps, factual dependencies, and optional links to goals and
   issues. It separately names one current focus. This inventory is the authoritative answer to what
   works now and what remains; it is not a roadmap or schedule.
+- **Every maintained project must publish its intended feature set and current state.** A missing
+  `docs/project-state.md` is a project defect, not an acceptable absence to work around. Create and
+  validate the inventory before making status claims: include the complete intended capability set,
+  preserve stable IDs, classify every item as `verified`, `partial`, `blocked`, or `missing`, and
+  state evidence or the exact remaining gap. Keep epic intent in `docs/project-goals.md`; do not
+  shrink the state inventory to only features that already work.
+- **Portfolios and project catalogues display state from the project authority.** Every project
+  detail must list intended capabilities with their canonical state, including partial, blocked,
+  and missing work rather than presenting implemented highlights as the complete feature set. Keep
+  catalogue snapshots traceable to the corresponding `docs/project-state.md` items and update them
+  when that authority changes; do not infer progress from README prose, code presence, screenshots,
+  or a single project-wide status label.
 - **Issues are the lowest-level work points in `docs/issues/`.** A task, bug, investigation,
   blocker, finding, or dead end is one issue and links to affected state items when known. Split
   independently completable points; do not use issues as disguised state items.

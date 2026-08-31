@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 STATES = {"verified", "partial", "blocked", "missing"}
-STATE_ID = re.compile(r"\bS\d+\b")
+STATE_ID = re.compile(r"\bS\d+[a-z]?\b")
 GOAL_ID = re.compile(r"\bG\d+\b")
 
 
@@ -23,7 +23,7 @@ def section(text, heading, level):
 
 
 def detail_sections(text):
-    matches = list(re.finditer(r"^### (S\d+)\b.*$", text, re.MULTILINE))
+    matches = list(re.finditer(r"^### (S\d+[a-z]?)\b.*$", text, re.MULTILINE))
     details = {}
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
@@ -34,7 +34,7 @@ def detail_sections(text):
 def table_rows(text):
     rows = {}
     for line in text.splitlines():
-        if not re.match(r"^\|\s*S\d+\s*\|", line):
+        if not re.match(r"^\|\s*S\d+[a-z]?\s*\|", line):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if len(cells) != 5:
@@ -103,8 +103,8 @@ def check(root):
             problems.append(f"{sid}: missing detail section")
         elif state == "verified" and "Evidence:" not in detail:
             problems.append(f"{sid}: verified without Evidence:")
-        elif state == "partial" and "Gap:" not in detail:
-            problems.append(f"{sid}: partial without Gap:")
+        elif state == "partial" and not re.search(r"\bGaps?:", detail):
+            problems.append(f"{sid}: partial without Gap:/Gaps:")
         elif state == "blocked" and not re.search(r"\bBlockers?:", detail):
             problems.append(f"{sid}: blocked without Blocker:/Blockers:")
         elif state == "missing" and not re.search(r"\b(?:Missing|Required) capability:", detail):
