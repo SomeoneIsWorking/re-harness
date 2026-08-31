@@ -24,6 +24,11 @@ USER 2026-08-30: "All global skills and instructions and tools should be under o
 - **The root cause is the unit of work, not the symptom.** Name the cause before "fixing"; if you
   can't name it you're not ready. A change that makes the symptom vanish without explaining *why it
   occurred* is a bandaid. The bar is correctness, not green.
+- **A skip action is a complete, correctly owned transition — never a fast-forward.** It may use a
+  title's recovered cancellation route or a purpose-built skip that establishes the same lifecycle,
+  resource, and state invariants. Never implement or propose “skipping” a logo, cinematic, loading
+  sequence, or other game flow by fast-forwarding simulation, bypassing lifecycle callbacks, or
+  writing a phase, timer, or scene pointer.
 - **Stop if your change is one of these:** a magic constant/offset that makes output line up;
   special-casing the failing input; `try/except`-swallow, `|| true`, retry-until-pass, sleep-to-fix-a-
   race; skipping the failing check; hardcoding an expected value; duplicating code to avoid touching
