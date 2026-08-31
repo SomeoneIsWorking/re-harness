@@ -64,4 +64,7 @@ cleanup; and proves instruction, skill, and tool installer success and tamper de
 
 Evidence: the canonical global instructions and `project-state` skill require a complete
 `docs/project-state.md` in every maintained project and require portfolios/catalogues to show each
-intended capability's `verified`, `partial`, `blocked`, or `missing` state from that authority.
+intended capability's `verified`, `partial`, `blocked`, or `missing` state from that authority. They
+also require projects derived from an existing product to name the comparison baseline, split each
+independently stateable user-visible delta into its own item, and display that baseline beside the
+portfolio feature list.
