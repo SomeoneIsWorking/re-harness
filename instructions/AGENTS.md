@@ -658,13 +658,21 @@ USER 2026-08-24: "Also run.sh should not run tests, agents need their own test c
   SDL3 ports use the Activity/Storage Access Framework path and persist URI permissions when the
   platform requires them. Both paths must document the exact user-supplied asset and the supported
   reset/reselection behavior.
-- **Android platform mechanics have one shared owner.** Lucent owns title-neutral SDL Activity
-  lifecycle, app-private user-data handoff, persisted SAF grant and bounded staging, touch-contact
-  capture/cancellation, and ZIP safety. The shared `android-port` project owns deterministic
-  Gradle/NDK assembly and package inspection. A title owns its identity/completeness validation,
-  install publication, native entry composition, touch actions/layout, orientation policy, artwork,
-  and performance evidence. Do not copy or fork the shared mechanics into a game Activity or build
-  script; extend the owning shared component instead.
+- **Android platform mechanics have one shared owner.** Use this boundary for every Android port;
+  `shared/android-port` and Lucent are peers, not alternative homes for the same code:
+
+  | owner | owns | does not own |
+  |---|---|---|
+  | **Lucent** | title-neutral code that executes in the APK: SDL Activity lifecycle, app-private user-data handoff, persisted SAF grants and bounded staging, raw touch-contact capture/cancellation, insets/window lifecycle, and ZIP safety | a title's game-file identity, touch meaning/layout, package identity, or build toolchain policy |
+  | **`shared/android-port`** | deterministic build and device mechanics: pinned Gradle/AGP/NDK inputs, the reusable Android native-dependency prefix (its source revisions, cross-CMake configuration, install contract and manifest), `libmain`/SDL/NDK runtime staging, APK inspection/signature checks, and the shared emulator lock/AVD policy | an Activity's runtime behavior, title JNI semantics, player setup wording, or game input policy |
+  | **consuming title** | package/application identity, complete-install validation and publication after Lucent staging succeeds, native entry composition, title JNI bridge, touch actions/layout/art, orientation, and release-performance evidence | copied shared Activity, SAF, archive, prefix-builder, Gradle/NDK, staging, or emulator code |
+
+  The Android dependency prefix is build input rather than runtime behavior, so it belongs in
+  `shared/android-port` even when Lucent links against it. A title consumes the prefix through its
+  documented CMake interface; it does not fetch SDL, SDL_image, FreeType, or an equivalent common
+  dependency itself. Put a missing title-neutral runtime capability in Lucent first; put a missing
+  deterministic build/package/device capability in `shared/android-port` first. Do not copy or fork
+  either shared mechanic into a game Activity or build script.
 - **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
   an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
   `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
