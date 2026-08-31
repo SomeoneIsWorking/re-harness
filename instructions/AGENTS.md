@@ -557,6 +557,26 @@ you need, extend it — and a tool without a doc update is unfinished.
 
 ## Port architecture reference
 
+## Engine migrations preserve the existing game source
+
+USER 2026-08-31: "Even if I said \"reimplement under different engine\" this should NEVER mean, rewrite the entire game source code"
+
+USER 2026-08-31: "when that isn't possible you can transpile using a tool but in this case, it shouldn't be needed"
+
+- **Changing engines is a source-preserving port, not a gameplay rewrite.** Start from the existing
+  game source and retain its domain logic, content, data, progression, state transitions, and tests.
+  Replace or adapt only the APIs and owners coupled to the old engine: lifecycle, rendering, input,
+  audio, storage, resource loading, timing, and platform integration.
+- **Port before translating; translate before rewriting.** Prefer direct compilation and narrow
+  adapters. If the source language or runtime genuinely cannot target the new engine, use a
+  deterministic transpiler or source-to-source migration tool and keep the generated relationship
+  reviewable. A manual gameplay rewrite is a last resort and requires explicit USER authorization;
+  “reimplement under another engine” alone never grants it.
+- **Prove impossibility rather than assuming it.** Before replacing existing game code, identify the
+  exact incompatible boundary and demonstrate why adapters, refactoring, direct compilation, or
+  transpilation cannot preserve it. Engine-shaped code may be rewritten at that boundary; portable
+  game code must not be recreated merely because a new host is being built.
+
 USER 2026-08-14: "Dusklight is in ~/repo/dusklight, you should know this, it should be in the global guide for porting projects to follow"
 
 - **Use `~/repo/dusklight` as the default structure and UI reference for game-port
