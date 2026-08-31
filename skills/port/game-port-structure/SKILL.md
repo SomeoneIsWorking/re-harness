@@ -88,6 +88,13 @@ the port owns title identity and complete-install validation. Android may copy a
 selection into bounded app-private staging instead of retaining external URI access; commit that
 staging only after native validation succeeds, and preserve the prior valid install on failure.
 
+Use the shared Android split rather than cloning an app shell: Lucent owns the title-neutral Android
+runtime surface (SDL Activity lifecycle, app-private-root handoff, persisted SAF selection and bounded
+staging, touch-contact capture/cancellation, and archive safety); `shared/android-port` owns reusable
+Gradle/NDK assembly and APK inspection. Keep title identity/completeness, publication after validation,
+native startup composition, touch action/layout, orientation, assets, and performance qualification in
+the consuming game.
+
 An Android port also needs an authored touch-control owner before release. Map virtual controls
 through the same action/input policy as physical controllers, with documented reachability, safe-area
 insets, scale-aware hit regions, multi-touch, pause/cancel behavior, and hide/reconfigure behavior

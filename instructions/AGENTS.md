@@ -657,6 +657,13 @@ USER 2026-08-24: "Also run.sh should not run tests, agents need their own test c
   SDL3 ports use the Activity/Storage Access Framework path and persist URI permissions when the
   platform requires them. Both paths must document the exact user-supplied asset and the supported
   reset/reselection behavior.
+- **Android platform mechanics have one shared owner.** Lucent owns title-neutral SDL Activity
+  lifecycle, app-private user-data handoff, persisted SAF grant and bounded staging, touch-contact
+  capture/cancellation, and ZIP safety. The shared `android-port` project owns deterministic
+  Gradle/NDK assembly and package inspection. A title owns its identity/completeness validation,
+  install publication, native entry composition, touch actions/layout, orientation policy, artwork,
+  and performance evidence. Do not copy or fork the shared mechanics into a game Activity or build
+  script; extend the owning shared component instead.
 - **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
   an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
   `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
