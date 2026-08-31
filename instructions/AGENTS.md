@@ -729,6 +729,12 @@ USER 2026-08-31: "OH yeah, don't use CI for recompiler projects ever"
   JDK 26, use a compatible maintained pair rather than demanding JDK 21: AGP 9.2 with the pinned
   Gradle 9.4.1 wrapper is the current baseline. Verify a real assembly with that exact pair; Gradle
   support alone does not prove that an Android plugin or other third-party build plugin is compatible.
+- **Android ports declare the lowest Android API floor the complete shipped path supports.** The
+  shared default is API 21: it is the first API level available to 64-bit Android ABIs and supports
+  scoped SAF file selection. Compile and target SDKs may stay current. Raising a title's minimum API
+  needs a concrete runtime dependency and an evidence-backed explanation; newer platform calls stay
+  behind runtime guards in Lucent or the title. Build native dependency prefixes per API and ABI so a
+  lower-floor test or release cannot overwrite a newer-floor build.
 - **CMake ports with large or generated translation-unit corpora use Ninja, not Unix Makefiles.**
   Makefiles conservatively rebuild every object after a CMake reconfigure because regenerated
   `flags.make` becomes newer than the corpus; Ninja compares actual compiler commands and preserves
