@@ -69,6 +69,11 @@ USER 2026-08-30: "All agents do this, you gotta put some global guard rails agai
   claim, or other non-semantic change gets only its directly relevant lightweight check; it does not
   justify repeating an expensive build, full suite, or real-game run. A later semantic code change
   gets focused verification and, only when it can affect combined behavior, one new landing gate.
+- **Never use a full gate as an edit loop.** The forbidden pattern is `one-line change -> full gate ->
+  one-line change -> full gate`. Use focused checks while developing; if a gate reports several
+  fixable findings, batch the known fixes (including structural/lint cleanup) and run the full gate
+  once after that batch is frozen. If a gate is interrupted or fails for an environmental reason,
+  report it as incomplete and do not restart it automatically while continuing unrelated edits.
 - **Record one fact in one authoritative home.** At a real milestone, update the nearest living
   authority whose answer changed. Do not copy the same finding into an issue, claim, instrument,
   project state, frontier, codemap, README, and plan merely because all exist. Add a second record only
