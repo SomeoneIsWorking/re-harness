@@ -1,5 +1,12 @@
 # Project state
 
+## Comparison baseline
+
+The baseline is duplicated user-maintained instructions, skills, and command-line tools scattered
+across individual agent homes and project copies. re-harness makes one portable repository the
+authority, installs relative discovery links for supported agents, and verifies both successful and
+refused behavior.
+
 ## Current focus
 
 None. The initial convergence capability set is verified.
@@ -67,4 +74,5 @@ Evidence: the canonical global instructions and `project-state` skill require a 
 intended capability's `verified`, `partial`, `blocked`, or `missing` state from that authority. They
 also require projects derived from an existing product to name the comparison baseline, split each
 independently stateable user-visible delta into its own item, and display that baseline beside the
-portfolio feature list.
+portfolio feature list. Portfolio and catalogue entries must provide a baseline even for greenfield
+projects, using the prior manual, fragmented, or absent workflow as the comparison.

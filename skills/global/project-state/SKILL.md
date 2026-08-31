@@ -45,7 +45,9 @@ inventory containing only implemented highlights is incomplete.
 
 When the project changes, replaces, ports, remakes, or wraps an existing
 product, add a `## Comparison baseline` section that names the exact original,
-upstream, emulated, or prior workflow being improved. Make each independently
+upstream, emulated, or prior workflow being improved. This section is required
+for every project shown in a portfolio or catalogue; greenfield projects name
+the manual, fragmented, or absent prior workflow. Make each independently
 stateable user-visible difference its own state item. A catch-all row such as
 “modern features” is not an inventory when speed, controls, physics, loading,
 presentation, cheats, packaging, or other differences can advance or regress
