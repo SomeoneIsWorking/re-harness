@@ -82,6 +82,10 @@ USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\
 
 USER 2026-08-31: "This portfolio doesn't reflect the projects correctly, it should list a list of intended features and show their state, if the projects don't have this info then they should be updated to have this info and the global instructions should state the necessity of this"
 
+USER 2026-08-31: "Benefactor for example still doesn't list any of its features"
+
+USER 2026-08-31: "No one can know what's changed over the vanilla emulated game"
+
 - **Interpret a broad project `/goal` as the complete canonical project-goals objective.** Phrases
   such as “work on the project goals,” “continue working on the project,” or “continue working on
   the game” mean to achieve every success condition in the project's goals list, not merely finish
@@ -500,12 +504,21 @@ USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\
   preserve stable IDs, classify every item as `verified`, `partial`, `blocked`, or `missing`, and
   state evidence or the exact remaining gap. Keep epic intent in `docs/project-goals.md`; do not
   shrink the state inventory to only features that already work.
+- **Name the comparison baseline and enumerate each user-visible delta separately.** When a project
+  changes, replaces, ports, remakes, or wraps an existing product, `docs/project-state.md` includes a
+  `Comparison baseline` naming the original, upstream, emulated, or prior workflow a user would
+  otherwise experience. Give every independently stateable difference its own state item: do not
+  collapse widescreen, controls, physics, speed, loading, cheats, renderer effects, or platform
+  delivery into a generic “modern features” row. Fidelity/parity work, user-visible enhancements,
+  packaging, and developer tooling may all remain in one inventory, but their labels must make the
+  difference from the baseline understandable without reading source code or commit history.
 - **Portfolios and project catalogues display state from the project authority.** Every project
   detail must list intended capabilities with their canonical state, including partial, blocked,
   and missing work rather than presenting implemented highlights as the complete feature set. Keep
   catalogue snapshots traceable to the corresponding `docs/project-state.md` items and update them
   when that authority changes; do not infer progress from README prose, code presence, screenshots,
-  or a single project-wide status label.
+  or a single project-wide status label. Show the named comparison baseline beside the feature list
+  when one exists, so a visitor can tell what the project adds over the original or upstream product.
 - **Issues are the lowest-level work points in `docs/issues/`.** A task, bug, investigation,
   blocker, finding, or dead end is one issue and links to affected state items when known. Split
   independently completable points; do not use issues as disguised state items.

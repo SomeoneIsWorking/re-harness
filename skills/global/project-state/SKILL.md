@@ -43,11 +43,21 @@ issue list, source-tree survey, or portfolio copy. The table must cover the
 complete intended capability set, including absent and blocked features; an
 inventory containing only implemented highlights is incomplete.
 
+When the project changes, replaces, ports, remakes, or wraps an existing
+product, add a `## Comparison baseline` section that names the exact original,
+upstream, emulated, or prior workflow being improved. Make each independently
+stateable user-visible difference its own state item. A catch-all row such as
+“modern features” is not an inventory when speed, controls, physics, loading,
+presentation, cheats, packaging, or other differences can advance or regress
+independently.
+
 Any portfolio, catalogue, status page, or generated project index must present
 feature-level state from this authority. Its snapshot must remain traceable to
 state IDs and must show `partial`, `blocked`, and `missing` items as plainly as
-`verified` ones. A project-wide badge may summarize the work but never replace
-the intended-feature inventory.
+`verified` ones. When a comparison baseline exists, show it beside the list so
+the audience can understand what changes from the original or upstream product.
+A project-wide badge may summarize the work but never replace the
+intended-feature inventory.
 
 ## Validator
 
