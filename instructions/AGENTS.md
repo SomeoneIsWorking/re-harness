@@ -529,6 +529,7 @@ vendored copy that silently wins is the exact failure this split exists to end
 | `shared/port-assets` | the art ports keep redrawing: Xbox 360 gamepad glyphs, keyboard key caps. SVG, scalable, with a legibility check at the target size. |
 | `shared/alchemy` | the Alchemy engine layer (IGB, XMLB, ARK) shared by the Marvel/X-Men titles. |
 | `shared/recomp-x86` | the x86-32 → C translator. |
+| `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent remains the runtime owner. |
 
 **If you write something a second project will want, put it in `shared/` the
 first time, not the second.** The second time is when a fork already exists.
