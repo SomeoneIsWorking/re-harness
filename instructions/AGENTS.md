@@ -44,6 +44,15 @@ USER 2026-08-30: "All global skills and instructions and tools should be under o
   what the stopgap risks, let the user decide, and mark it `// STOPGAP: <proper fix> because <why>`.
   An approved stopgap is a decision; an unmarked one is a lie.
 
+- **Widescreen is a deterministic projection/presentation change, never frame-aware sampling.**
+  Do not inspect adjacent frames, infer geometry from image pixels, select vertices by temporal
+  heuristics, or use content-dependent sampling to decide what appears in the extra horizontal
+  area. Start from the same source vertex stream and preserve topology, UVs, depth, and colors;
+  widen the horizontal projection/viewport and override the title's draw-area/scissor (and any
+  proven horizontal culling owner) at that boundary. Final-image stretching is not a substitute
+  for rendering the additional area. Interpolation is a separate opt-in feature and may blend only
+  matching source geometry with explicit provenance; it must never be part of widescreen coverage.
+
 ## Work must dominate process — prevent churn
 
 USER 2026-08-30: "All agents do this, you gotta put some global guard rails against excessive churning because 95% of my token budget goes to this"
