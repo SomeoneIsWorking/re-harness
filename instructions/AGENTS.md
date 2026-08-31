@@ -633,6 +633,23 @@ USER 2026-08-30: "if I set a goal with `/goal` like "work on the project goals" 
 
 USER 2026-08-24: "Also run.sh should not run tests, agents need their own test commands"
 
+## Static-recompiler projects never use CI
+
+USER 2026-08-31: "OH yeah, don't use CI for recompiler projects ever"
+
+- **A static-recompiler project has no CI workflow.** Do not add or retain GitHub Actions, hosted
+  CI, release workflows, or scheduled cloud builds for one — including a workflow that only checks
+  formatting, publishes a release, or claims to run without game assets.
+- **Recompiler verification and releases run locally, with the operator's user-supplied inputs.** A
+  static recompiler derives native code from the user's ROM/disks/executable; those inputs and the
+  derived restricted source must never be uploaded to CI, stored as CI secrets, sent to a hosted
+  builder, committed, or packaged. Build the release locally and upload the finished, asset-free
+  APK/AppImage manually when the operator authorizes publication.
+- **Do not hide this boundary behind a fake CI fallback.** A generated-code cache, encrypted game
+  archive, remote artifact, or pre-baked native output merely moves the prohibited game input to
+  another hosted service. If a project needs repeatable local release assembly, improve its local
+  Python tooling and document its exact user-input contract instead.
+
 - **`run.sh` never runs tests.** Its zero-argument path and every supported option are shipping
   launcher behavior: provision required inputs, validate prerequisites, build the product when
   needed, and launch it. Do not hide unit tests, integration tests, lint, format checks, selftests, or
