@@ -703,6 +703,13 @@ USER 2026-08-31: "OH yeah, don't use CI for recompiler projects ever"
   JDK 26, use a compatible maintained pair rather than demanding JDK 21: AGP 9.2 with the pinned
   Gradle 9.4.1 wrapper is the current baseline. Verify a real assembly with that exact pair; Gradle
   support alone does not prove that an Android plugin or other third-party build plugin is compatible.
+- **CMake ports with large or generated translation-unit corpora use Ninja, not Unix Makefiles.**
+  Makefiles conservatively rebuild every object after a CMake reconfigure because regenerated
+  `flags.make` becomes newer than the corpus; Ninja compares actual compiler commands and preserves
+  valid objects. The authoritative builder selects `-G Ninja`, detects a legacy generator from its
+  CMake cache, and migrates only the exact generated build child after validating its scope. Verify
+  the incremental contract with one unchanged second build that performs zero compilations; never
+  describe a full corpus rebuild after a non-compile-policy CMake edit as normal or acceptable.
 - **Android ports need an authored touch-control layer before release.** Map touch controls through
   the same action/input policy as physical controllers; define a reachable layout, multi-touch and
   pause/cancel behavior, safe-area/inset handling, scale-aware hit regions, and a way to hide or
