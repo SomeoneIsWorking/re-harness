@@ -37,6 +37,18 @@ The complete state table is the authoritative answer to **done versus missing**.
 It is not a roadmap, release schedule, historical changelog, or ordered list of
 future promises.
 
+Every maintained project must have this inventory. Missing project state is a
+workflow defect to correct, not permission to substitute a README, codemap,
+issue list, source-tree survey, or portfolio copy. The table must cover the
+complete intended capability set, including absent and blocked features; an
+inventory containing only implemented highlights is incomplete.
+
+Any portfolio, catalogue, status page, or generated project index must present
+feature-level state from this authority. Its snapshot must remain traceable to
+state IDs and must show `partial`, `blocked`, and `missing` items as plainly as
+`verified` ones. A project-wide badge may summarize the work but never replace
+the intended-feature inventory.
+
 ## Validator
 
 Run the bundled validator from the project root:
@@ -67,8 +79,8 @@ empty corpus cannot look green.
 
 Read `docs/project-state.md` before answering project status, current focus,
 done/missing, gaps, or blockers. If it is missing, say that no authoritative
-project-state inventory exists; do not infer state from the codemap, goals,
-commit history, or a visible TODO.
+project-state inventory exists and create it when the project is in scope; do
+not infer state from the codemap, goals, commit history, or a visible TODO.
 
 Update the state document in the same change that demonstrates a capability,
 discovers a gap, changes a blocker, falsifies evidence, or changes current
