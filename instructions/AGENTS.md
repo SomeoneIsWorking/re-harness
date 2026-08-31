@@ -679,6 +679,28 @@ USER 2026-08-30: "if I set a goal with `/goal` like "work on the project goals" 
   complete or narrow that persistent goal. Audit every recorded goal and its success conditions
   before marking it achieved.
 
+## Single-title completion discipline
+
+USER 2026-08-31: "Make a rule to not jump to other games without finishing one"
+
+- **Finish one title before starting another.** In a multi-title game-port project, choose one
+  active title/revision as the conformance target. Do not begin title-specific reverse engineering,
+  profile authoring, provisioning, gameplay, renderer, performance, or enhancement work for another
+  game until the active title's declared compatibility and performance gates are complete and its
+  exact conformance report passes.
+- **Shared engine work is not a loophole.** Title-neutral work may continue when it is driven by a
+  demonstrated need in the active title or by a separately stated engine contract, but it must not
+  become a second title workstream. Inspecting another title's metadata is allowed only when needed
+  to validate a shared boundary; do not turn that inspection into implementation or testing for the
+  other game.
+- **Do not call a title finished from identity or boot alone.** The project must represent and pass
+  the active title's exact-revision identity, retained/native parity, headless gameplay, packaging,
+  and performance criteria. If compatibility and enhancements are separate gates, both remain open
+  until each is genuinely complete.
+- **Switch titles deliberately.** Record the active title and any unmet gate in the project's
+  current-state authority before changing focus; a probe of another game does not change that
+  active-title requirement.
+
 ## Launcher verification and packaged releases
 
 USER 2026-08-24: "Also run.sh should not run tests, agents need their own test commands"
