@@ -672,13 +672,20 @@ USER 2026-08-24: "Also run.sh should not run tests, agents need their own test c
   documented CMake interface; it does not fetch SDL, SDL_image, FreeType, or an equivalent common
   dependency itself. Put a missing title-neutral runtime capability in Lucent first; put a missing
   deterministic build/package/device capability in `shared/android-port` first. Do not copy or fork
-  either shared mechanic into a game Activity or build script.
+  either shared mechanic into a game Activity or build script. **PSX, X-Men 2, and LF2 Android work
+  must all consume these same Lucent and `shared/android-port` owners; an agent may not create a
+  project-local Android support library, Gradle/package helper, dependency prefix, Activity base, or
+  emulator contract for one of those ports.** Extend the shared owner and update every consumer when
+  a common capability is missing.
 - **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
   an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
   `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
   host's current JDK instead of requiring an older JDK because of a stale wrapper ceiling. An
   ephemeral test key may prove assembly locally, but only the long-lived maintainer key may sign a
-  published APK.
+  published APK. **Gradle 9.4.0 and later support running on JDK 26.** When an Android port is on
+  JDK 26, use a compatible maintained pair rather than demanding JDK 21: AGP 9.2 with the pinned
+  Gradle 9.4.1 wrapper is the current baseline. Verify a real assembly with that exact pair; Gradle
+  support alone does not prove that an Android plugin or other third-party build plugin is compatible.
 - **Android ports need an authored touch-control layer before release.** Map touch controls through
   the same action/input policy as physical controllers; define a reachable layout, multi-touch and
   pause/cancel behavior, safe-area/inset handling, scale-aware hit regions, and a way to hide or
