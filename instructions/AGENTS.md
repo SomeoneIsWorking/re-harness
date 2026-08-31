@@ -379,6 +379,8 @@ USER 2026-08-21: "scripts like re_xref.sh should be python"
 
 USER 2026-08-14: "Don't try to execute raw \"rm -rf\", codex blocks it, create a global rule against this, instead create cleanup scripts and use them"
 
+USER 2026-08-31: "new global rule, scratch is used for replacement of /tmp, builds don't go into scratch, they go into build dir"
+
 - **Never issue raw `rm` commands from a session, including `rm -f` and `rm -rf`.** Put cleanup in
   a reviewed script with explicit scope checks, then invoke that script. For individual files, use
   `~/.codex/bin/cleanup-files`; it refuses directories, missing paths, and targets outside the current
@@ -389,6 +391,19 @@ USER 2026-08-14: "Don't try to execute raw \"rm -rf\", codex blocks it, create a
   Default tooling to a gitignored `scratch/` in the project, split by kind (`logs/`, `bin/`,
   `screenshots/`, `raw/`), and repoint any script defaulting to `/tmp/…`. A 0-byte control FIFO there
   is tolerable; never logs or dumps.
+- **`scratch/` replaces `/tmp`; it is not a build root.** Put compiler outputs, generated build-system
+  files, dependency build trees, installed dependency prefixes, SDKs, package caches, and compile
+  databases under the repository's gitignored top-level `build/` directory. Use stable children such
+  as `build/release`, `build/debug`, or `build/deps` when multiple trees are required; do not hide a
+  build under `scratch/`, even for a one-off verification run.
+- **Build owners agree on the top-level `build/` root.** Launchers, bootstrap code, verifiers,
+  diagnostics, IDE presets, and documentation must resolve the same authoritative paths rather than
+  maintaining separate `scratch/build`, `_build`, or tool-specific defaults. When touching a project
+  that still builds under `scratch/`, migrate every caller atomically and remove the obsolete tree or
+  path; do not preserve it through a compatibility symlink or fallback.
+- **Build cleanup is separate from scratch garbage collection.** `scratch_gc.py` must never own or
+  sweep `build/`. Keep build cleanup explicit and repository-scoped so a diagnostic cleanup cannot
+  erase a compiler cache or dependency prefix needed by another active task.
 - **One configurable logger per project, one line per call site, never wrapped in an `if`.** In C++20
   or newer that logger is `lucent` (`github.com/SomeoneIsWorking/lucent`, MIT, the user's) — extend it
   rather than working around it. Never scatter gated prints (`if (dbg) fprintf(…)`).
@@ -403,8 +418,8 @@ USER 2026-08-30: "Agents used scratch directories too agressively and didn't car
 - **Delete your own scratch output when the milestone that produced it lands.** A finding worth
   keeping goes into the nearest living doc as text (or a single committed reference image), not left
   as gigabytes of raw dumps. Stale scratch is dangling work under the "no dangling work" rule.
-- **One stable directory per recurring activity — reuse it, do not mint a new one per run.** A probe,
-  smoke test, verification checkout, comparison, or build gets one fixed path
+- **One stable directory per recurring scratch activity — reuse it, do not mint a new one per run.** A
+  probe, smoke test, verification capture, or comparison gets one fixed path
   (`scratch/<activity>/`), and each run clears or overwrites it. Never append a counter, attempt
   letter, date, run id, `_v2`/`_final`, or `mktemp` suffix to keep the previous run's tree beside the
   new one (`verify87`, `verify87b`, `verify87_final`, `release-checkout-run3329…` — this is the
