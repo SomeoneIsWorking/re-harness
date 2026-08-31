@@ -507,7 +507,9 @@ USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\
 - **Name the comparison baseline and enumerate each user-visible delta separately.** When a project
   changes, replaces, ports, remakes, or wraps an existing product, `docs/project-state.md` includes a
   `Comparison baseline` naming the original, upstream, emulated, or prior workflow a user would
-  otherwise experience. Give every independently stateable difference its own state item: do not
+  otherwise experience. Every project exposed through a portfolio or catalogue must provide this
+  section; a greenfield project names the manual, fragmented, or absent prior workflow instead of
+  omitting the comparison. Give every independently stateable difference its own state item: do not
   collapse widescreen, controls, physics, speed, loading, cheats, renderer effects, or platform
   delivery into a generic “modern features” row. Fidelity/parity work, user-visible enhancements,
   packaging, and developer tooling may all remain in one inventory, but their labels must make the
