@@ -29,6 +29,13 @@ USER 2026-08-30: "All global skills and instructions and tools should be under o
   resource, and state invariants. Never implement or propose “skipping” a logo, cinematic, loading
   sequence, or other game flow by fast-forwarding simulation, bypassing lifecycle callbacks, or
   writing a phase, timer, or scene pointer.
+- **Loading-only screens do not ship.** Remove a screen whose whole purpose is waiting for I/O; keep
+  loading work asynchronous and transition directly to its next real presentation. Logo screens must
+  accept Start or the platform-confirm equivalent (PSX: Cross) and take a complete cancellation/
+  transition route under the preceding rule. Do not remove an authored transition cutscene merely
+  because loading finishes early: it is presentation, not a loading screen. A title may give such a
+  cutscene an intentional minimum duration and the same complete Start/Cross cancellation route;
+  Tomba! 2's area-transition cutscene has a five-second minimum.
 - **Stop if your change is one of these:** a magic constant/offset that makes output line up;
   special-casing the failing input; `try/except`-swallow, `|| true`, retry-until-pass, sleep-to-fix-a-
   race; skipping the failing check; hardcoding an expected value; duplicating code to avoid touching
