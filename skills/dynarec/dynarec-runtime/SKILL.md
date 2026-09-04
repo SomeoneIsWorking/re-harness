@@ -2,7 +2,7 @@
 name: dynarec-runtime
 description: >-
   Build or debug a runtime dynamic recompiler/JIT: guest block discovery, typed IR, host-code
-  emission, code-cache ownership, invalidation, exceptions, interpreter fallback, and indirect
+  emission, code-cache ownership, invalidation, exceptions, test-only interpretation, and indirect
   control flow. Use for CPU execution engines and migrations away from generated C/C++.
 ---
 
@@ -14,8 +14,9 @@ guest-code emission step and no generated C/C++ corpus in the build.
 ## One execution contract
 
 Define one CPU context and one set of memory, exception, timing, and runtime-service interfaces.
-Translated blocks, the interpreter fallback, native overrides, and the differential harness all use
-that contract. Do not maintain parallel flag formulas, memory semantics, or call conventions.
+Translated blocks, native overrides, and the differential harness use that contract. A test-only
+interpreter may use the same state interface, but it is built outside the gameplay product. Do not
+maintain parallel flag formulas, memory semantics, or call conventions.
 
 ## Block lifecycle
 
@@ -41,12 +42,13 @@ relevant cache-control instructions invalidate affected blocks before they can r
 the ordinary cache-hit path and a mutation that must force retranslation. Whole-cache flushing is a
 correctness fallback, not the final design when bounded invalidation is available.
 
-## Interpreter fallback
+## Test-only interpreter
 
-Fallback is an explicit runtime policy for cold code, rare instructions, privileged behavior, or
-bring-up. It must preserve exact architectural state and re-enter the dispatcher at a defined guest
-PC. Count and report fallback coverage with a denominator so an accidentally all-interpreted run
-cannot be presented as JIT evidence.
+An interpreter may provide a correctness oracle and temporary bring-up route only in a separate
+test/diagnostic target. It must preserve exact architectural state and re-enter the test dispatcher
+at a defined guest PC. The gameplay product must not link it or contain a fallback to it: every
+reached guest path that is not deliberately native is translated by the JIT. Enforce the separation
+with build/link/selector checks, not merely a counter that happened to stay at zero.
 
 ## Instruction semantics
 
@@ -60,6 +62,7 @@ instruction or block regression that reproduces it. Never special-case the faili
 
 ## Determinism and diagnostics
 
-Provide block compile/hit/invalidation/fallback counters, guest-PC-aware failures, and bounded traces.
+Provide block compile/hit/invalidation counters, guest-PC-aware failures, and bounded traces. Test
+targets also report oracle/interpreter entries with denominators.
 Deterministic inputs and guest time are required for differential verification. Prove diagnostic
 positive and negative cases before trusting a silent result.

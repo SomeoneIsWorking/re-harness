@@ -552,13 +552,20 @@ you need, extend it — and a tool without a doc update is unfinished.
 
 USER 2026-09-04: "I'm not going to do any more code generation style static recomps anymore, you can remove everything about that methodology"
 
-- **Ports execute the user's original guest binary at runtime.** Use an interpreter or an on-demand
-  dynamic recompiler/JIT chosen by measured performance. Do not translate guest code offline or at
-  install time into C, C++, object files, or another title-specific executable corpus.
+USER 2026-09-04: "To be clear I don't want ANY interpreter when playing a game, interpreter can only be used in testing"
+
+- **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; every
+  remaining guest function executes through an on-demand dynamic recompiler/JIT. Do not translate
+  guest code offline or at install time into C, C++, object files, or another title-specific
+  executable corpus.
+- **Interpreters are test-only.** They may diagnose JIT semantics or provide an oracle in a separate
+  test/diagnostic target. A gameplay build must not link an interpreter, expose a product selector
+  for one, or contain any interpreter fallback. Zero observed fallback entries is insufficient when
+  the forbidden path is still present in the product.
 - **A runtime-populated translation cache is allowed; a prebuilt substrate is not.** Cache entries
   are optional, disposable runtime data keyed to the exact guest image, runtime version, host
-  architecture, and semantic configuration. A fresh install must be able to execute by translating
-  or interpreting the user's binary itself.
+  architecture, and semantic configuration. A fresh install must be able to execute by dynamically
+  translating the user's binary itself.
 - **Static analysis may produce non-executable knowledge only.** Symbols, address maps, recovered
   types, title identity, and hand-authored native-override metadata remain useful. They must not
   encode translated guest function bodies or become a disguised generated-code build input.
@@ -566,13 +573,14 @@ USER 2026-09-04: "I'm not going to do any more code generation style static reco
   native overrides, and differential checks through a runtime-owned boundary. Prove a reached path
   through the new execution engine, then remove the generator, generated-source build rules,
   code-generation seed lists, generated corpora, and stale methodology without a compatibility mode.
-- **Keep the reusable parts.** Differential oracle harnesses, interpreter semantics, native
+- **Keep the reusable parts.** Differential oracle harnesses, test-only interpreter semantics, native
   overrides, platform HLE, rendering, audio, input, saves, and RE evidence survive when they are
   independent of generated functions. Rename and re-own them where old vocabulary hides that
   boundary.
 - **The runtime must make its work measurable.** Report translated-block executions, cache hits and
-  misses, invalidations, interpreter fallbacks, and native overrides with denominators. A run that
-  stayed entirely in the interpreter is not evidence that the dynarec executed.
+  misses, invalidations, test-oracle entries, and native overrides with denominators. A gameplay
+  gate requires nonzero dynarec execution plus a build/link/selector check proving no interpreter is
+  present in the product.
 - **Self-modifying and runtime-loaded code is a cache-invalidation contract, not a discovery list.**
   Guest writes, overlays, bank switches, DMA, address-space changes, and relevant cache-control
   operations invalidate affected translations before reuse. Do not replace runtime correctness with
@@ -625,7 +633,7 @@ vendored copy that silently wins is the exact failure this split exists to end
 | `shared/port-assets` | the art ports keep redrawing: Xbox 360 gamepad glyphs, keyboard key caps. SVG, scalable, with a legibility check at the target size. |
 | `shared/alchemy` | the Alchemy engine layer (IGB, XMLB, ARK) shared by the Marvel/X-Men titles. |
 | `shared/jit-common` | guest-ISA-neutral executable-memory and runtime block-cache primitives shared only after two frameworks prove the same need. |
-| `shared/x86port` | the x86-32 runtime execution framework; it owns interpreter/JIT CPU execution while consumers own title policy until a second consumer proves a lower shared boundary. |
+| `shared/x86port` | the x86-32 runtime execution framework; it owns product JIT execution and separately built test-oracle interpretation while consumers own title policy until a second consumer proves a lower shared boundary. |
 | `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent remains the runtime owner. |
 
 **If you write something a second project will want, put it in `shared/` the
