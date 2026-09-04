@@ -27,10 +27,12 @@ title-owned policy. The user's binary remains data. At runtime:
 
 `guest PC → cache lookup → decode/lower missing block → emit host code → execute → return to dispatcher`
 
-The shipping emulated-runtime path is the dynarec/JIT. An interpreter may serve as an oracle or
-bring-up engine only in a separate test/diagnostic target; the gameplay product must neither link nor
-select it and contains no fallback. The test oracle may share the canonical CPU state, memory
-accessors, exception model, and service boundary. Static analysis may produce reviewable symbols or
+The default shipping path is the dynarec/JIT. A DuckStation-style bounded interpreter fallback may
+execute only blocks the JIT explicitly cannot compile or fetch safely, with typed reasons, guest PCs,
+and block/instruction denominators. It returns to JIT dispatch and must not become a first profiling
+pass, asynchronous-compilation bridge, missing-backend substitute, or normal compatibility mode. An
+interpreter-only mode remains an explicit test/diagnostic surface. All paths share canonical CPU
+state, memory, exception, and service semantics. Static analysis may produce reviewable symbols or
 non-executable metadata; it must not produce guest function bodies or another title-specific source
 corpus.
 
@@ -52,7 +54,8 @@ Use break-first ordering:
 
 Do not preserve a compatibility mode that can silently select the old pipeline. A migration is
 complete only when a fresh clone builds and launches the native/dynarec hybrid from the user-supplied
-binary without an offline translation step or interpreter fallback.
+binary without an offline translation step, ordinary cold blocks compile before execution, and every
+fallback is reason-coded and measured.
 
 ## Core loop
 
@@ -85,4 +88,5 @@ Host qualification is per operating-system/architecture pair. In particular, AAr
 cover both Apple Silicon macOS and Android arm64-v8a with the shipping backend. Test executable-memory
 publication and protection changes, instruction-cache coherence, ABI transitions, signals/exceptions,
 packaging, and representative gameplay on each; an emitter unit test or a different AArch64 OS is not
-substitute evidence. Never fill an unimplemented host backend with the test interpreter.
+substitute evidence. Never fill an unimplemented host backend with interpreter execution or claim a
+backend from a fallback-dominated run.
