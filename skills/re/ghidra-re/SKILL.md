@@ -92,8 +92,8 @@ Ghidra's Reference DB does NOT catch:
 - Any dynamic (heap/stack) pointer arg.
 
 The fix is NOT to run more Ghidra scans; it's to **let the running program tell you**.
-Use the target project's dynamic-observation harness (or `recomp-harness` when it is a static
-recomp project):
+Use the target project's dynamic-observation harness (or `dynarec-harness` for a runtime-translated
+port):
 - Register a memory-write watchpoint at the target VA.
 - Observe writer PC + LR + r0..r3 + SP at fire time.
 - Cross-reference PC via `FnAt.py`, LR via `FnAt.py`, arg regs via harness live reads.

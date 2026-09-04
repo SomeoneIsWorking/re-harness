@@ -12,7 +12,7 @@ USER 2026-08-30: "All global skills and instructions and tools should be under o
 - **`shared/re-harness` is the only editable authority for user-maintained global instructions,
   skills, and tools.** It categorizes
   project-agnostic skills under `skills/global/`, port architecture under `skills/port/`, binary and
-  asset RE under `skills/re/`, and static-recompiler-only guidance under `skills/recomp/`.
+  asset RE under `skills/re/`, and runtime guest-execution guidance under `skills/dynarec/`.
 - **Agent homes and `~/repo/AGENTS.md` are discovery surfaces, not copies.** Their instruction,
   skill, and tool entries are relative links installed by `tools/install_skills.py`; never edit one
   as a separate authority. Vendor-owned system files remain untouched.
@@ -173,23 +173,16 @@ USER 2026-08-31: "No one can know what's changed over the vanilla emulated game"
   combined gates, and land each finished batch while its context is current; never accumulate hours
   of invisible, uncommitted "finished" work.
 
-## Subagent access is project-owned and defaults to zero
+## Subagent access is globally authorized
 
-USER 2026-08-30: "Change the global subagents directive, I'm revoking it, no subagent access unless specified, you are still allowed subagents, 3 max concurrent
-All projects must keep their own allowed counts starting from 0, yours is again 3"
+USER 2026-09-04: "I want to transition all my static recomps away to dynamic recomps like JIT / dynarec etc (not familiar with the wording) I give you unlimited subagent access for all the projects"
 
-- **The global subagent allowance is zero.** Do not spawn, delegate to, or ask work from a subagent
-  merely because work is separable, slow, difficult, or blocked.
-- **The closest project `AGENTS.md` owns one explicit positive allowance.** If it does not declare a
-  count, that project's allowance is 0. Each project starts at 0 and changes only when the USER
-  explicitly assigns a different count; never copy another project's allowance or infer one from
-  prior sessions.
-- **The allowance is the maximum number of concurrently active subagents for that project.** Nested
-  delegation consumes the same project pool and cannot expand it. Completed or stopped agents free a
-  slot.
-- **Authorization does not make delegation mandatory.** Use an allowed slot only for a concrete,
-  bounded task whose coordination cost is justified. Assign non-overlapping ownership and identify
-  shared resources before dispatch.
+- **There is no user-imposed subagent count for projects.** Use as many concurrent subagents as the
+  active product and service limits permit. A project-local stale zero or numeric allowance does not
+  revoke this global authorization; only a later USER instruction does.
+- **Authorization does not make delegation mandatory.** Use a slot only for a concrete, bounded task
+  whose coordination cost is justified. Assign non-overlapping ownership and identify shared
+  resources before dispatch.
 - **Parallel reasoning does not authorize unsafe concurrent execution.** Serialize builds, tests,
   and tools that share mutable state, ports, devices, databases, or singleton runtimes. Game projects
   do not run multiple game instances at once unless their harness explicitly provides isolation.
@@ -555,7 +548,35 @@ USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\
 **Build the tool instead of re-reasoning.** When a task recurs, or your tooling cannot show you what
 you need, extend it — and a tool without a doc update is unfinished.
 
-## Port architecture reference
+## Guest code executes at runtime; generated-source recomps are retired
+
+USER 2026-09-04: "I'm not going to do any more code generation style static recomps anymore, you can remove everything about that methodology"
+
+- **Ports execute the user's original guest binary at runtime.** Use an interpreter or an on-demand
+  dynamic recompiler/JIT chosen by measured performance. Do not translate guest code offline or at
+  install time into C, C++, object files, or another title-specific executable corpus.
+- **A runtime-populated translation cache is allowed; a prebuilt substrate is not.** Cache entries
+  are optional, disposable runtime data keyed to the exact guest image, runtime version, host
+  architecture, and semantic configuration. A fresh install must be able to execute by translating
+  or interpreting the user's binary itself.
+- **Static analysis may produce non-executable knowledge only.** Symbols, address maps, recovered
+  types, title identity, and hand-authored native-override metadata remain useful. They must not
+  encode translated guest function bodies or become a disguised generated-code build input.
+- **Migrate ownership before deleting evidence.** First expose CPU state, memory, guest services,
+  native overrides, and differential checks through a runtime-owned boundary. Prove a reached path
+  through the new execution engine, then remove the generator, generated-source build rules,
+  code-generation seed lists, generated corpora, and stale methodology without a compatibility mode.
+- **Keep the reusable parts.** Differential oracle harnesses, interpreter semantics, native
+  overrides, platform HLE, rendering, audio, input, saves, and RE evidence survive when they are
+  independent of generated functions. Rename and re-own them where old vocabulary hides that
+  boundary.
+- **The runtime must make its work measurable.** Report translated-block executions, cache hits and
+  misses, invalidations, interpreter fallbacks, and native overrides with denominators. A run that
+  stayed entirely in the interpreter is not evidence that the dynarec executed.
+- **Self-modifying and runtime-loaded code is a cache-invalidation contract, not a discovery list.**
+  Guest writes, overlays, bank switches, DMA, address-space changes, and relevant cache-control
+  operations invalidate affected translations before reuse. Do not replace runtime correctness with
+  an ever-growing static seed manifest.
 
 ## Engine migrations preserve the existing game source
 
@@ -580,7 +601,7 @@ USER 2026-08-31: "when that isn't possible you can transpile using a tool but in
 USER 2026-08-14: "Dusklight is in ~/repo/dusklight, you should know this, it should be in the global guide for porting projects to follow"
 
 - **Use `~/repo/dusklight` as the default structure and UI reference for game-port
-  projects**, even when its source platform or recompilation strategy differs. Consult its current
+  projects**, even when its source platform or guest execution strategy differs. Consult its current
   tree before designing host organization, configuration, presentation, input, audio, saves,
   diagnostics, or UI.
 - Follow the ownership pattern, not names copied mechanically: the host entry point composes cohesive
@@ -600,10 +621,11 @@ vendored copy that silently wins is the exact failure this split exists to end
 
 | Repo | Holds |
 |---|---|
-| `shared/re-harness` | canonical portable skills grouped as global, port, RE, and recomp; shared information/validation tools live once under `tools/`. Project DATA stays in each project. |
+| `shared/re-harness` | canonical portable skills grouped as global, port, RE, and dynarec; shared information/validation tools live once under `tools/`. Project DATA stays in each project. |
 | `shared/port-assets` | the art ports keep redrawing: Xbox 360 gamepad glyphs, keyboard key caps. SVG, scalable, with a legibility check at the target size. |
 | `shared/alchemy` | the Alchemy engine layer (IGB, XMLB, ARK) shared by the Marvel/X-Men titles. |
-| `shared/recomp-x86` | the x86-32 → C translator. |
+| `shared/jit-common` | guest-ISA-neutral executable-memory and runtime block-cache primitives shared only after two frameworks prove the same need. |
+| `shared/x86port` | the x86-32 runtime execution framework; it owns interpreter/JIT CPU execution while consumers own title policy until a second consumer proves a lower shared boundary. |
 | `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent remains the runtime owner. |
 
 **If you write something a second project will want, put it in `shared/` the
@@ -730,22 +752,14 @@ USER 2026-08-31: "Make a rule to not jump to other games without finishing one"
 
 USER 2026-08-24: "Also run.sh should not run tests, agents need their own test commands"
 
-## Static-recompiler projects never use CI
+## Runtime-execution verification and release inputs
 
-USER 2026-08-31: "OH yeah, don't use CI for recompiler projects ever"
-
-- **A static-recompiler project has no CI workflow.** Do not add or retain GitHub Actions, hosted
-  CI, release workflows, or scheduled cloud builds for one — including a workflow that only checks
-  formatting, publishes a release, or claims to run without game assets.
-- **Recompiler verification and releases run locally, with the operator's user-supplied inputs.** A
-  static recompiler derives native code from the user's ROM/disks/executable; those inputs and the
-  derived restricted source must never be uploaded to CI, stored as CI secrets, sent to a hosted
-  builder, committed, or packaged. Build the release locally and upload the finished, asset-free
-  APK/AppImage manually when the operator authorizes publication.
-- **Do not hide this boundary behind a fake CI fallback.** A generated-code cache, encrypted game
-  archive, remote artifact, or pre-baked native output merely moves the prohibited game input to
-  another hosted service. If a project needs repeatable local release assembly, improve its local
-  Python tooling and document its exact user-input contract instead.
+- **Real-title conformance runs locally with the operator's user-supplied game files.** ROMs, discs,
+  executables, extracted code, and runtime translation caches derived from them must never be
+  uploaded to CI, stored as hosted secrets, committed, or packaged.
+- **Hosted checks may exercise only redistributable runtime code and synthetic fixtures.** A green
+  decoder or cache test is useful engineering evidence but never title-conformance evidence. Local
+  release tooling owns the real-input gate and produces an asset-free package.
 
 - **`run.sh` never runs tests.** Its zero-argument path and every supported option are shipping
   launcher behavior: provision required inputs, validate prerequisites, build the product when

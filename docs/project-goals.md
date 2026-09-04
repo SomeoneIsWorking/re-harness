@@ -14,14 +14,13 @@ Success conditions:
 
 ## G002 — Applicability is explicit and composable
 
-Separate project-agnostic, game-port, reverse-engineering, and static-recompiler
-guidance so a project receives relevant skills without being treated as a recomp
-project by default.
+Separate project-agnostic, game-port, reverse-engineering, and dynamic guest-execution
+guidance so a project receives only the methodology relevant to its architecture.
 
 Success conditions:
 
 - Every skill has one category based on the invariant that triggers it.
-- Port and RE skills can be used independently of the recomp stack.
+- Port and RE skills can be used independently of the dynarec stack.
 - Skill names remain globally unique when categories are flattened for agent
   discovery.
 

@@ -17,16 +17,16 @@ cross-links. Run `python3 tests/run.py` after changing a shared CLI or installer
 ## Skill ownership
 
 - `skills/global/`: project-agnostic workflow and hygiene skills.
-- `skills/port/`: port architecture shared by recomp and non-recomp ports.
+- `skills/port/`: port architecture independent of guest execution strategy.
 - `skills/re/`: binary/asset reverse-engineering workflows.
-- `skills/recomp/`: static-recompiler-specific workflows.
+- `skills/dynarec/`: runtime guest execution and dynamic-translation workflows.
 
 Each skill owns one `SKILL.md` package. Reusable CLI implementations live once
 under `tools/`; a skill package may symlink to its tool. Root-level tool names
 are stable compatibility symlinks for existing consumers.
 
 Add a new category only for a real applicability boundary. Do not classify a
-skill as recomp-specific merely because its first consumer is a recomp project.
+skill as dynarec-specific merely because its first consumer is a runtime-translated port.
 
 ## Installation
 

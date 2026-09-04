@@ -350,6 +350,23 @@ def main():
         rc, out = run([installer, "--home", d, "check"], ROOT)
         fails += check("installer: verifies an intact installation", rc == 0, out)
 
+        stale = os.path.join(d, ".agents", "skills", "retired-skill")
+        stale_source = os.path.join(ROOT, "skills", "retired", "retired-skill")
+        os.symlink(os.path.relpath(stale_source, os.path.dirname(stale)), stale)
+        rc, out = run([installer, "--home", d, "check"], ROOT)
+        fails += check(
+            "installer: detects a retired canonical skill link",
+            rc == 1 and "retired-skill: stale canonical skill link" in out,
+            out,
+        )
+        rc, out = run([installer, "--home", d, "install"], ROOT)
+        fails += check(
+            "installer: removes a retired canonical skill link",
+            rc == 0 and not os.path.lexists(stale)
+            and "UNLINK stale canonical skill" in out,
+            out,
+        )
+
         tampered = os.path.join(d, ".agents", "skills", "codemap")
         os.unlink(tampered)
         os.symlink("../wrong-target", tampered)

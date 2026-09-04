@@ -13,9 +13,9 @@ coverage in [`project-state.md`](project-state.md). This map owns placement only
 |---|---|---|---|---|
 | Global instructions | One portable policy authority shared by supported agents and the `~/repo` scope | `instructions/` | `instructions/AGENTS.md` | `README.md` |
 | Global skills | Project-agnostic goals, state, ownership, issues, information, publication, and process hygiene | `skills/global/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
-| Port skills | Host/game-port architecture shared by recomp and non-recomp projects | `skills/port/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
+| Port skills | Host/game-port architecture independent of guest execution strategy | `skills/port/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | RE skills | Binary, asset, decompiler, frontier, and engine-pass reverse engineering | `skills/re/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
-| Recomp skills | Whole-binary static-recompiler methodology, initialization, codegen, overrides, and differential harness | `skills/recomp/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
+| Dynarec skills | Runtime guest execution, dynamic translation, overrides, and differential harness | `skills/dynarec/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | Project registries | This repository's epic intent, factual capability coverage, and ownership map | `docs/` | `project-goals.md`, `project-state.md`, `codemap.md` | — |
 | Shared tools | One authoritative implementation of reusable registry and hygiene CLIs, including complete-history enforcement for Git-derived claim evidence | `tools/` | individual Python/executable tools | `README.md` |
 | Claim baseline time | Owns timezone-aware evidence timestamps and deterministic parsing of legacy baselines so operators and CI agree on staleness. | `tools/info_time.py` | `now_stamp()`, `timestamp_epoch()` | `README.md` |
@@ -30,9 +30,9 @@ coverage in [`project-state.md`](project-state.md). This map owns placement only
 ```text
 skills/
 ├── global/     project-agnostic skills
-├── port/       port architecture independent of recomp strategy
+├── port/       port architecture independent of guest execution strategy
 ├── re/         reverse-engineering-specific skills
-└── recomp/     static-recompiler-specific skills
+└── dynarec/    runtime guest execution and dynamic-translation skills
 instructions/   canonical global agent instructions
 tools/          canonical reusable CLI implementations
 tests/          cross-skill/tool behavior checks
@@ -46,7 +46,7 @@ docs/           repository goals, state, and ownership
 - Port architecture that applies regardless of binary translation strategy goes
   in `skills/port/`.
 - Ground-truth recovery from binaries/assets goes in `skills/re/`.
-- Guidance whose invariant depends on whole-binary static recompilation goes in
-  `skills/recomp/`.
+- Guidance whose invariant depends on runtime interpretation or dynamic translation goes in
+  `skills/dynarec/`.
 - A reusable executable used by more than one skill lives in `tools/`; skill
   packages link to it instead of copying it.
