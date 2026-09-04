@@ -21,12 +21,15 @@ import re
 import subprocess
 import sys
 import tempfile
+from pathlib import PurePosixPath
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 TOOLS = os.path.join(ROOT, "tools")
 SCRATCH = os.path.join(ROOT, "scratch", "tests")
 os.makedirs(SCRATCH, exist_ok=True)
+sys.path.insert(0, TOOLS)
+import source_boundary  # noqa: E402
 
 
 def tempdir():
@@ -102,6 +105,44 @@ def main():
         "structure: first-party Python tools stay bounded",
         not oversized,
         "\n".join(oversized),
+    )
+
+    source_policy = {
+        "source_suffixes": [".cpp"],
+        "source_names": ["CMakeLists.txt"],
+        "excluded_roots": ["docs", "external"],
+        "excluded_paths": [],
+        "forbidden_tokens": ["retired_call"],
+        "forbidden_include_fragments": ["retired/runtime/"],
+        "forbidden_path_components": ["generated"],
+        "allowed_shell_paths": ["run.sh"],
+    }
+    clean_source = PurePosixPath("game/clean.cpp")
+    excluded_source = PurePosixPath("docs/historical.cpp")
+    source_fixtures = {
+        clean_source: '#include "native_dispatch.h"\n',
+        excluded_source: "retired_call",
+    }
+    clean_result = source_boundary.inspect_tree(
+        source_fixtures, source_fixtures, source_policy
+    )
+    fails += check(
+        "source_boundary: accepts live clean and excluded evidence",
+        not clean_result,
+        "\n".join(clean_result),
+    )
+    bad_fixtures = {
+        PurePosixPath("game/bad.cpp"): (
+            'retired_call();\n#include "retired/runtime/core.h"\n'
+        ),
+        PurePosixPath("generated/body.cpp"): "",
+        PurePosixPath("tools/legacy.sh"): "#!/bin/sh\n",
+    }
+    bad_result = source_boundary.inspect_tree(bad_fixtures, bad_fixtures, source_policy)
+    fails += check(
+        "source_boundary: reports every configured negative",
+        len(bad_result) == 4,
+        "\n".join(bad_result),
     )
 
     # --- cleanup-files: validate the whole explicit set before unlinking -----
