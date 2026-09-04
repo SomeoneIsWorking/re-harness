@@ -674,10 +674,18 @@ vendored copy that silently wins is the exact failure this split exists to end
 | `shared/alchemy` | intended common Alchemy engine layer for X-Men 2 and Marvel: Ultimate Alliance. It currently has partial native libraries plus research tools, parsers, and viewers, but neither gameplay product links or calls a proven shared runtime. X-Men 2 must integrate and verify the first product contracts; MUA consumes and extends them only after X-Men 2's complete goals pass. |
 | `shared/jit-common` | guest-ISA-neutral executable-memory and runtime block-cache primitives shared only after two frameworks prove the same need. |
 | `shared/x86port` | the x86-32 runtime execution framework; it owns product JIT execution and separately built test-oracle interpretation while consumers own title policy until a second consumer proves a lower shared boundary. |
+| `shared/x360port` | intended title-neutral Xbox 360 runtime framework over Xenia's dynarecs: authenticated XEX mapping, CPU/thread contexts, Xbox services/devices, raw Xenos/XMA boundaries, typed imports, runtime overrides, original calls, invalidation, and explicit singleton constraints. Gears and MUA are first-class consumers. |
+| `shared/x360ue3` | intended independently authored UE3-on-Xbox-360 integration over `x360port`: versioned engine ABI descriptions, UE3 RHI semantics, binding schemas, and engine object/resource/thread/frame lifetime. It never owns a title's addresses, hashes, pass roster, gameplay, navigation, saves, or application composition. |
+| `shared/ue3` | developer reference material only, never a source, build, runtime, packaging, or distribution dependency for a clean port. Independently authored shared code belongs in the appropriate clean framework such as `x360ue3`; do not copy the reference checkout into it. |
 | `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent remains the runtime owner. |
 
 **If you write something a second project will want, put it in `shared/` the
 first time, not the second.** The second time is when a fork already exists.
+
+For Xbox 360 UE3 titles, dependency direction is `title/series engine ->
+x360ue3 -> x360port -> Xenia`. A non-UE3 title such as MUA consumes `x360port`
+directly and its own engine layer (`shared/alchemy` for MUA); it must not acquire
+a false `x360ue3` or Gears dependency merely because the CPU platform is shared.
 
 USER 2026-08-26: "And ~/.codex and ~/.claude etc can point to these skills so everything is converged at one point and also portable"
 
