@@ -80,3 +80,9 @@ before execution.
 
 Never claim parity from boot, a clean internal trace, or a single frame. Verify deterministic real
 gameplay, audio, rendering, timing, and state against a trusted oracle, and name the measured scope.
+
+Host qualification is per operating-system/architecture pair. In particular, AArch64 support must
+cover both Apple Silicon macOS and Android arm64-v8a with the shipping backend. Test executable-memory
+publication and protection changes, instruction-cache coherence, ABI transitions, signals/exceptions,
+packaging, and representative gameplay on each; an emitter unit test or a different AArch64 OS is not
+substitute evidence. Never fill an unimplemented host backend with the test interpreter.

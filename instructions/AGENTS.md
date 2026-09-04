@@ -592,6 +592,8 @@ USER 2026-09-04: "To be clear I don't want ANY interpreter when playing a game, 
 
 USER 2026-09-04: "But delete static recomp first (remember break-first)"
 
+USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
+
 - **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; every
   remaining guest function executes through an on-demand dynamic recompiler/JIT. Do not translate
   guest code offline or at install time into C, C++, object files, or another title-specific
@@ -625,6 +627,13 @@ USER 2026-09-04: "But delete static recomp first (remember break-first)"
   Guest writes, overlays, bank switches, DMA, address-space changes, and relevant cache-control
   operations invalidate affected translations before reuse. Do not replace runtime correctness with
   an ever-growing static seed manifest.
+- **ARM64 means both Apple Silicon macOS and Android arm64-v8a.** Every maintained platform
+  framework must provide a real AArch64 dynarec backend for both hosts before claiming ARM64
+  support. Qualify their executable-memory allocation/protection transitions, instruction-cache
+  coherence, host ABI transitions, signals/exceptions, packaging, and representative gameplay
+  separately; code-generation unit tests or success on one OS do not prove the other. A missing
+  host backend is an explicit unsupported capability, never permission to link or select an
+  interpreter.
 
 ## Engine migrations preserve the existing game source
 
