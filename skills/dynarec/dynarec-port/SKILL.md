@@ -36,15 +36,19 @@ corpus.
 
 ## Migration from generated-source recompilers
 
-Replace the execution owner before deleting evidence:
+Use break-first ordering:
 
-1. Put the existing CPU state, memory, imports/syscalls, and native-override dispatch behind a
-   runtime interface independent of generated functions.
-2. Route one reached guest region through the dynarec and compare it against the existing
-   oracle. Keep the old leg only as temporary migration evidence, never as a shipping fallback.
-3. Expand runtime coverage until the intended title path no longer links generated guest code.
-4. Remove generators, generated-source build rules, seed manifests used only by code generation,
-   generated-output documentation, and stale plans in the same project milestone.
+1. Preserve only independently useful binary/behavior evidence, native subsystem contracts, and
+   oracle scenarios.
+2. Delete the generator, generated-source build rules and corpora, static dispatch, generation-only
+   seeds, static-only tests/config/selectors, and stale methodology before implementing the dynarec.
+3. Make the resulting broken build name one explicit missing runtime-executor boundary. Do not keep
+   the static product runnable as a bridge, comparison arm, fallback, or temporary convenience.
+4. Put CPU state, memory, imports/syscalls, native overrides, bounded exits, and invalidation behind
+   the runtime interface, then route real guest code through the dynarec and compare against an
+   independent emulator, hardware, binary evidence, or separately built test oracle.
+5. Expand runtime coverage through representative interactive gameplay and qualify each released
+   host backend.
 
 Do not preserve a compatibility mode that can silently select the old pipeline. A migration is
 complete only when a fresh clone builds and launches the native/dynarec hybrid from the user-supplied
