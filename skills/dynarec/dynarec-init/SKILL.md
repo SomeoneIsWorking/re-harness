@@ -18,6 +18,11 @@ engine.
 Choose an accurate, scriptable reference emulator as the oracle. It may also supply hardware models
 during bring-up, but the product's execution boundary must remain explicit.
 
+Declare host backends as concrete OS/architecture pairs. ARM64 projects include both Apple Silicon
+macOS and Android arm64-v8a unless the project explicitly excludes one; design executable-memory,
+instruction-cache, ABI, and exception boundaries so each can be verified independently without an
+interpreter fallback.
+
 ## Scaffold runtime ownership
 
 Create cohesive modules for CPU context, guest memory/address spaces, decoder/IR, host backend and
