@@ -861,6 +861,36 @@ USER 2026-08-24: "Also run.sh should not run tests, agents need their own test c
 
 ## Runtime-execution verification and release inputs
 
+USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when applicable"
+
+- **Every maintained project has hosted CI for every applicable shipping platform.** Linux,
+  Windows, and macOS jobs are required for portable desktop libraries, tools, and products that
+  claim those hosts. Android-capable products and shared runtime/build components also require an
+  Android job. A project may omit a platform only when its goals make that platform genuinely
+  inapplicable; record the exact reason in `docs/project-state.md` instead of silently leaving the
+  matrix incomplete.
+- **CI proves the real redistributable boundary on that platform.** Configure, compile, lint, test,
+  and package through the same locked owners used by maintainers. A cross-compile or syntax-only job
+  does not prove runtime support: execute synthetic dynarec/interpreter, executable-memory,
+  instruction-cache, ABI, invalidation, and package-install checks on the matching host/architecture
+  whenever the project claims those capabilities. Real-title gameplay and performance remain local
+  evidence because CI has no game files.
+- **Use native platform toolchains without narrowing user support.** Linux C/C++ CI uses Clang;
+  macOS exercises AppleClang and the claimed Intel or Apple-Silicon architecture; Windows uses a
+  documented supported MSVC/clang-cl configuration. Android uses the pinned shared
+  `shared/android-port` Gradle/AGP/NDK/JDK contract and builds every claimed ABI/API combination.
+  Platform-specific CI commands call the project's canonical Python verifier/build modules rather
+  than duplicating policy in workflow YAML.
+- **Hosted workflows are deterministic and least-privileged.** Pin third-party actions to full
+  commit SHAs, lock downloaded dependencies and toolchains with checksums, set explicit job
+  timeouts, grant only required permissions, and fetch full history when project-information or
+  publication checks need it. Caches are accelerators only: a cold job must remain correct, and no
+  cache may contain game files or derived restricted data.
+- **No green placeholder jobs.** An unavailable runner, missing backend, skipped test, absent
+  package, or unsupported architecture is a named failure or an explicitly recorded inapplicable
+  platform, never a successful no-op. Required matrix jobs and their package/runtime assertions are
+  part of the normal release gate.
+
 - **Real-title conformance runs locally with the operator's user-supplied game files.** ROMs, discs,
   executables, extracted code, and runtime translation caches derived from them must never be
   uploaded to CI, stored as hosted secrets, committed, or packaged.
