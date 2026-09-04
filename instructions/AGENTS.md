@@ -575,6 +575,8 @@ USER 2026-09-04: "I'm not going to do any more code generation style static reco
 
 USER 2026-09-04: "To be clear I don't want ANY interpreter when playing a game, interpreter can only be used in testing"
 
+USER 2026-09-04: "But delete static recomp first (remember break-first)"
+
 - **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; every
   remaining guest function executes through an on-demand dynamic recompiler/JIT. Do not translate
   guest code offline or at install time into C, C++, object files, or another title-specific
@@ -590,10 +592,12 @@ USER 2026-09-04: "To be clear I don't want ANY interpreter when playing a game, 
 - **Static analysis may produce non-executable knowledge only.** Symbols, address maps, recovered
   types, title identity, and hand-authored native-override metadata remain useful. They must not
   encode translated guest function bodies or become a disguised generated-code build input.
-- **Migrate ownership before deleting evidence.** First expose CPU state, memory, guest services,
-  native overrides, and differential checks through a runtime-owned boundary. Prove a reached path
-  through the new execution engine, then remove the generator, generated-source build rules,
-  code-generation seed lists, generated corpora, and stale methodology without a compatibility mode.
+- **Break first: delete the static product before implementing its dynarec replacement.** Preserve
+  independently useful binary/behavior evidence and native subsystem code, then remove the generator,
+  generated-source build rules and corpora, static dispatch, generation-only seed lists, static-only
+  tests/config/selectors, and stale methodology as the first migration change. Let the build fail at
+  one explicit missing runtime-executor boundary until the dynarec lands; never keep the old product
+  runnable as a bridge, comparison arm, fallback, or temporary convenience.
 - **Keep the reusable parts.** Differential oracle harnesses, test-only interpreter semantics, native
   overrides, platform HLE, rendering, audio, input, saves, and RE evidence survive when they are
   independent of generated functions. Rename and re-own them where old vocabulary hides that
