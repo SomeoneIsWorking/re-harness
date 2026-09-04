@@ -671,7 +671,7 @@ vendored copy that silently wins is the exact failure this split exists to end
 |---|---|
 | `shared/re-harness` | canonical portable skills grouped as global, port, RE, and dynarec; shared information/validation tools live once under `tools/`. Project DATA stays in each project. |
 | `shared/port-assets` | the art ports keep redrawing: Xbox 360 gamepad glyphs, keyboard key caps. SVG, scalable, with a legibility check at the target size. |
-| `shared/alchemy` | intended common Alchemy engine layer for X-Men 2 and Marvel: Ultimate Alliance. It currently has partial native libraries plus research tools, parsers, and viewers, but neither gameplay product links or calls a proven shared runtime. X-Men 2 must integrate and verify the first product contracts; MUA consumes and extends them only after X-Men 2's complete goals pass. |
+| `shared/alchemy` | one common Alchemy engine repository for X-Men 2 and Marvel: Ultimate Alliance. Its neutral `shared` layer owns engine behavior and formats without a CPU-framework dependency; separately linked `x86` and `x360` adapters translate platform ABI/context contracts through `x86port` and `x360port`. Exact title addresses, identities, and policy remain in each game. X-Men 2 proves the first shared and x86 contracts; MUA consumes and extends them through the x360 adapter only after X-Men 2's complete goals pass. |
 | `shared/jit-common` | guest-ISA-neutral executable-memory and runtime block-cache primitives shared only after two frameworks prove the same need. |
 | `shared/x86port` | the x86-32 runtime execution framework; it owns product JIT execution and separately built test-oracle interpretation while consumers own title policy until a second consumer proves a lower shared boundary. |
 | `shared/x360port` | intended title-neutral Xbox 360 runtime framework over Xenia's dynarecs: authenticated XEX mapping, CPU/thread contexts, Xbox services/devices, raw Xenos/XMA boundaries, typed imports, runtime overrides, original calls, invalidation, and explicit singleton constraints. Gears and MUA are first-class consumers. |
@@ -686,6 +686,14 @@ For Xbox 360 UE3 titles, dependency direction is `title/series engine ->
 x360ue3 -> x360port -> Xenia`. A non-UE3 title such as MUA consumes `x360port`
 directly and its own engine layer (`shared/alchemy` for MUA); it must not acquire
 a false `x360ue3` or Gears dependency merely because the CPU platform is shared.
+
+`shared/alchemy` is one repository with cohesive neutral, x86-adapter, and
+x360-adapter components; do not split it into `x86alchemy` and `x360alchemy`
+repositories. Its neutral core must build without either platform framework,
+and a product links only the adapter for its guest platform. `x86port` and
+`x360port` remain sibling dependencies composed and pinned by the consuming
+title rather than submodules owned by Alchemy, so Alchemy never pulls both
+execution frameworks into an unrelated consumer.
 
 USER 2026-08-26: "And ~/.codex and ~/.claude etc can point to these skills so everything is converged at one point and also portable"
 
