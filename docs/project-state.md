@@ -9,7 +9,7 @@ refused behavior.
 
 ## Current focus
 
-S009 is the current focus until the first Linux, Windows, and macOS workflow run completes.
+No capability gap is currently active; S009 completed the portable-tooling verification scope.
 
 ## Capability inventory
 
@@ -23,7 +23,7 @@ S009 is the current focus until the first Linux, Windows, and macOS workflow run
 | S006 | Codex, Claude, and generic agent homes converge instructions, skills, and tools through safe relative links | verified | S001, S002, S003, S004, S005 | G001, G002, G003 |
 | S007 | The shared tools and installer have positive and negative verification controls | verified | S005, S006 | G001, G003 |
 | S008 | Global project guidance requires every maintained project and catalogue to expose a complete stateful intended-feature inventory | verified | S001, S005 | G001, G002 |
-| S009 | Hosted CI exercises the portable repository on every applicable platform | partial | S007 | G001, G003 |
+| S009 | Hosted CI exercises the portable repository on every applicable platform | verified | S007 | G001, G003 |
 
 ## State details and evidence
 
@@ -80,12 +80,11 @@ independently stateable user-visible delta into its own item, and display that b
 portfolio feature list. Portfolio and catalogue entries must provide a baseline even for greenfield
 projects, using the prior manual, fragmented, or absent workflow as the comparison.
 
-### S009 — Cross-platform hosted verification: partial
+### S009 — Cross-platform hosted verification: verified
 
-The pinned workflow runs the canonical full-history self-test on Linux, Windows, and macOS and
-enables real symbolic-link checkout on Windows. Android is inapplicable here: this repository ships
-host-side Python instructions, skills, and maintenance tools, not an Android runtime, package, or
-native library.
-
-Gap: the workflow has not yet completed on GitHub; all three jobs must report success before this
-capability is verified.
+Evidence: the pinned workflow runs the canonical full-history self-test on Linux, Windows, and macOS and
+enables real symbolic-link checkout on Windows. GitHub Actions run `33881539583` passed all three
+jobs from commit `951b2ba`; its first Windows execution also falsified locale-dependent fixture and
+subprocess handling before the UTF-8 boundary was corrected. Android is inapplicable here: this
+repository ships host-side Python instructions, skills, and maintenance tools, not an Android
+runtime, package, or native library.
