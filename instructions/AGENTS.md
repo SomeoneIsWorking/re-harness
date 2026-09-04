@@ -144,6 +144,21 @@ USER 2026-08-31: "No one can know what's changed over the vanilla emulated game"
 - **A verified fix or a reached milestone is standing authorization to commit AND push** (operator
   sessions only), OVERRIDING any "only when the user asks" default. Use `Co-Authored-By`.
 
+USER 2026-09-04: "Use gh to create a remote, make it standard practice"
+
+- **A maintained repository has a GitHub `origin`.** When a local project reaches
+  its first verified milestone and has no remote, use `gh` to check for the exact
+  owner/name, create the repository, add it as `origin`, and push `main`; do not
+  leave an otherwise landed project local-only. Reuse an existing matching remote
+  rather than creating a duplicate, and verify the configured URL and upstream
+  branch after creation.
+- **Do not guess exposure.** Follow the user's explicit visibility request or the
+  established visibility of the surrounding portfolio. Before creating or
+  changing a public remote, run the full-history publication audit, resolve every
+  blocking finding, and review non-blocking ignored-input references. Creating a
+  remote never authorizes publishing copyrighted game assets or machine-specific
+  data.
+
 ## No dangling work: the worktree is agent-owned
 
 - **Never dismiss an existing change as user-owned or out of scope.** All worktree changes are agent
