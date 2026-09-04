@@ -37,8 +37,13 @@ def tempdir():
 
 
 def run(args, cwd, env=None):
+    child_env = dict(os.environ if env is None else env)
+    # The tools intentionally print Unicode status markers.  Windows otherwise
+    # chooses a legacy code page for redirected subprocess streams, which makes
+    # the same shipping CLI fail as soon as a marker cannot be represented.
+    child_env["PYTHONUTF8"] = "1"
     p = subprocess.run([sys.executable] + args, cwd=cwd,
-                       capture_output=True, text=True, env=env)
+                       capture_output=True, text=True, encoding="utf-8", env=child_env)
     return p.returncode, p.stdout + p.stderr
 
 
@@ -52,7 +57,7 @@ def check(name, ok, detail=""):
 def claims_corpus(root, body):
     d = os.path.join(root, "docs", "info", "claims")
     os.makedirs(d)
-    with open(os.path.join(d, "001-a-claim.md"), "w") as f:
+    with open(os.path.join(d, "001-a-claim.md"), "w", encoding="utf-8") as f:
         f.write("---\nid: C001\nkind: claim\nstatus: holds\ntags: widget\n---\n"
                 "\n## Claim\n\n%s\n" % body)
 
@@ -60,7 +65,7 @@ def claims_corpus(root, body):
 def issues_corpus(root, title):
     d = os.path.join(root, "docs", "issues")
     os.makedirs(d)
-    with open(os.path.join(d, "0001-a-bug.md"), "w") as f:
+    with open(os.path.join(d, "0001-a-bug.md"), "w", encoding="utf-8") as f:
         f.write("---\nid: 1\ntitle: %s\nstatus: open\nstate_items: S001\n"
                 "symptom: the widget emits a spurious frobnicator\n"
                 "tags: widget\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n"
@@ -70,9 +75,9 @@ def issues_corpus(root, title):
 def state_corpus(root, state="verified", state_id="S001"):
     docs = os.path.join(root, "docs")
     os.makedirs(os.path.join(docs, "issues"), exist_ok=True)
-    with open(os.path.join(docs, "project-goals.md"), "w") as f:
+    with open(os.path.join(docs, "project-goals.md"), "w", encoding="utf-8") as f:
         f.write("# Goals\n\n## G001 — Frobnication\n")
-    with open(os.path.join(docs, "project-state.md"), "w") as f:
+    with open(os.path.join(docs, "project-state.md"), "w", encoding="utf-8") as f:
         f.write(
             f"# Project state\n\n## Current focus\n\n**{state_id} — frobstate**\n\n"
             "## Capability inventory\n\n"
@@ -82,7 +87,9 @@ def state_corpus(root, state="verified", state_id="S001"):
             f"## State details and evidence\n\n### {state_id} — frobstate: {state}\n\n"
             "Evidence: observed a positive and negative frobnication.\n"
         )
-    with open(os.path.join(docs, "issues", "0001-frob.md"), "w") as f:
+    with open(
+        os.path.join(docs, "issues", "0001-frob.md"), "w", encoding="utf-8"
+    ) as f:
         f.write(
             f"---\nid: 1\ntitle: Frob\nstatus: open\nstate_items: {state_id}\n---\n"
         )

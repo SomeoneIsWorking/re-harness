@@ -777,9 +777,9 @@ def _deficits(before, after):
 
 
 def _run(tool, roadmap, argv):
-    env = dict(os.environ, RE_FRONTIER_ROADMAP=roadmap)
+    env = dict(os.environ, RE_FRONTIER_ROADMAP=roadmap, PYTHONUTF8="1")
     return subprocess.run([sys.executable, tool] + argv, env=env,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8")
 
 
 def cmd_selftest(entries, order, args):

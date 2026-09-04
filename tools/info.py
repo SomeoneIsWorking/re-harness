@@ -99,7 +99,7 @@ def next_id(d, prefix):
 
 
 def write(path, front, body):
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("---\n")
         for k, v in front.items():
             value = str(v)
@@ -108,7 +108,8 @@ def write(path, front, body):
 
 
 def parse(path):
-    txt = open(path).read()
+    with open(path, encoding="utf-8") as source:
+        txt = source.read()
     front, body = {}, txt
     if txt.startswith("---"):
         _, fm, body = txt.split("---", 2)
@@ -422,7 +423,7 @@ class LogCache:
             os.makedirs(d, exist_ok=True)
             import hashlib
             self.path = os.path.join(d, hashlib.sha1(os.path.abspath(root).encode()).hexdigest() + ".json")
-            with open(self.path) as f:
+            with open(self.path, encoding="utf-8") as f:
                 blob = json.load(f)
             if blob.get("heads") == heads:
                 self.data = blob.get("entries", {})
@@ -439,7 +440,7 @@ class LogCache:
         if not (self.path and self.dirty):
             return
         try:
-            with open(self.path, "w") as f:
+            with open(self.path, "w", encoding="utf-8") as f:
                 json.dump({"heads": self.heads, "entries": self.data}, f)
         except Exception:
             pass
@@ -771,7 +772,7 @@ def selftest():
             raise SystemExit(f"selftest: git {' '.join(args)} failed:\n{out}")
 
     def w(rel, text):
-        with open(os.path.join(work, rel), "w") as f:
+        with open(os.path.join(work, rel), "w", encoding="utf-8") as f:
             f.write(text)
 
     def commit(msg, when):
@@ -919,7 +920,9 @@ def selftest():
         if rc != 0 or not boundary.strip():
             fails.append("could not construct the shallow-history refusal control")
         else:
-            with open(os.path.join(work, ".git", "shallow"), "w") as f:
+            with open(
+                os.path.join(work, ".git", "shallow"), "w", encoding="utf-8"
+            ) as f:
                 f.write(boundary.splitlines()[0] + "\n")
             r4, _, reason4 = analyse_claims(work, use_cache=False)
             print(f"  shallow history                                 -> "
