@@ -21,8 +21,9 @@ during bring-up, but the product's execution boundary must remain explicit.
 ## Scaffold runtime ownership
 
 Create cohesive modules for CPU context, guest memory/address spaces, decoder/IR, host backend and
-code cache, interpreter fallback, platform services, native overrides, and the differential harness.
-The host entry point composes them. It does not implement them.
+code cache, platform services, native overrides, and the differential harness. A test-only
+interpreter may be a separate diagnostic module and target. The gameplay host entry point composes
+only product modules; it does not link or select the interpreter.
 
 The build contains only redistributable runtime code and metadata. Do not add an offline translator,
 generated-source directory, per-title emitted functions, or a build step that derives native code
@@ -44,11 +45,11 @@ locate the first divergence. See **dynarec-harness**.
 
 Start at the title entry point or a deterministic savestate boundary. Compile a bounded block,
 execute it, and prove its post-state against the oracle. Then expand coverage along reached control
-flow. Unsupported behavior may enter the interpreter through a measured fallback, but missing
-translation must be visible in counters and diagnostics.
+flow. Unsupported behavior fails with a precise guest PC; it does not silently enter the interpreter.
 
 Initialization is complete when the runtime consumes the user's binary directly, produces at least
-one proven translated block, and the harness reports the measured scope and fallback denominator.
+one proven translated block, and build/link/selector checks prove that the gameplay target contains
+no interpreter or fallback.
 
 ## Enter the port loop
 

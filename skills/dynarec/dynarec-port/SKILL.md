@@ -16,7 +16,7 @@ not generate C/C++, compile per-title guest source, or depend on a pre-generated
 ## Focused skills
 
 - **dynarec-init** — starting a runtime-translated port and its verification scaffold.
-- **dynarec-runtime** — block lookup, decoding, lowering, code caching, invalidation, and fallback.
+- **dynarec-runtime** — block lookup, decoding, lowering, code caching, and invalidation.
 - **dynarec-overrides** — handwritten native behavior selected by guest address at runtime.
 - **dynarec-harness** — differential verification against a reference emulator.
 
@@ -27,10 +27,12 @@ title-owned policy. The user's binary remains data. At runtime:
 
 `guest PC → cache lookup → decode/lower missing block → emit host code → execute → return to dispatcher`
 
-An interpreter may execute cold, privileged, or unsupported paths, but it must share the same
-CPU state, memory accessors, exception model, and service boundary as translated blocks. Static
-analysis may produce reviewable symbols or non-executable metadata; it must not produce guest
-function bodies or another title-specific source corpus.
+The shipping emulated-runtime path is the dynarec/JIT. An interpreter may serve as an oracle or
+bring-up engine only in a separate test/diagnostic target; the gameplay product must neither link nor
+select it and contains no fallback. The test oracle may share the canonical CPU state, memory
+accessors, exception model, and service boundary. Static analysis may produce reviewable symbols or
+non-executable metadata; it must not produce guest function bodies or another title-specific source
+corpus.
 
 ## Migration from generated-source recompilers
 
@@ -38,15 +40,15 @@ Replace the execution owner before deleting evidence:
 
 1. Put the existing CPU state, memory, imports/syscalls, and native-override dispatch behind a
    runtime interface independent of generated functions.
-2. Route one measured guest region through the dynarec and compare it against the existing
+2. Route one reached guest region through the dynarec and compare it against the existing
    oracle. Keep the old leg only as temporary migration evidence, never as a shipping fallback.
 3. Expand runtime coverage until the intended title path no longer links generated guest code.
 4. Remove generators, generated-source build rules, seed manifests used only by code generation,
    generated-output documentation, and stale plans in the same project milestone.
 
 Do not preserve a compatibility mode that can silently select the old pipeline. A migration is
-complete only when a fresh clone builds and launches from the user-supplied binary without an
-offline translation step.
+complete only when a fresh clone builds and launches the native/dynarec hybrid from the user-supplied
+binary without an offline translation step or interpreter fallback.
 
 ## Core loop
 

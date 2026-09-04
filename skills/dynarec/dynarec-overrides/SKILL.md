@@ -17,9 +17,10 @@ Register overrides in one address-keyed table consulted before ordinary translat
 selection explicit and observable. Adding or toggling an override must not regenerate guest code or
 rebuild a title-specific source corpus.
 
-Keep the ordinary dynarec/interpreter path available behind a diagnostic toggle until the faithful
-override is proven. This provides same-binary A/B evidence without retaining any static-generated
-function body.
+Keep the ordinary dynarec path available behind a diagnostic toggle until the faithful override is
+proven. A separate test target may also compare against an interpreter oracle; the gameplay product
+must not link or select that interpreter. This provides same-binary A/B evidence without retaining
+any static-generated function body.
 
 ## Required contracts
 

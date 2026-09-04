@@ -2,7 +2,7 @@
 name: dynarec-harness
 description: >-
   Differentially verify a dynamic-recompiler/JIT port against a reference emulator: deterministic
-  lockstep state comparison, first-divergence diagnosis, translation/fallback coverage, cache
+  lockstep state comparison, first-divergence diagnosis, translation coverage, cache
   invalidation tests, headless runs, and frame or audio evidence.
 ---
 
@@ -19,14 +19,16 @@ trusted emulator oracle from the same state and stops at the first meaningful di
   exceptions/service events, audio state, and presented frames.
 - Report the first divergent guest PC, boundary, region, expected value, and actual value.
 
-The runtime leg must include its real dispatcher, decoder, lowered blocks, cache, invalidation, and
-fallback. A helper that separately evaluates instructions is not evidence for the product.
+The runtime leg must include its real dispatcher, decoder, lowered blocks, cache, and invalidation.
+A helper that separately evaluates instructions is not evidence for the product.
 
 ## Make execution coverage visible
 
-Every run reports translated block executions, cache hits/misses, invalidations, interpreter
-fallbacks, native overrides, and total relevant boundaries. Include denominators. A run that never
-executes translated code must fail a JIT-specific gate even if it matches the oracle.
+Every product run reports translated block executions, cache hits/misses, invalidations, native
+overrides, and total relevant boundaries. Include denominators. A run that never executes translated
+code must fail a JIT-specific gate even if it matches the oracle. A separate interpreter-oracle test
+reports its own entries; a gameplay gate instead inspects the build, link, and engine selector to
+prove that no interpreter is present in the product at all.
 
 Add discriminators that must exercise both a cache hit and a retranslation after guest code changes.
 Validate that the instrumentation can report the opposite result before trusting a clean run.
