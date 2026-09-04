@@ -70,6 +70,28 @@ def points_to(target, source):
     return target.is_symlink() and target.resolve() == source
 
 
+def managed_skill_link(target):
+    if not target.is_symlink():
+        return False
+    try:
+        target.resolve(strict=False).relative_to(SKILLS.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def stale_skill_links(root, skills):
+    if not root.is_dir():
+        return ()
+    current = {name: source.resolve() for name, source in skills.items()}
+    return tuple(
+        target
+        for target in root.iterdir()
+        if managed_skill_link(target)
+        and (target.name not in current or target.resolve(strict=False) != current[target.name])
+    )
+
+
 def link_file(target, source, replace, allowed_parents):
     target.parent.mkdir(parents=True, exist_ok=True)
     if points_to(target, source):
@@ -106,6 +128,10 @@ def install(home, replace):
     changed = 0
     for root in roots:
         root.mkdir(parents=True, exist_ok=True)
+        for target in stale_skill_links(root, skills):
+            target.unlink()
+            print(f"UNLINK stale canonical skill {target}")
+            changed += 1
         for name, source in skills.items():
             target = root / name
             if points_to(target, source):
@@ -144,6 +170,8 @@ def check(home):
     roots = skill_destinations(home)
     problems = []
     for root in roots:
+        for target in stale_skill_links(root, skills):
+            problems.append(f"{target}: stale canonical skill link")
         for name, source in skills.items():
             target = root / name
             if not points_to(target, source):

@@ -6,9 +6,9 @@ description: >-
   anchor functions, and (when the target is a remake/re-port of a game you already have
   decompiled) use that source as a Rosetta stone to align + diff + port the divergences. Use
   when reverse-engineering or porting a game's logic from its binary (any arch: ARM/MIPS/PPC/
-  x86), especially a remake whose original has a community decomp. Complements the recomp-*
-  skills (which statically recompile the WHOLE binary); this one selectively decompiles +
-  re-implements. Bundles a reusable headless decompile script (DecompDump.py).
+  x86), especially a remake whose original has a community decomp. Complements runtime guest
+  execution by selectively decompiling and re-implementing owned behavior. Bundles a reusable
+  headless decompile script (DecompDump.py).
 ---
 
 # Ghidra decompilation & behavior-porting pipeline
@@ -17,13 +17,13 @@ Reusable across projects/games. The job: a stripped game binary → readable C f
 you care about → re-implemented natively in your engine, verified against ground truth. This is
 the "porting machine." Game/arch specifics below are PARAMETERS — fill them per target.
 
-## When this vs recomp-*
-- **recomp-port / recomp-recompiler** — statically recompile the ENTIRE binary into emitted C that
-  runs (whole-game port). Generated code is sacrosanct.
-- **decomp-port (this)** — selectively DECOMPILE specific functions/subsystems and RE-IMPLEMENT them
-  as your own native C (e.g. port one actor's behavior into an existing PC port, or build a clean
-  reference implementation). They compose: a decompiled function is exactly what `recomp-overrides`
-  hand-writes as an override.
+## When this vs runtime guest execution
+
+- **dynarec-port / dynarec-runtime** — execute the complete guest binary through an interpreter or
+  on-demand dynamic translator.
+- **decomp-port (this)** — selectively decompile specific functions or subsystems and re-implement
+  them as maintained native code. They compose: a recovered function can become a
+  `dynarec-overrides` implementation while every unowned guest path stays executable at runtime.
 
 ## 0. Get the code image (per platform)
 Extract the executable and know its **load base** (so `file_offset = vaddr − load_base`).
@@ -31,7 +31,7 @@ Extract the executable and know its **load base** (so `file_offset = vaddr − l
   `0x00100000`. N64: the ROM's code segments (MIPS, base from the boot/entry). GC/Wii: DOL/REL
   (PPC). PS2: ELF. Verify the image against **live emulator RAM** at a few addresses if you have an
   oracle — a wrong base or bad decompression poisons everything downstream.
-- Keep the image OUT of git (it's ROM-derived). ROMs stay external (see recomp-port provisioning).
+- Keep the image OUT of git (it's ROM-derived). ROMs stay external (see dynarec-port provisioning).
 
 ## 1. Import + auto-analyze in Ghidra headless
 Ghidra is the only reliable function-boundary + C decompiler for stripped, mixed-mode binaries
@@ -102,7 +102,7 @@ Re-decompiling is cheap; iterate (rename a struct/type in the project, re-dump).
 ## 3. Find anchors — where to start decompiling
 You rarely want all N thousand functions; you want the ones behind a behavior. Locate them by:
 - **Live oracle (best):** read the object/actor's function pointers from emulator RAM (its
-  update/draw/init handlers) — those vaddrs ARE the functions to decompile. (See recomp-harness for
+  update/draw/init handlers) — those vaddrs ARE the functions to decompile. (See dynarec-harness for
   standing up an oracle: scriptable RAM read/write + input + screenshot.)
 - **Strings:** `__FILE__` assert strings / log format strings name the source file + line; xref
   them to bound a translation unit's functions. NB many toolchains emit these PC-relative (ADR),
@@ -125,7 +125,7 @@ Keep a durable `addr ↔ reference-name` map as you go.
 Port each function into your engine's types, then VERIFY against ground truth before claiming it
 works: frame-accurate RAM/behavior compare vs the live oracle, or bit-exact vs the reference. Never
 mark "ported/fixed" on a vibe — that mark gets falsified by playtest. Faithful port first; PC-native
-enhancements only on a proven-faithful base (see recomp-port "faithful first, then enhance").
+enhancements only on a proven-faithful base (see dynarec-port "faithful first, then enhance").
 
 ## Gotchas
 - Ghidra types are guesses: `undefined4`/`int` everywhere. Define the real struct once in the

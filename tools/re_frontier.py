@@ -717,7 +717,7 @@ measured any more.
 
 ## Frontier
 
-### RE-00 — Provision + statically recompile the executable
+### RE-00 — Provision + map the executable
 - status: re-verified
 - deps:
 - where-2: a hand-added field this tool has no schema for; INST-14 recorded one being deleted

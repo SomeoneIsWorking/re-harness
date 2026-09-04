@@ -11,9 +11,9 @@ not break; its scope is now broader than reverse engineering.
 |---|---|
 | `instructions/` | One global instruction authority for every supported agent |
 | `skills/global/` | Any long-lived project or repository |
-| `skills/port/` | Game-port architecture, independent of recomp/decomp strategy |
+| `skills/port/` | Game-port architecture, independent of guest execution strategy |
 | `skills/re/` | Ground-truth recovery from binaries, assets, emulators, or engines |
-| `skills/recomp/` | Whole-binary static-recompiler workflows |
+| `skills/dynarec/` | Runtime interpretation, dynamic translation, overrides, and differential verification |
 | `tools/` | One authoritative implementation of reusable CLIs |
 | `tests/` | Positive and negative controls for the shared instruments |
 

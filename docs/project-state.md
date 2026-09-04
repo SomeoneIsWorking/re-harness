@@ -16,9 +16,9 @@ None. The initial convergence capability set is verified.
 | ID | Capability or outcome | State | Factual dependency | Goals |
 |---|---|---|---|---|
 | S001 | Project-agnostic skills are packaged under the global scope | verified | — | G001, G002 |
-| S002 | Port architecture guidance is usable without the recomp stack | verified | S001 | G002 |
-| S003 | Reverse-engineering skills are grouped independently of recomp methodology | verified | S001 | G002 |
-| S004 | Static-recompiler-only skills are grouped under an explicit recomp scope | verified | S001 | G002 |
+| S002 | Port architecture guidance is usable without the dynarec stack | verified | S001 | G002 |
+| S003 | Reverse-engineering skills are grouped independently of runtime-execution methodology | verified | S001 | G002 |
+| S004 | Dynamic guest-execution skills replace the removed generated-source methodology | verified | S001 | G002 |
 | S005 | Reusable CLIs have canonical implementations and stable compatibility entry points | verified | S001 | G003 |
 | S006 | Codex, Claude, and generic agent homes converge instructions, skills, and tools through safe relative links | verified | S001, S002, S003, S004, S005 | G001, G002, G003 |
 | S007 | The shared tools and installer have positive and negative verification controls | verified | S005, S006 | G001, G003 |
@@ -35,17 +35,18 @@ installer discovery checks pass.
 ### S002 — Port skill independence: verified
 
 Evidence: `skills/port/game-port-structure/` owns host-side port architecture
-without depending on static recompilation, and the package validator passes.
+without depending on dynamic translation, and the package validator passes.
 
 ### S003 — RE skill independence: verified
 
 Evidence: `skills/re/` owns selective decompilation, Ghidra plumbing, ordered RE
 frontier work, and UE3 pass recovery; every package validates independently.
 
-### S004 — Recomp scope: verified
+### S004 — Dynamic guest-execution scope: verified
 
-Evidence: `skills/recomp/` contains only whole-binary static-recompiler
-methodology and its focused stages; every package validates independently.
+Evidence: `skills/dynarec/` contains runtime translation, initialization,
+override, and differential-verification guidance; the former generated-source
+skill family is absent and every replacement package validates independently.
 
 ### S005 — Canonical tools and compatibility: verified
 
