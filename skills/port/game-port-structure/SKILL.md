@@ -1,35 +1,45 @@
 ---
 name: game-port-structure
-description: Structure or refactor a game-port project using Dusklight as the default architecture reference. Use when creating a port, adding a host subsystem, reorganizing a port, integrating UI/input/rendering/audio/configuration, or when a port entry point or subsystem is becoming monolithic.
+description: Structure or refactor a game-port project around cohesive responsibility owners and explicit dependency boundaries. Use when creating a port, adding a host subsystem, reorganizing a port, integrating UI/input/rendering/audio/configuration, or when a port entry point or subsystem is becoming monolithic.
 ---
 
 # Game Port Structure
 
-Use Dusklight as the default reference for host-side ownership and composition. Resolve it through
-`${DUSKLIGHT_REPO}` or the workspace's documented shared-repository registry. If neither identifies
-the checkout, ask for its location instead of assuming a home-directory layout. Read its current
-source tree before designing a non-trivial host subsystem; do not rely on a remembered snapshot.
+There is no reference game whose tree defines the architecture. Start from the target's verified
+behavior, platform/runtime boundaries, language, lifecycle, and product requirements. The target's
+codemap is the placement authority; the principles below define the reusable structure standard.
 
-Copy boundaries and ownership patterns, not platform-specific implementations or names. Dusklight's
-Aurora/WebGPU RmlUi backend, for example, is not an SDL port's backend; the reusable pattern is that
-the backend, document/window, navigation, and binding model are separate owners.
+Choose boundaries where invariants, lifetime, dependency direction, platform coupling, test seams,
+or rates of change differ. Reusing a proven shared library is encouraged when it owns the exact
+contract, but copying another game's directory names or class layout is not design.
+
+For C++, stateful owners are focused classes with RAII lifetimes, explicit constructor dependencies,
+narrow public APIs, and composition. Pure transformations remain free functions or value types.
+Avoid inheritance-heavy frameworks, service locators, singleton registries, and classes that merely
+collect unrelated subsystems. In C, use an opaque context and cohesive module API to provide the same
+ownership without global state.
 
 ## Required workflow
 
 1. Read the target project's `AGENTS.md`, codemap, and existing subsystem tree.
-2. Read the corresponding current Dusklight subsystem and identify its ownership boundaries.
-3. Name the target project's modules and narrow interfaces before editing.
+2. Identify the behaviors, state, lifetimes, external dependencies, and test boundaries involved.
+3. Name the target project's responsibility owners, dependency direction, and narrow interfaces
+   before editing.
 4. Split a touched monolith at the relevant responsibility boundary before extending it.
 5. Keep the host entry point as composition only: construct owners, connect interfaces, run the loop,
    and shut down in reverse order.
 6. Put pure rules and state transitions behind testable seams; tests must exercise production logic.
-7. Add or tighten a mechanical structure gate. Use 1,200 lines as the default source-file cap and
+7. Route logging and configuration through their owners before extending a subsystem. Product code
+   never writes directly to stderr or reads the process environment; it receives a logger and typed
+   immutable configuration through its narrow interface.
+8. Add or tighten a mechanical structure gate. Use 1,200 lines as the default source-file cap and
    treat 2,000+ lines as critical extraction territory. Freeze oversized legacy files at their current
    line counts; lower a legacy cap whenever code is extracted. Never raise a cap just to land a
-   feature.
-8. Update the target project's codemap and `AGENTS.md` in the same change, recording how Dusklight's
-   pattern maps onto this port. If capability coverage changed, update `docs/project-state.md`
-   separately; the codemap records ownership and placement only.
+   feature. The same gate rejects forbidden dependency edges, direct stderr/debug output outside the
+   logger owner, and environment reads outside the configuration owner.
+9. Update the target project's codemap and `AGENTS.md` in the same change, recording the concrete
+   ownership and placement chosen for this port. If capability coverage changed, update
+   `docs/project-state.md` separately; the codemap records ownership and placement only.
 
 ## Shared port assets
 
@@ -130,7 +140,11 @@ Prefer cohesive peer subsystems such as:
 - `input`: device discovery, action bindings, mapping persistence, and game-facing state.
 - `ui`: backend adapter, document/window components, navigation, and view-model/capture state as
   separate units.
-- `config` or `save`: storage mechanics only; feature owners define meaning and defaults.
+- `save`: persistent game-state storage mechanics only; feature owners define meaning and defaults.
+- `config`: the only owner of environment/CLI/file ingestion, precedence, validation, and typed
+  immutable configuration. Other owners receive only the configuration fields they use.
+- `logging`: the only product diagnostic sink/filter/format boundary. C++20 ports use Lucent; product
+  modules never call stderr, platform debug-print APIs, or ad-hoc logger macros directly.
 - `overrides` or `game`: native game behavior, separate from host platform translation.
 
 One class or module owns one cohesive concept and its invariants. Avoid `Utils`, `Manager`, `Common`,
@@ -143,6 +157,8 @@ Before landing, verify:
 - The normal launcher reaches the intended product path.
 - New behavior is reachable through its real user-facing path, not a hidden feature flag.
 - The structure checker passes and reports exact files/counts on failure.
+- The structure checker rejects a seeded forbidden dependency, direct stderr write, and out-of-owner
+  environment access; its exact-file allowlist does not grow in the change.
 - Unit tests cover pure policies and a focused end-to-end run covers integration.
 - Package tests reject embedded game content and exercise direct-file, nested-ZIP, duplicate-match,
   unsafe-path, incomplete-install, and over-budget selections through the shipping setup owner.
@@ -154,6 +170,6 @@ Before landing, verify:
 - The codemap names each new owner, interface, and current or intended location.
 - Project state records any verified, partial, blocked, or missing capability change and its evidence.
 
-If a direct Dusklight pattern conflicts with the target's renderer, platform, language, or verified game
-behavior, keep the ownership boundary and adapt the implementation. Record that decision rather than
-forcing incompatible code into the port.
+Do not force a generic module list onto a target whose verified behavior needs a different split.
+Record the actual owner and dependency direction in the codemap, and keep every exception narrow,
+named, and mechanically testable.

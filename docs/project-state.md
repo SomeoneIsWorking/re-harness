@@ -35,7 +35,8 @@ installer discovery checks pass.
 ### S002 — Port skill independence: verified
 
 Evidence: `skills/port/game-port-structure/` owns host-side port architecture
-without depending on dynamic translation, and the package validator passes.
+without depending on dynamic translation or another game repository, and the
+package validator passes.
 
 ### S003 — RE skill independence: verified
 
