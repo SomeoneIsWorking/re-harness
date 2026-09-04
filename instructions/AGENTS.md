@@ -590,6 +590,12 @@ USER 2026-09-04: "I'm not going to do any more code generation style static reco
 
 USER 2026-09-04: "To be clear I don't want ANY interpreter when playing a game, interpreter can only be used in testing"
 
+USER 2026-09-04: "Okay then I'll allow you doing what DuckStation does"
+
+USER 2026-09-04: "For all projects, not just PSX"
+
+USER 2026-09-04: "And uh weaker consoles like NES/GBA/Amiga can be interpreter, sorry I forgot about them"
+
 USER 2026-09-04: "But delete static recomp first (remember break-first)"
 
 USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
@@ -598,10 +604,22 @@ USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
   remaining guest function executes through an on-demand dynamic recompiler/JIT. Do not translate
   guest code offline or at install time into C, C++, object files, or another title-specific
   executable corpus.
-- **Interpreters are test-only.** They may diagnose JIT semantics or provide an oracle in a separate
-  test/diagnostic target. A gameplay build must not link an interpreter, expose a product selector
-  for one, or contain any interpreter fallback. Zero observed fallback entries is insufficient when
-  the forbidden path is still present in the product.
+- **Gameplay is dynarec-first with only a DuckStation-style bounded interpreter fallback.** Every
+  cold executable block is offered to the JIT first. The gameplay runtime may interpret a block only
+  after the shipping JIT explicitly reports that the block cannot be compiled or fetched safely; it
+  must record the reason, guest PC, block/instruction counts, and return to JIT dispatch afterward.
+  Do not use interpretation as a first profiling pass, while compiling asynchronously, as the normal
+  cold-cache path, or as a hidden substitute for an unfinished host backend.
+- **Interpreter-only execution remains diagnostic.** A selectable interpreter mode belongs behind an
+  explicit test/diagnostic option and is never the zero-argument/default product. A run dominated by
+  fallback, a run with zero translated blocks, or a measured-interpreter FMV/boot run is not dynarec
+  gameplay, compatibility, or performance evidence.
+- **Low-power console ports may deliberately ship an interpreter.** NES, GBA, Amiga, and a comparable
+  8/16-bit target explicitly classified that way in its project goals may use a maintained interpreter
+  as the default CPU execution owner. It still composes with native host and title subsystems, keeps
+  generated-source execution absent, and must qualify representative interactive gameplay—not boot,
+  logos, FMV, or menus—on every released OS/architecture pair. Do not apply this exception to PSX,
+  x86, Xbox 360, or another target merely because its dynarec is incomplete.
 - **A runtime-populated translation cache is allowed; a prebuilt substrate is not.** Cache entries
   are optional, disposable runtime data keyed to the exact guest image, runtime version, host
   architecture, and semantic configuration. A fresh install must be able to execute by dynamically
@@ -619,10 +637,11 @@ USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
   overrides, platform HLE, rendering, audio, input, saves, and RE evidence survive when they are
   independent of generated functions. Rename and re-own them where old vocabulary hides that
   boundary.
-- **The runtime must make its work measurable.** Report translated-block executions, cache hits and
-  misses, invalidations, test-oracle entries, and native overrides with denominators. A gameplay
-  gate requires nonzero dynarec execution plus a build/link/selector check proving no interpreter is
-  present in the product.
+- **The runtime must make its work measurable.** Report translated block/instruction executions,
+  cache hits and misses, invalidations, native overrides, and fallback block/instruction entries by
+  reason, all with denominators. A gameplay gate requires nonzero dynarec execution and explicit
+  fallback accounting; it must fail if the intended discriminator was reached only by interpretation
+  or if an unbounded/default interpreter selector is available.
 - **Self-modifying and runtime-loaded code is a cache-invalidation contract, not a discovery list.**
   Guest writes, overlays, bank switches, DMA, address-space changes, and relevant cache-control
   operations invalidate affected translations before reuse. Do not replace runtime correctness with
@@ -631,9 +650,9 @@ USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
   framework must provide a real AArch64 dynarec backend for both hosts before claiming ARM64
   support. Qualify their executable-memory allocation/protection transitions, instruction-cache
   coherence, host ABI transitions, signals/exceptions, packaging, and representative gameplay
-  separately; code-generation unit tests or success on one OS do not prove the other. A missing
-  host backend is an explicit unsupported capability, never permission to link or select an
-  interpreter.
+  separately; code-generation unit tests or success on one OS do not prove the other. A missing host
+  backend is an explicit unsupported capability, never permission to run the product primarily in
+  the interpreter or claim ARM64 dynarec support from fallback execution.
 
 ## Engine migrations preserve the existing game source
 

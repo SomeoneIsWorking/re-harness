@@ -21,14 +21,15 @@ during bring-up, but the product's execution boundary must remain explicit.
 Declare host backends as concrete OS/architecture pairs. ARM64 projects include both Apple Silicon
 macOS and Android arm64-v8a unless the project explicitly excludes one; design executable-memory,
 instruction-cache, ABI, and exception boundaries so each can be verified independently without an
-interpreter fallback.
+interpreter standing in for a missing host backend.
 
 ## Scaffold runtime ownership
 
 Create cohesive modules for CPU context, guest memory/address spaces, decoder/IR, host backend and
-code cache, platform services, native overrides, and the differential harness. A test-only
-interpreter may be a separate diagnostic module and target. The gameplay host entry point composes
-only product modules; it does not link or select the interpreter.
+code cache, platform services, native overrides, bounded fallback, and the differential harness.
+The default gameplay entry point always selects the dynarec. An interpreter-only mode is a separate
+diagnostic target or explicit diagnostic option; gameplay may reach the interpreter only through the
+reason-coded bounded fallback contract.
 
 The build contains only redistributable runtime code and metadata. Do not add an offline translator,
 generated-source directory, per-title emitted functions, or a build step that derives native code
@@ -50,11 +51,13 @@ locate the first divergence. See **dynarec-harness**.
 
 Start at the title entry point or a deterministic savestate boundary. Compile a bounded block,
 execute it, and prove its post-state against the oracle. Then expand coverage along reached control
-flow. Unsupported behavior fails with a precise guest PC; it does not silently enter the interpreter.
+flow. An unsupported or unsafe block either fails with a precise guest PC or enters the bounded
+fallback with that PC, an explicit reason, and block/instruction counters. It never falls back
+silently.
 
 Initialization is complete when the runtime consumes the user's binary directly, produces at least
-one proven translated block, and build/link/selector checks prove that the gameplay target contains
-no interpreter or fallback.
+one proven translated block, and proves ordinary cold blocks compile before execution. Report
+fallback entries with denominators and prove the discriminator was not reached only by interpretation.
 
 ## Enter the port loop
 

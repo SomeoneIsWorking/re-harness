@@ -24,11 +24,12 @@ A helper that separately evaluates instructions is not evidence for the product.
 
 ## Make execution coverage visible
 
-Every product run reports translated block executions, cache hits/misses, invalidations, native
-overrides, and total relevant boundaries. Include denominators. A run that never executes translated
-code must fail a JIT-specific gate even if it matches the oracle. A separate interpreter-oracle test
-reports its own entries; a gameplay gate instead inspects the build, link, and engine selector to
-prove that no interpreter is present in the product at all.
+Every product run reports translated block/instruction executions, cache hits/misses, invalidations,
+native overrides, fallback block/instruction entries by reason, and total relevant boundaries.
+Include denominators. A run that never executes translated code, reaches the discriminator only by
+fallback, or is dominated by interpretation must fail a JIT-specific gate even if it matches the
+oracle. A separate interpreter-only oracle reports its entries independently; gameplay gates also
+inspect the default engine selector and bounded fallback entry edges.
 
 Add discriminators that must exercise both a cache hit and a retranslation after guest code changes.
 Validate that the instrumentation can report the opposite result before trusting a clean run.
