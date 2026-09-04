@@ -655,7 +655,7 @@ vendored copy that silently wins is the exact failure this split exists to end
 |---|---|
 | `shared/re-harness` | canonical portable skills grouped as global, port, RE, and dynarec; shared information/validation tools live once under `tools/`. Project DATA stays in each project. |
 | `shared/port-assets` | the art ports keep redrawing: Xbox 360 gamepad glyphs, keyboard key caps. SVG, scalable, with a legibility check at the target size. |
-| `shared/alchemy` | the Alchemy engine layer (IGB, XMLB, ARK) shared by the Marvel/X-Men titles. |
+| `shared/alchemy` | intended common Alchemy engine layer for X-Men 2 and Marvel: Ultimate Alliance. Today it contains research utilities, parsers, and viewers rather than a proven shared runtime; X-Men 2 must establish the first real engine boundaries, and MUA consumes them only after those contracts exist. |
 | `shared/jit-common` | guest-ISA-neutral executable-memory and runtime block-cache primitives shared only after two frameworks prove the same need. |
 | `shared/x86port` | the x86-32 runtime execution framework; it owns product JIT execution and separately built test-oracle interpretation while consumers own title policy until a second consumer proves a lower shared boundary. |
 | `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent remains the runtime owner. |
