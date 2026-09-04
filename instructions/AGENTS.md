@@ -431,7 +431,16 @@ USER 2026-08-31: "new global rule, scratch is used for replacement of /tmp, buil
   erase a compiler cache or dependency prefix needed by another active task.
 - **One configurable logger per project, one line per call site, never wrapped in an `if`.** In C++20
   or newer that logger is `lucent` (`github.com/SomeoneIsWorking/lucent`, MIT, the user's) — extend it
-  rather than working around it. Never scatter gated prints (`if (dbg) fprintf(…)`).
+  rather than working around it. Product and runtime modules do not call `printf`, `fprintf(stderr,
+  ...)`, `std::cerr`, platform debug-print APIs, or ad-hoc logging macros. The logger implementation
+  and one pre-logger fatal-startup adapter are the only permitted output boundaries. Never scatter
+  gated prints (`if (dbg) fprintf(…)`); the configured logger owns filtering, sinks, and levels.
+- **Environment variables enter through one configuration owner.** Product subsystems never call
+  `getenv`, `std::getenv`, or platform environment APIs. The configuration/bootstrap module reads
+  permitted environment overrides once, validates and converts them into a typed immutable config,
+  and passes the relevant slice to each owner. Environment names, defaults, precedence, persistence,
+  CLI overrides, and validation have one source of truth; a new environment read elsewhere is an
+  architecture violation, not a convenience.
 
 USER 2026-08-30: "Agents used scratch directories too agressively and didn't care for disk size, now stale files take up much space, clean them up a bit and then make rules for this"
 
@@ -606,18 +615,33 @@ USER 2026-08-31: "when that isn't possible you can transpile using a tool but in
   transpilation cannot preserve it. Engine-shaped code may be rewritten at that boundary; portable
   game code must not be recreated merely because a new host is being built.
 
-USER 2026-08-14: "Dusklight is in ~/repo/dusklight, you should know this, it should be in the global guide for porting projects to follow"
+## Game-port structure is defined by owned responsibilities
 
-- **Use `~/repo/dusklight` as the default structure and UI reference for game-port
-  projects**, even when its source platform or guest execution strategy differs. Consult its current
-  tree before designing host organization, configuration, presentation, input, audio, saves,
-  diagnostics, or UI.
-- Follow the ownership pattern, not names copied mechanically: the host entry point composes cohesive
-  modules; each subsystem owns its state and implementation; UI components live separately from
-  engine and platform code. A large port-specific `main.cpp`, numbered split files, or a replacement
-  god class does not follow Dusklight.
-- Record the reference and the resulting ownership decisions in the port's own `AGENTS.md` and
-  codemap. The global pointer prevents rediscovery; project-local docs state how the pattern applies.
+- **No project is the global architecture template.** Design each port from its verified behavior,
+  platform boundaries, language, and product requirements. Do not inspect or copy another game
+  project merely to obtain a default directory or class layout.
+- **The port's codemap is its structure authority.** It names each cohesive responsibility, current
+  and intended location, public entry point, and dependency direction. Update it in the same change
+  that adds, moves, splits, or re-owns a subsystem.
+- **Entry points compose; subsystems implement.** Keep lifecycle/orchestration separate from guest
+  execution, platform/window events, rendering, audio, input/action policy, UI, configuration,
+  persistence, provisioning, diagnostics, and title-native behavior. Each owner holds its own state
+  and exposes a narrow interface.
+- **Use object-oriented boundaries deliberately in C++.** Represent stateful owners and their
+  invariants as focused classes with RAII lifetimes, explicit constructor dependencies, narrow public
+  APIs, and composition instead of inheritance-heavy frameworks or service locators. Pure algorithms
+  remain free functions or value types. In C, use the equivalent opaque context plus cohesive module
+  interface; do not simulate classes with global state.
+- **Use the target's constraints to choose boundaries.** Shared vocabulary is useful, but identical
+  folder names are not an architecture. Split where invariants, lifetime, test seams, platform
+  dependencies, or rates of change differ; do not create forwarding layers or catch-all modules to
+  imitate a reference tree.
+- **The `game-port-structure` skill is the self-contained guide.** Projects record their own concrete
+  mapping in `AGENTS.md` and `docs/codemap.md`; they do not record conformance to another game.
+- **Structure is mechanically enforced.** The normal verifier checks source-file size/growth,
+  forbidden cross-layer dependencies, direct stderr/debug output outside the logger boundary, and
+  environment access outside the configuration owner. Allowlists name exact owning files and shrink
+  as legacy code is migrated; agents may not weaken, bypass, or broaden them to land a change.
 
 ## The shared repos, and what belongs in one
 
