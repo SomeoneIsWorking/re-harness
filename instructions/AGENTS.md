@@ -389,9 +389,16 @@ USER 2026-08-20: "Note in the global agents to use lucent for http server"
 
 USER 2026-08-21: "scripts like re_xref.sh should be python"
 
+USER 2026-09-04: "make sure all your scripts are in python and modular and DRY"
+
 - **Write project automation, verification, RE, maintenance, and migration tools in Python, not
   shell.** A shell wrapper around a Python tool is still a second interface and should be removed;
   give the Python entry point a shebang and executable bit when direct invocation matters.
+- **Python tooling is modular and DRY.** Keep CLI parsing and presentation at the entry point, put
+  reusable policy and operations in cohesive importable modules, inject filesystem/process/runtime
+  boundaries for tests, and maintain one source of truth for paths, schemas, validation, and state
+  transitions. Do not replace a shell monolith with one Python monolith or duplicate production
+  behavior inside a test helper.
 - **`./run.sh` is the deliberate exception.** It remains the stable zero-argument launcher required
   above, but delegates non-trivial discovery, build policy, provisioning, validation, and cleanup to
   Python tools rather than growing shell logic.
@@ -404,12 +411,17 @@ USER 2026-08-21: "scripts like re_xref.sh should be python"
 
 USER 2026-08-14: "Don't try to execute raw \"rm -rf\", codex blocks it, create a global rule against this, instead create cleanup scripts and use them"
 
+USER 2026-09-04: "You don't need a cleanup script, I asked for one because Claude Code blocks rm -rf on some cases"
+
 USER 2026-08-31: "new global rule, scratch is used for replacement of /tmp, builds don't go into scratch, they go into build dir"
 
-- **Never issue raw `rm` commands from a session, including `rm -f` and `rm -rf`.** Put cleanup in
-  a reviewed script with explicit scope checks, then invoke that script. For individual files, use
-  `~/.codex/bin/cleanup-files`; it refuses directories, missing paths, and targets outside the current
-  working tree. Repository-specific recurring cleanup belongs in that repository's `tools/` directory.
+- **Cleanup does not require a one-off script.** Resolve and validate every target first, keep the
+  command explicitly scoped to those exact paths, and never target a workspace root, home directory,
+  unresolved variable, or broad glob. Use `~/.codex/bin/cleanup-files` for individual files when
+  convenient. A recurring cleanup operation belongs as a reviewed modular Python tool under the
+  repository's `tools/`; do not manufacture and then delete a script merely to remove one audited
+  target. When an agent environment blocks a direct safe deletion, use the existing scoped tool or a
+  durable project cleanup command rather than weakening the scope.
 
 - **Never write run artifacts to `/tmp`** — RAM-backed tmpfs, ~6 GB per-user quota here, so logs fill
   it in a run or two and break *all* writes; diagnose "disk quota exceeded" with `quota -s`, not `df`.
