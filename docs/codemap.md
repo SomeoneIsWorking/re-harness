@@ -18,6 +18,7 @@ coverage in [`project-state.md`](project-state.md). This map owns placement only
 | Dynarec skills | Runtime guest execution, dynamic translation, overrides, and differential harness | `skills/dynarec/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | Project registries | This repository's epic intent, factual capability coverage, and ownership map | `docs/` | `project-goals.md`, `project-state.md`, `codemap.md` | — |
 | Shared tools | One authoritative implementation of reusable registry and hygiene CLIs, including complete-history enforcement for Git-derived claim evidence | `tools/` | individual Python/executable tools | `README.md` |
+| Source-boundary scanner | Data-driven tracked-tree traversal and deterministic source/path/shell-policy reporting; projects own their rule manifests | `tools/source_boundary.py` | `main`, `inspect_tree` | — |
 | Claim baseline time | Owns timezone-aware evidence timestamps and deterministic parsing of legacy baselines so operators and CI agree on staleness. | `tools/info_time.py` | `now_stamp()`, `timestamp_epoch()` | `README.md` |
 | Claim history preconditions | Refuses symbol-staleness conclusions when an indexed repository has shallow history | `tools/info_history.py` | `shallow_repositories()` | `README.md` |
 | Project brief sources | Search and render project goals, state, issues, codemap, frontier, and local trackers for the information brief | `tools/brief_sources.py` | `emit_external_sources()` | `README.md` |
