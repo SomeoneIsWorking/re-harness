@@ -11,6 +11,7 @@ Success conditions:
 - Installed entries and the `~/repo` instruction scope point back to this checkout instead of
   becoming independent copies.
 - The repository contains no dependency on one operator's absolute home path.
+- Linux, Windows, and macOS CI exercise the same portable tools from a full-history checkout.
 
 ## G002 — Applicability is explicit and composable
 
@@ -34,6 +35,7 @@ Success conditions:
 - Skill packages link to canonical tools rather than vendoring copies.
 - Existing root-level tool invocations continue to resolve.
 - Positive and negative controls exercise the shipping implementations.
+- Hosted checks invoke those same controls rather than duplicating their rules in workflow YAML.
 
 ## Constraints and non-goals
 
