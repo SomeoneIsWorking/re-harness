@@ -35,6 +35,17 @@ USER 2026-09-08: "All agents should know how to use it"
   profile. Check the actual browser capabilities needed by the task; DOM success does not prove
   WebGPU or WASM gameplay. Do not copy WebLua's stale temporary-path or personal-path examples.
 
+## Godot tool discovery
+
+USER 2026-09-08: "godot is in `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/` Note this globally and don't forget"
+
+- **On this host, check the user-provided Godot installation before declaring Godot unavailable.**
+  Prefer `GODOT_BIN` when set, then the executable in
+  `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/`, then other `~/dev/Godot*/` installations and
+  `PATH`. Keep the path home-relative and configurable; it is a discovery hint, not a project
+  prerequisite or a compiler/toolchain restriction. When no executable is found on Fedora, ask the
+  user to run `sudo dnf install godot` rather than attempting a privileged install.
+
 ## No bandaids — fix the actual cause (read this first)
 
 - **The root cause is the unit of work, not the symptom.** Name the cause before "fixing"; if you
