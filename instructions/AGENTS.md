@@ -19,6 +19,22 @@ USER 2026-08-30: "All global skills and instructions and tools should be under o
 - **Reusable executables live once under `tools/`.** Skill packages and compatibility entry points
   link to the canonical implementation. Project-specific data remains in the consuming project.
 
+## Browser automation with WebLua
+
+USER 2026-09-08: "weblua is SomeoneIsWorking/weblua (private, you can use gh), should be in \~/repo/weblua"
+
+USER 2026-09-08: "All agents should know how to use it"
+
+- **Use WebLua for browser automation and browser verification when the user requests it.**
+  Consult the discoverable `weblua` skill (`skills/global/weblua/SKILL.md` in this repository).
+  Before declaring browser verification unavailable because Chromium or a browser tool is missing,
+  check the installed WebLua binary and the `~/repo/weblua` checkout of the private
+  `SomeoneIsWorking/weblua` repository; use authenticated `gh` access if the checkout is absent.
+- **Keep browser sessions owned and isolated.** Run headless by default, use a dedicated loopback
+  port and a fixed project `scratch/weblua/` via `WEBLUA_DIR`, and never attach a personal browser
+  profile. Check the actual browser capabilities needed by the task; DOM success does not prove
+  WebGPU or WASM gameplay. Do not copy WebLua's stale temporary-path or personal-path examples.
+
 ## No bandaids — fix the actual cause (read this first)
 
 - **The root cause is the unit of work, not the symptom.** Name the cause before "fixing"; if you
@@ -653,6 +669,12 @@ USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
   separately; code-generation unit tests or success on one OS do not prove the other. A missing host
   backend is an explicit unsupported capability, never permission to run the product primarily in
   the interpreter or claim ARM64 dynarec support from fallback execution.
+- **WASM is a required maintenance frontier for migrated projects.** Every maintained project that is
+  part of or completed through JIT migration must expose a browser-capable WebAssembly path that
+  executes gameplay through the same shipping runtime/discovery path as desktop (dynarec-first,
+  bounded interpreter only as diagnostic fallback). The web target is included in release planning and
+  state inventory; if browser execution cannot currently preserve semantics, record it as blocked with an
+  explicit migration action and measurable acceptance criteria.
 
 ## Engine migrations preserve the existing game source
 

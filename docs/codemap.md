@@ -13,6 +13,7 @@ coverage in [`project-state.md`](project-state.md). This map owns placement only
 |---|---|---|---|---|
 | Global instructions | One portable policy authority shared by supported agents and the `~/repo` scope | `instructions/` | `instructions/AGENTS.md` | `README.md` |
 | Global skills | Project-agnostic goals, state, ownership, issues, information, publication, and process hygiene | `skills/global/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
+| WebLua guidance | Browser-session discovery, isolated automation, and evidence collection; implementation remains in the separate WebLua repository | `skills/global/weblua/` | `SKILL.md` | WebLua checkout's `README.md` and `server.go` |
 | Port skills | Host/game-port architecture independent of guest execution strategy | `skills/port/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | RE skills | Binary, asset, decompiler, frontier, and engine-pass reverse engineering | `skills/re/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
 | Dynarec skills | Runtime guest execution, dynamic translation, overrides, and differential harness | `skills/dynarec/` | each package's `SKILL.md` | [`skills/README.md`](../skills/README.md) |
