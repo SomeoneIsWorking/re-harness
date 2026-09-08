@@ -307,9 +307,18 @@ USER 2026-08-24: "Add a global rule that run.sh must be a slim shim to call pyth
 
 USER 2026-08-24: "And for Windows... I have no idea, I hate Windows :)"
 
+USER 2026-09-08: "run.sh opens the INTENDED path ... run.sh is for me, if you need multiple paths yourself, make another tool"
+
+- **`./run.sh` is the one user launcher for the project's intended target.** It has one zero-argument
+  product path and must not expose alternate products, legacy implementations, diagnostics, tests,
+  verification, or maintainer-only selectors as subcommands or flags. The project instructions and
+  goals identify which target it launches. Agents put additional launch modes and checks in separate
+  named Python tools or module entry points; they do not turn `run.sh` into an agent command router.
+
 - **A runnable project provides `./run.sh`, and no arguments launch its current intended product.**
   The default is the project's live development target, not a stock, vanilla, legacy, compatibility,
-  demo, diagnostic, or safest-looking path. Those remain available only under explicit names.
+  demo, diagnostic, or safest-looking path. Other paths remain available only through separate
+  explicitly named tools; they are not `run.sh` modes.
 - **Required target behavior is invariant, not an optional default value.** Extra user arguments may
   add or override genuinely optional settings but must not accidentally replace a required renderer,
   backend, entry point, asset pack, or launch mode. Build the required argument vector explicitly.
