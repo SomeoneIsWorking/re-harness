@@ -16,8 +16,10 @@ duplicating it.
     python3 tests/run.py
 """
 
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -31,6 +33,7 @@ os.makedirs(SCRATCH, exist_ok=True)
 sys.path.insert(0, TOOLS)
 import source_boundary  # noqa: E402
 import install_skills  # noqa: E402
+import cpp_policy  # noqa: E402
 
 
 def tempdir():
@@ -152,6 +155,82 @@ def main():
         len(bad_result) == 4,
         "\n".join(bad_result),
     )
+
+    tidy_checks = ",".join(sorted(cpp_policy.REQUIRED_TIDY_CHECKS))
+    tidy_config = (
+        f"Checks: '{tidy_checks}'\nWarningsAsErrors: '*'\n"
+        "  readability-braces-around-statements.ShortStatementLines: '0'\n"
+    )
+    format_config = "\n".join(
+        f"{name}: {value}" for name, value in cpp_policy.REQUIRED_FORMAT_SETTINGS.items()
+    )
+    fails += check("cpp_policy: accepts required effective Clang config",
+                   not cpp_policy.inspect_configs(tidy_config, format_config))
+    rejected = cpp_policy.inspect_configs(
+        tidy_config.replace("clang-diagnostic-*", "-*")
+        .replace("WarningsAsErrors: '*'", "WarningsAsErrors: ''"),
+        format_config.replace("InsertBraces: true", "InsertBraces: false"),
+    )
+    fails += check("cpp_policy: rejects disabled defaults and brace policy",
+                   len(rejected) >= 4, "\n".join(rejected))
+
+    # C++ ownership checks use the shipping Clang AST path, including headers.
+    clang = shutil.which("clang++")
+    fails += check("cpp_policy: Clang AST compiler available", clang is not None)
+    if clang:
+        with tempdir() as project:
+            good = os.path.join(project, "good.cpp")
+            bad = os.path.join(project, "bad.cpp")
+            c_source = os.path.join(project, "unrelated.c")
+            header = os.path.join(project, "api.h")
+            with open(good, "w", encoding="utf-8") as target:
+                target.write(
+                    "namespace demo { inline constexpr int limit = 2; "
+                    "class Worker { public: int run() { int value = limit; return value; } }; }\n"
+                    "int main() { demo::Worker worker; return worker.run() - 2; }\n"
+                )
+            with open(header, "w", encoding="utf-8") as target:
+                target.write("extern int shared;\n")
+            with open(c_source, "w", encoding="utf-8") as target:
+                target.write("int c_global(void) { return 0; }\n")
+            with open(bad, "w", encoding="utf-8") as target:
+                target.write(
+                    '#include "api.h"\n'
+                    "int x2_run() { static int count = 0; const int step = 1; return count + step; }\n"
+                    'extern "C" int platform_api(int value) { return value; }\n'
+                )
+            database = os.path.join(project, "compile_commands.json")
+            with open(database, "w", encoding="utf-8") as target:
+                json.dump([
+                    {
+                        "directory": project,
+                        "file": good,
+                        "arguments": [clang, "-std=c++20", "-c", good, "-o", "good.o"],
+                    },
+                    {
+                        "directory": project,
+                        "file": c_source,
+                        "arguments": [clang, "-c", c_source, "-o", "unrelated.o"],
+                    },
+                ], target)
+            command = [os.path.join(TOOLS, "cpp_policy.py"),
+                       "--compile-commands", database, "--root", project]
+            rc, output = run(command, project)
+            fails += check("cpp_policy: accepts namespaced class and entry point",
+                           rc == 0 and "scanned 1 translation units" in output
+                           and "0 violations" in output, output)
+            with open(database, "w", encoding="utf-8") as target:
+                json.dump([{
+                    "directory": project,
+                    "file": bad,
+                    "arguments": [clang, "-std=c++20", "-c", bad, "-o", "bad.o"],
+                }], target)
+            rc, output = run(command, project)
+            expected = ("api.h:1: extern declaration", "bad.cpp:2: global-namespace function",
+                        "bad.cpp:2: block-scope static", "bad.cpp:2: block-scope const")
+            fails += check("cpp_policy: rejects header extern and bad local ownership",
+                           rc == 1 and all(item in output for item in expected)
+                           and "platform_api" not in output, output)
 
     # --- cleanup-files: validate the whole explicit set before unlinking -----
     cleanup = os.path.join(TOOLS, "cleanup-files")

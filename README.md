@@ -51,6 +51,25 @@ no second mutable copy to drift.
 | `tools/cleanup-files` | How to remove an explicit set of in-tree files without partial cleanup |
 | `tools/safekill` | How to terminate an exact process without matching the calling shell |
 
+`tools/cpp_policy.py` checks first-party C++ global functions, `extern`
+declarations, and block-scope `static`/`const`/`constexpr` variables against
+Clang's AST from a real compile database. Invoke it from a project's normal
+verifier alongside clang-tidy and clang-format:
+
+```text
+python3 tools/cpp_policy.py --audit-config .
+python3 tools/cpp_policy.py --root . --compile-commands build/debug/compile_commands.json --exclude third_party
+```
+
+The config audit reads the effective `.clang-tidy` and `.clang-format` settings
+with the installed Clang tools and refuses disabled defaults or missing brace
+rules. It does not rewrite a project's policy.
+
+Use `--exclude` only for exact vendored/generated subtrees and `--allow-global`
+only for documented platform entry points; `main` and real `extern "C"`
+functions are recognized automatically. The tool reports the translation-unit
+and first-party file counts even when it finds no violations.
+
 Claim staleness needs complete Git history because its symbol evidence comes from `git log -L`.
 `tools/info.py claim check` refuses shallow repositories; CI checkouts must fetch full history (for
 `actions/checkout`, use `fetch-depth: 0`) rather than treating a shallow boundary as a code change.
