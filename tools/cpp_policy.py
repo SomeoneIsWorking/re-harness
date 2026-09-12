@@ -9,6 +9,7 @@ checks cannot reliably prohibit.
 import argparse
 import bisect
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -71,8 +72,8 @@ def audit_configs(project):
     if missing:
         return missing
     commands = (
-        ["clang-tidy", "--dump-config", f"--config-file={tidy}"],
-        ["clang-format", f"--style=file:{formatter}", "--dump-config"],
+        [os.environ.get("CLANG_TIDY", "clang-tidy"), "--dump-config", f"--config-file={tidy}"],
+        [os.environ.get("CLANG_FORMAT", "clang-format"), f"--style=file:{formatter}", "--dump-config"],
     )
     outputs = []
     for command in commands:
