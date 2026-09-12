@@ -53,6 +53,7 @@ weblua-ctl --port "$WEBLUA_PORT" status
 weblua-ctl --port "$WEBLUA_PORT" text
 weblua-ctl --port "$WEBLUA_PORT" eval 'document.title'
 weblua-ctl --port "$WEBLUA_PORT" click 'button[type=submit]'
+weblua-ctl --port "$WEBLUA_PORT" upload 'input[type=file]' "$PWD/build/inputs/test.zip"
 weblua-ctl --port "$WEBLUA_PORT" console --errors
 weblua-ctl --port "$WEBLUA_PORT" network --failed
 weblua-ctl --port "$WEBLUA_PORT" screenshot "$WEBLUA_DIR/current.png"
@@ -70,6 +71,10 @@ inspection paths. HTTP 200 alone is not success; check response error fields.
 
 - Inspect the actual DOM before choosing selectors. Prefer interactive
   observation and readiness conditions to fixed input timing.
+- Use `upload SELECTOR FILE` for a local browser file input. WebLua passes the
+  regular file to Chrome through CDP; the page can read it using the ordinary
+  File API. Keep user-supplied game files in ignored local storage and verify
+  that the application does not send them to a remote server.
 - Inspect saved screenshots with the image viewer. Console and failed-network
   reports complement pixels; neither proves a scenario reached gameplay.
 - For Lua scenarios, use `weblua-ctl lua <file> --wait` and inspect errors/status.
