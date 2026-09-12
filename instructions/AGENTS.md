@@ -211,6 +211,12 @@ USER 2026-09-04: "Use gh to create a remote, make it standard practice"
   Report a signing blocker only after discovery, CI use, and permitted key generation have been
   attempted and an exact remaining access, issuer, hardware, or platform constraint is known. Do
   not ask the user to select a debug or release key for ordinary agent work.
+- **Android signing uses the common Android framework.** Put reusable keystore input validation,
+  secure CI restoration/generation, `apksigner` discovery and output parsing, and APK signature
+  verification in `shared/android-port`. A title supplies its package identity, secret names,
+  intended release certificate fingerprint, and release/version policy through narrow inputs.
+  Extend the shared owner before adding another title-local implementation; migrate duplicated
+  signing mechanics when touching an existing Android consumer.
 
 ## No dangling work: the worktree is agent-owned
 
@@ -770,6 +776,23 @@ USER 2026-08-31: "when that isn't possible you can transpile using a tool but in
   environment access outside the configuration owner. Allowlists name exact owning files and shrink
   as legacy code is migrated; agents may not weaken, bypass, or broaden them to land a change.
 
+## A shared host framework, with SDL3 as an optional backend
+
+- **Grow common host capabilities in Lucent without making SDL3 mandatory.** Ports need reusable
+  lifecycle, storage, file selection, input, audio, rendering presentation, diagnostics, and package
+  interfaces across browser/WASM, Android, macOS, Windows, and Linux. Keep their contracts independent
+  of a particular title, guest CPU framework, graphics API, and SDL3. SDL3 is an adapter for ports
+  that use it, not the definition of the whole framework; a non-SDL3 Android target still consumes
+  the applicable shared host and Android build/device owners.
+- **Share proven semantics, keep backend differences explicit.** Put a capability in the common core
+  when its behavior and lifetime are the same across consumers. Put SDL3, native OS, browser, and
+  non-SDL3 engine integration behind narrow adapters when their event loops, rendering, audio, or
+  packaging contracts differ. Do not create a second game engine in each title, force a title onto
+  SDL3 to reuse unrelated Android mechanics, or replace its preserved gameplay source.
+- **Qualify each shipped host separately.** A shared API or successful desktop build does not prove
+  WASM, Android, macOS, Windows, or Linux runtime behavior. Record backend and platform coverage in
+  each project's state inventory, and exercise the actual shipped path on each claimed target.
+
 ## The shared repos, and what belongs in one
 
 `shared/` holds what more than one project needs. These are **consumed, not
@@ -992,7 +1015,9 @@ USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when 
   platform requires them. Both paths must document the exact user-supplied asset and the supported
   reset/reselection behavior.
 - **Android platform mechanics have one shared owner.** Use this boundary for every Android port;
-  `shared/android-port` and Lucent are peers, not alternative homes for the same code:
+  `shared/android-port` and Lucent are peers, not alternative homes for the same code. The SDL3
+  Activity and SDL runtime staging apply only to SDL3 consumers; the common build, signing, package,
+  and device contracts must also serve non-SDL3 Android consumers:
 
   | owner | owns | does not own |
   |---|---|---|
@@ -1008,8 +1033,9 @@ USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when 
   either shared mechanic into a game Activity or build script. **PSX, X-Men 2, and LF2 Android work
   must all consume these same Lucent and `shared/android-port` owners; an agent may not create a
   project-local Android support library, Gradle/package helper, dependency prefix, Activity base, or
-  emulator contract for one of those ports.** Extend the shared owner and update every consumer when
-  a common capability is missing.
+  emulator contract for one of those ports.** Apply the same placement rule to signing and every
+  other title-neutral Android build, package, and device operation. Extend the shared owner and
+  update every consumer when a common capability is missing.
 - **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
   an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
   `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
