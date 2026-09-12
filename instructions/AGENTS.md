@@ -768,6 +768,11 @@ every path it tried rather than falling back to an in-tree copy. A stale
 vendored copy that silently wins is the exact failure this split exists to end
 — nine forked copies of one tool had drifted into seven versions before it.
 
+The narrow exception is `shared/android-port`: it may vendor Lucent at a pinned revision for
+logging, configuration, and focused DRY helpers. Keep the vendored source identifiable and update
+it from Lucent rather than maintaining divergent implementations. This permission does not require
+vendoring and does not move Activity, SAF, lifecycle, build, package, or device ownership into Lucent.
+
 | Repo | Holds |
 |---|---|
 | `shared/re-harness` | canonical portable skills grouped as global, port, RE, and dynarec; shared information/validation tools live once under `tools/`. Project DATA stays in each project. |
@@ -930,6 +935,14 @@ An agent must be able to press inputs, read state, take screenshots, and measure
 - **Hosted checks may exercise only redistributable runtime code and synthetic fixtures.** A green
   decoder or cache test is useful engineering evidence but never title-conformance evidence. Local
   release tooling owns the real-input gate and produces an asset-free package.
+- **Major updates publish real platform packages in a GitHub Release.** For each applicable shipping
+  platform, attach the verified, asset-free product artifact: the project's supported Windows
+  installer or packaged application, a downloadable archive or disk image containing the macOS
+  `.app`, the Linux AppImage, and the signed Android APK. A CI build or workflow artifact alone is
+  not a release package. Record a platform omission and its exact reason in `docs/project-state.md`;
+  do not claim support from a cross-build or fabricate a placeholder artifact. WebAssembly is the
+  exception: publish its browser package only through the sibling `~/repo/pages` deployment path
+  above, not as a separate source-project Pages site or GitHub Release asset.
 - **Every project release updates its Pages entry.** In the same release task, add or refresh the
   project's listing in `~/repo/pages`: source and live links, description, release-relevant media,
   and the generated intended-feature snapshot from the project's canonical `docs/project-state.md`.
