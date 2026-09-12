@@ -739,11 +739,13 @@ you need, extend it — and a tool without a doc update is unfinished.
 
 ## A shared port framework is separate from Lucent
 
-- **Lucent is a helper library, not the port framework or a game engine.** Its core owns reusable
-  infrastructure such as logging, layered configuration, and the local HTTP control/probing channel.
-  Optional cohesive utilities already there, such as paths, ZIP handling, file access, touch routing,
-  and Android import helpers, remain utilities; their presence does not make Lucent the owner of
-  application lifecycle, rendering, audio, or cross-platform game orchestration.
+- **Lucent is a helper library, not an Android framework, port framework, or game engine.** It owns
+  logging, layered configuration, and focused title-neutral helpers such as local HTTP transport,
+  paths, content identity, ZIP handling, file access, and platform-neutral touch routing. It does
+  not own Android Activities, Storage Access Framework grants or staging, lifecycle, contact
+  acquisition, insets, rendering, audio, or application orchestration. Move existing Android runtime
+  mechanics out of Lucent into the Android platform owner instead of treating their presence as an
+  architectural precedent.
 - **Build a common host framework through proven port contracts.** Ports need reusable lifecycle,
   input, audio, rendering presentation, storage integration, and packaging across browser/WASM,
   Android, macOS, Windows, and Linux. Keep that framework distinct from Lucent and from a title's
@@ -776,7 +778,7 @@ vendored copy that silently wins is the exact failure this split exists to end
 | `shared/x360port` | intended title-neutral Xbox 360 runtime framework over Xenia's dynarecs: authenticated XEX mapping, CPU/thread contexts, Xbox services/devices, raw Xenos/XMA boundaries, typed imports, runtime overrides, original calls, invalidation, and explicit singleton constraints. Gears and MUA are first-class consumers. |
 | `shared/x360ue3` | intended independently authored UE3-on-Xbox-360 integration over `x360port`: versioned engine ABI descriptions, UE3 RHI semantics, binding schemas, and engine object/resource/thread/frame lifetime. It never owns a title's addresses, hashes, pass roster, gameplay, navigation, saves, or application composition. |
 | `shared/ue3` | developer reference material only, never a source, build, runtime, packaging, or distribution dependency for a clean port. Independently authored shared code belongs in the appropriate clean framework such as `x360ue3`; do not copy the reference checkout into it. |
-| `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent supplies optional runtime utilities, not the Android engine. |
+| `shared/android-port` | Android Activity/SAF runtime adapters, deterministic build/package plumbing, and the shared `codex_shared_api35` emulator contract. Lucent remains an optional helper dependency, not the Android framework. |
 
 **If you write something a second project will want, put it in `shared/` the
 first time, not the second.** The second time is when a fork already exists.
@@ -961,30 +963,28 @@ An agent must be able to press inputs, read state, take screenshots, and measure
   SDL3 ports use the Activity/Storage Access Framework path and persist URI permissions when the
   platform requires them. Both paths must document the exact user-supplied asset and the supported
   reset/reselection behavior.
-- **Android platform mechanics have one shared owner.** Use this boundary for every Android port;
-  `shared/android-port` and Lucent are peers, not alternative homes for the same code. The SDL3
-  Activity and SDL runtime staging apply only to SDL3 consumers; the common build, signing, package,
-  and device contracts must also serve non-SDL3 Android consumers:
+- **Android platform mechanics belong in `shared/android-port`.** Its SDL3 Activity and SDL runtime
+  staging apply only to SDL3 consumers; common build, signing, package, SAF, and device contracts
+  must also serve non-SDL3 Android consumers. Lucent is a helper dependency only when a consumer
+  needs one of its focused utilities:
 
   | owner | owns | does not own |
   |---|---|---|
-  | **Lucent** | optional title-neutral utilities used inside an APK: SDL Activity adapter mechanics, app-private user-data handoff, persisted SAF grants and bounded staging, raw touch-contact capture/cancellation, insets/window helpers, and ZIP safety | application/engine lifecycle and composition, a title's game-file identity, touch meaning/layout, package identity, or build toolchain policy |
-  | **`shared/android-port`** | deterministic build and device mechanics: pinned Gradle/AGP/NDK inputs, the reusable Android native-dependency prefix (its source revisions, cross-CMake configuration, install contract and manifest), `libmain`/SDL/NDK runtime staging, APK inspection/signature checks, and the shared emulator lock/AVD policy | an Activity's runtime behavior, title JNI semantics, player setup wording, or game input policy |
-  | **consuming title** | package/application identity, complete-install validation and publication after Lucent staging succeeds, native entry composition, title JNI bridge, touch actions/layout/art, orientation, and release-performance evidence | copied shared Activity, SAF, archive, prefix-builder, Gradle/NDK, staging, or emulator code |
+  | **Lucent** | optional title-neutral logging, configuration, HTTP, paths, content identity, ZIP/file helpers, and platform-neutral touch routing | Activity/SAF mechanics, app lifecycle, Android contact acquisition/insets, build policy, or title behavior |
+  | **`shared/android-port`** | shared Android Activity and SAF adapters, persisted read grants, bounded private staging, raw contact/inset handoff, pinned Gradle/AGP/NDK inputs, native-dependency prefix, `libmain`/SDL/NDK runtime staging, APK inspection/signing, and emulator policy | title identity, player setup wording, game input meaning, rendering, or engine lifecycle |
+  | **consuming title** | package/application identity, complete-install validation and publication after Android staging succeeds, native entry composition, title JNI bridge, touch actions/layout/art, orientation, and release-performance evidence | copied shared Activity, SAF, prefix-builder, Gradle/NDK, staging, or emulator mechanics |
 
   The Android dependency prefix is build input rather than runtime behavior, so it belongs in
-  `shared/android-port` even when Lucent links against it. A title consumes the prefix through its
+  `shared/android-port`. A title consumes the prefix through its
   documented CMake interface; it does not fetch SDL, SDL_image, FreeType, or an equivalent common
-  dependency itself. Put a missing reusable utility in Lucent only when it fits an existing Lucent
-  responsibility; put a missing deterministic build/package/device capability in
-  `shared/android-port` first. Application lifecycle, rendering, audio, and engine composition do
-  not move into Lucent merely because multiple ports need them. Do not copy or fork
-  either shared mechanic into a game Activity or build script. **PSX, X-Men 2, and LF2 Android work
-  must all consume these same Lucent and `shared/android-port` owners; an agent may not create a
-  project-local Android support library, Gradle/package helper, dependency prefix, Activity base, or
-  emulator contract for one of those ports.** Apply the same placement rule to signing and every
-  other title-neutral Android build, package, and device operation. Extend the shared owner and
-  update every consumer when a common capability is missing.
+  dependency itself. Put a missing reusable helper in Lucent only when it fits its focused library
+  contract; put Android runtime/build/package/device mechanics in `shared/android-port`. Application
+  lifecycle, rendering, audio, and engine composition stay with their host or title owners. Do not
+  copy shared mechanics into a game Activity or build script. **PSX, X-Men 2, and LF2 Android work
+  must consume the same `shared/android-port` owner; Lucent is used only for its applicable helpers.
+  An agent may not create a project-local Android support library, Gradle/package helper, dependency
+  prefix, Activity base, or emulator contract for one of those ports.** Extend the shared owner and
+  update its consumers when a common capability is missing.
 - **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
   an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
   `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
@@ -997,8 +997,8 @@ An agent must be able to press inputs, read state, take screenshots, and measure
   shared default is API 21: it is the first API level available to 64-bit Android ABIs and supports
   scoped SAF file selection. Compile and target SDKs may stay current. Raising a title's minimum API
   needs a concrete runtime dependency and an evidence-backed explanation; newer platform calls stay
-  behind runtime guards in Lucent or the title. Build native dependency prefixes per API and ABI so a
-  lower-floor test or release cannot overwrite a newer-floor build.
+  behind runtime guards in `shared/android-port` or the title. Build native dependency prefixes per
+  API and ABI so a lower-floor test or release cannot overwrite a newer-floor build.
 - **CMake ports with large or generated translation-unit corpora use Ninja, not Unix Makefiles.**
   Makefiles conservatively rebuild every object after a CMake reconfigure because regenerated
   `flags.make` becomes newer than the corpus; Ninja compares actual compiler commands and preserves
