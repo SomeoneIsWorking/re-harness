@@ -22,6 +22,7 @@ TOOL_NAMES = (
     "catalog.py",
     "cleanup-files",
     "codemap.py",
+    "cpp_policy.py",
     "go_public.py",
     "info.py",
     "project_state.py",
