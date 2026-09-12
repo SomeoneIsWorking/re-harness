@@ -776,14 +776,18 @@ USER 2026-08-31: "when that isn't possible you can transpile using a tool but in
   environment access outside the configuration owner. Allowlists name exact owning files and shrink
   as legacy code is migrated; agents may not weaken, bypass, or broaden them to land a change.
 
-## A shared host framework, with SDL3 as an optional backend
+## A shared port framework is separate from Lucent
 
-- **Grow common host capabilities in Lucent without making SDL3 mandatory.** Ports need reusable
-  lifecycle, storage, file selection, input, audio, rendering presentation, diagnostics, and package
-  interfaces across browser/WASM, Android, macOS, Windows, and Linux. Keep their contracts independent
-  of a particular title, guest CPU framework, graphics API, and SDL3. SDL3 is an adapter for ports
-  that use it, not the definition of the whole framework; a non-SDL3 Android target still consumes
-  the applicable shared host and Android build/device owners.
+- **Lucent is a helper library, not the port framework or a game engine.** Its core owns reusable
+  infrastructure such as logging, layered configuration, and the local HTTP control/probing channel.
+  Optional cohesive utilities already there, such as paths, ZIP handling, file access, touch routing,
+  and Android import helpers, remain utilities; their presence does not make Lucent the owner of
+  application lifecycle, rendering, audio, or cross-platform game orchestration.
+- **Build a common host framework through proven port contracts.** Ports need reusable lifecycle,
+  input, audio, rendering presentation, storage integration, and packaging across browser/WASM,
+  Android, macOS, Windows, and Linux. Keep that framework distinct from Lucent and from a title's
+  gameplay or guest CPU. SDL3 may be one adapter, not a required foundation; non-SDL3 Android ports
+  still reuse the applicable shared Android build/device mechanics and Lucent utilities they need.
 - **Share proven semantics, keep backend differences explicit.** Put a capability in the common core
   when its behavior and lifetime are the same across consumers. Put SDL3, native OS, browser, and
   non-SDL3 engine integration behind narrow adapters when their event loops, rendering, audio, or
@@ -811,7 +815,7 @@ vendored copy that silently wins is the exact failure this split exists to end
 | `shared/x360port` | intended title-neutral Xbox 360 runtime framework over Xenia's dynarecs: authenticated XEX mapping, CPU/thread contexts, Xbox services/devices, raw Xenos/XMA boundaries, typed imports, runtime overrides, original calls, invalidation, and explicit singleton constraints. Gears and MUA are first-class consumers. |
 | `shared/x360ue3` | intended independently authored UE3-on-Xbox-360 integration over `x360port`: versioned engine ABI descriptions, UE3 RHI semantics, binding schemas, and engine object/resource/thread/frame lifetime. It never owns a title's addresses, hashes, pass roster, gameplay, navigation, saves, or application composition. |
 | `shared/ue3` | developer reference material only, never a source, build, runtime, packaging, or distribution dependency for a clean port. Independently authored shared code belongs in the appropriate clean framework such as `x360ue3`; do not copy the reference checkout into it. |
-| `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent remains the runtime owner. |
+| `shared/android-port` | deterministic Android build/package plumbing and the shared `codex_shared_api35` emulator contract. Lucent supplies optional runtime utilities, not the Android engine. |
 
 **If you write something a second project will want, put it in `shared/` the
 first time, not the second.** The second time is when a fork already exists.
@@ -1021,15 +1025,17 @@ USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when 
 
   | owner | owns | does not own |
   |---|---|---|
-  | **Lucent** | title-neutral code that executes in the APK: SDL Activity lifecycle, app-private user-data handoff, persisted SAF grants and bounded staging, raw touch-contact capture/cancellation, insets/window lifecycle, and ZIP safety | a title's game-file identity, touch meaning/layout, package identity, or build toolchain policy |
+  | **Lucent** | optional title-neutral utilities used inside an APK: SDL Activity adapter mechanics, app-private user-data handoff, persisted SAF grants and bounded staging, raw touch-contact capture/cancellation, insets/window helpers, and ZIP safety | application/engine lifecycle and composition, a title's game-file identity, touch meaning/layout, package identity, or build toolchain policy |
   | **`shared/android-port`** | deterministic build and device mechanics: pinned Gradle/AGP/NDK inputs, the reusable Android native-dependency prefix (its source revisions, cross-CMake configuration, install contract and manifest), `libmain`/SDL/NDK runtime staging, APK inspection/signature checks, and the shared emulator lock/AVD policy | an Activity's runtime behavior, title JNI semantics, player setup wording, or game input policy |
   | **consuming title** | package/application identity, complete-install validation and publication after Lucent staging succeeds, native entry composition, title JNI bridge, touch actions/layout/art, orientation, and release-performance evidence | copied shared Activity, SAF, archive, prefix-builder, Gradle/NDK, staging, or emulator code |
 
   The Android dependency prefix is build input rather than runtime behavior, so it belongs in
   `shared/android-port` even when Lucent links against it. A title consumes the prefix through its
   documented CMake interface; it does not fetch SDL, SDL_image, FreeType, or an equivalent common
-  dependency itself. Put a missing title-neutral runtime capability in Lucent first; put a missing
-  deterministic build/package/device capability in `shared/android-port` first. Do not copy or fork
+  dependency itself. Put a missing reusable utility in Lucent only when it fits an existing Lucent
+  responsibility; put a missing deterministic build/package/device capability in
+  `shared/android-port` first. Application lifecycle, rendering, audio, and engine composition do
+  not move into Lucent merely because multiple ports need them. Do not copy or fork
   either shared mechanic into a game Activity or build script. **PSX, X-Men 2, and LF2 Android work
   must all consume these same Lucent and `shared/android-port` owners; an agent may not create a
   project-local Android support library, Gradle/package helper, dependency prefix, Activity base, or
