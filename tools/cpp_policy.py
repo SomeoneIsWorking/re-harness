@@ -14,6 +14,7 @@ import re
 import shlex
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 
@@ -32,6 +33,9 @@ REQUIRED_FORMAT_SETTINGS = {
     "AllowShortLambdasOnASingleLine": "None",
     "InsertBraces": "true",
 }
+JSON_SPACE = re.compile(r"\s+")
+JSON_STRING_MARKER = re.compile(r'["\\]')
+JSON_SCALAR_END = re.compile(r"[,\]}\s]")
 
 
 def settings(text):
@@ -118,45 +122,246 @@ def first_party(source, root, excluded):
     return not any(source == item or source.is_relative_to(item) for item in excluded)
 
 
-def inspect_ast(tree, main_source, directory, root, excluded=(), allowed_globals=()):
-    """Return stable (path, line, rule, symbol) findings and visited source files."""
-    findings = set()
-    visited = set()
-    last_file = main_source
-    line_cache = {}
-    entry_points = ENTRY_POINTS | set(allowed_globals)
+def top_level_const(qualified_type):
+    """Distinguish a const object/pointer from a pointer or reference to const."""
+    without_templates = []
+    template_depth = 0
+    for char in qualified_type:
+        if char == "<":
+            template_depth += 1
+        elif char == ">" and template_depth:
+            template_depth -= 1
+        elif not template_depth:
+            without_templates.append(char)
+    spelling = "".join(without_templates)
+    if "&" in spelling:
+        return False
+    pointer = spelling.rfind("*")
+    object_suffix = spelling[pointer + 1:] if pointer >= 0 else spelling
+    if pointer >= 0:
+        object_suffix = object_suffix.split(")", 1)[0]
+    return re.search(r"\bconst\b", object_suffix) is not None
 
-    def walk(node, ancestors):
-        nonlocal last_file
-        if not isinstance(node, dict):
-            return
-        last_file, location = source_path(node.get("loc"), directory, last_file)
-        source = last_file
+
+class AstRecorder:
+    """Keep only rule findings and source provenance while visiting AST nodes."""
+
+    def __init__(self, main_source, directory, root, excluded, allowed_globals):
+        self.findings = set()
+        self.visited = set()
+        self.last_file = main_source
+        self.directory = directory
+        self.root = root
+        self.excluded = excluded
+        self.entry_points = ENTRY_POINTS | set(allowed_globals)
+        self.line_cache = {}
+
+    def record(self, node, ancestors):
+        self.last_file, location = source_path(node.get("loc"), self.directory, self.last_file)
+        source = self.last_file
         kind = node.get("kind", "")
-        if first_party(source, root, excluded) and location.get("offset") is not None:
-            visited.add(source)
-            line = line_number(location, source, line_cache)
+        if first_party(source, self.root, self.excluded) and location.get("offset") is not None:
+            self.visited.add(source)
+            line = line_number(location, source, self.line_cache)
             symbol = node.get("name", "")
-            scopes = set(ancestors)
-            c_boundary = "LinkageSpecDecl" in scopes
+            c_boundary = "LinkageSpecDecl" in ancestors
             if not node.get("isImplicit"):
                 if node.get("storageClass") == "extern" and not (c_boundary and kind == "FunctionDecl"):
-                    findings.add((source, line, "extern declaration", symbol))
-                if kind == "FunctionDecl" and not c_boundary and symbol not in entry_points:
-                    if not scopes.intersection({"NamespaceDecl", "CXXRecordDecl", "ClassTemplateDecl", "RecordDecl"}):
-                        findings.add((source, line, "global-namespace function", symbol))
-                if kind == "VarDecl" and scopes.intersection(FUNCTION_KINDS | {"LambdaExpr"}):
+                    self.findings.add((source, line, "extern declaration", symbol))
+                if kind == "FunctionDecl" and not c_boundary and symbol not in self.entry_points:
+                    if not ancestors.intersection({"NamespaceDecl", "CXXRecordDecl", "ClassTemplateDecl", "RecordDecl"}):
+                        self.findings.add((source, line, "global-namespace function", symbol))
+                if kind == "VarDecl" and ancestors.intersection(FUNCTION_KINDS | {"LambdaExpr"}):
                     if node.get("storageClass") == "static":
-                        findings.add((source, line, "block-scope static", symbol))
-                    qualifier = node.get("type", {}).get("qualType", "")
-                    if node.get("constexpr") or re.search(r"\bconst\b", qualifier):
-                        findings.add((source, line, "block-scope const", symbol))
-        child_ancestors = (*ancestors, kind)
-        for child in node.get("inner", ()):
-            walk(child, child_ancestors)
+                        self.findings.add((source, line, "block-scope static", symbol))
+                    type_info = node.get("type", {})
+                    qualifier = type_info.get("desugaredQualType", type_info.get("qualType", ""))
+                    if node.get("constexpr") or top_level_const(qualifier):
+                        self.findings.add((source, line, "block-scope const", symbol))
 
-    walk(tree, ())
-    return findings, visited
+
+class JsonStream:
+    """Parse Clang's large AST incrementally without retaining child subtrees."""
+
+    def __init__(self, source):
+        self.source = source
+        self.buffer = ""
+        self.position = 0
+
+    def peek(self):
+        while self.position == len(self.buffer):
+            self.buffer = self.source.read(65536)
+            self.position = 0
+            if not self.buffer:
+                return ""
+        return self.buffer[self.position]
+
+    def take(self):
+        char = self.peek()
+        if char:
+            self.position += 1
+        return char
+
+    def space(self):
+        while self.peek():
+            match = JSON_SPACE.match(self.buffer, self.position)
+            if match is None:
+                return
+            self.position = match.end()
+
+    def expect(self, expected):
+        self.space()
+        actual = self.take()
+        if actual != expected:
+            raise ValueError(f"malformed Clang AST JSON: expected {expected!r}, got {actual!r}")
+
+    def string(self, capture=True):
+        self.expect('"')
+        raw = ['"'] if capture else None
+        while True:
+            if not self.peek():
+                raise ValueError("truncated Clang AST JSON string")
+            match = JSON_STRING_MARKER.search(self.buffer, self.position)
+            if match is None:
+                if raw is not None:
+                    raw.append(self.buffer[self.position:])
+                self.position = len(self.buffer)
+                continue
+            end = match.start()
+            if raw is not None:
+                raw.append(self.buffer[self.position:end + 1])
+            marker = self.buffer[end]
+            self.position = end + 1
+            if marker == '"':
+                return json.loads("".join(raw)) if raw is not None else None
+            escaped = self.take()
+            if not escaped:
+                raise ValueError("truncated Clang AST JSON escape")
+            if raw is not None:
+                raw.append(escaped)
+
+    def scalar(self, capture=True):
+        self.space()
+        if self.peek() == '"':
+            return self.string(capture)
+        chars = []
+        while self.peek():
+            match = JSON_SCALAR_END.search(self.buffer, self.position)
+            end = len(self.buffer) if match is None else match.start()
+            if capture:
+                chars.append(self.buffer[self.position:end])
+            self.position = end
+            if match is not None:
+                break
+        if not chars:
+            if capture:
+                raise ValueError("malformed Clang AST JSON scalar")
+            return None
+        return json.loads("".join(chars))
+
+    def object(self):
+        self.expect("{")
+        result = {}
+        self.space()
+        if self.peek() == "}":
+            self.take()
+            return result
+        while True:
+            key = self.string()
+            self.expect(":")
+            result[key] = self.value()
+            self.space()
+            marker = self.take()
+            if marker == "}":
+                return result
+            if marker != ",":
+                raise ValueError("malformed Clang AST JSON object")
+
+    def value(self):
+        self.space()
+        if self.peek() == "{":
+            return self.object()
+        return self.scalar()
+
+    def skip(self):
+        self.space()
+        marker = self.peek()
+        if marker == '"':
+            self.string(capture=False)
+        elif marker and marker in "{[":
+            end = "}" if marker == "{" else "]"
+            self.take()
+            self.space()
+            if self.peek() == end:
+                self.take()
+                return
+            while True:
+                self.skip()
+                self.space()
+                separator = self.take()
+                if separator == end:
+                    return
+                if separator not in {",", ":"}:
+                    raise ValueError("malformed Clang AST JSON container")
+        else:
+            self.scalar(capture=False)
+
+
+def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowed_globals=()):
+    """Return findings and visited files from a bounded-memory Clang JSON stream."""
+    stream = JsonStream(source)
+    recorder = AstRecorder(main_source, directory, root, excluded, allowed_globals)
+
+    def walk(ancestors):
+        stream.expect("{")
+        node = {}
+        recorded = False
+        stream.space()
+        if stream.peek() == "}":
+            stream.take()
+            recorder.record(node, ancestors)
+            return
+        while True:
+            key = stream.string()
+            stream.expect(":")
+            if key == "inner":
+                recorder.record(node, ancestors)
+                recorded = True
+                stream.expect("[")
+                stream.space()
+                if stream.peek() != "]":
+                    child_ancestors = ancestors | {node.get("kind", "")}
+                    while True:
+                        stream.space()
+                        if stream.peek() == "{":
+                            walk(child_ancestors)
+                        else:
+                            stream.skip()
+                        stream.space()
+                        if stream.peek() != ",":
+                            break
+                        stream.take()
+                stream.expect("]")
+            elif key in {"kind", "loc", "name", "type", "storageClass", "constexpr", "isImplicit"}:
+                if recorded:
+                    raise ValueError("Clang AST metadata followed child nodes")
+                node[key] = stream.value()
+            else:
+                stream.skip()
+            stream.space()
+            marker = stream.take()
+            if marker == "}":
+                if not recorded:
+                    recorder.record(node, ancestors)
+                return
+            if marker != ",":
+                raise ValueError("malformed Clang AST JSON node")
+
+    walk(frozenset())
+    stream.space()
+    if stream.peek():
+        raise ValueError("Clang AST JSON has trailing content")
+    return recorder.findings, recorder.visited
 
 
 def compile_arguments(entry):
@@ -173,9 +378,9 @@ def compile_arguments(entry):
     for argument in arguments[1:]:
         if skip_next:
             skip_next = False
-        elif argument in {"-o", "-MF", "-MT", "-MQ", "/Fo"}:
+        elif argument in {"-o", "-MF", "-MT", "-MQ", "/Fo", "/Fd"}:
             skip_next = True
-        elif argument in {"-c", "-MMD", "-MD", "-MP"} or argument.startswith("/Fo"):
+        elif argument in {"-c", "/c", "-MMD", "-MD", "-MP"} or argument.startswith(("/Fo", "/Fd")):
             continue
         else:
             filtered.append(argument)
@@ -199,14 +404,40 @@ def check_database(database, root, excluded=(), allowed_globals=()):
             continue
         units += 1
         command = compile_arguments(entry)
-        result = subprocess.run(command, cwd=directory, capture_output=True, text=True)
-        if result.returncode:
-            raise RuntimeError(f"AST compile failed for {source}:\n{result.stderr.strip()}")
+        process = subprocess.Popen(
+            command, cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        stderr_tail = []
+
+        def drain_stderr():
+            while chunk := process.stderr.read(65536):
+                stderr_tail.append(chunk)
+                if len(stderr_tail) > 2:
+                    stderr_tail.pop(0)
+
+        stderr_reader = threading.Thread(target=drain_stderr)
+        stderr_reader.start()
         try:
-            tree = json.loads(result.stdout)
-        except json.JSONDecodeError as error:
+            current, files = inspect_ast_stream(
+                process.stdout, source, directory, root, excluded, allowed_globals
+            )
+        except (ValueError, json.JSONDecodeError) as error:
+            if process.poll() is None:
+                process.kill()
+            returncode = process.wait()
+            stderr_reader.join()
+            if returncode and stderr_tail:
+                raise RuntimeError(
+                    f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}"
+                ) from error
             raise RuntimeError(f"Clang emitted no readable AST for {source}: {error}") from error
-        current, files = inspect_ast(tree, source, directory, root, excluded, allowed_globals)
+        finally:
+            process.stdout.close()
+        returncode = process.wait()
+        stderr_reader.join()
+        if returncode:
+            raise RuntimeError(f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}")
         findings.update(current)
         visited.update(files)
         visited.add(source)

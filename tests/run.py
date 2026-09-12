@@ -17,6 +17,7 @@ duplicating it.
 """
 
 import json
+import io
 import os
 import re
 import shutil
@@ -173,6 +174,25 @@ def main():
     )
     fails += check("cpp_policy: rejects disabled defaults and brace policy",
                    len(rejected) >= 4, "\n".join(rejected))
+    clang_cl_args = cpp_policy.compile_arguments({"arguments": [
+        "clang-cl", "/TP", "/c", "/Foobj\\unit.obj", "/Fdobj\\unit.pdb",
+        "-c", "unit.cpp",
+    ]})
+    fails += check(
+        "cpp_policy: clang-cl AST scan drops output flags",
+        clang_cl_args == ["clang-cl", "/TP", "unit.cpp", "-fsyntax-only", "-Xclang", "-ast-dump=json"],
+        repr(clang_cl_args),
+    )
+    fails += check(
+        "cpp_policy: distinguishes top-level const from pointee const",
+        all(cpp_policy.top_level_const(value) for value in (
+            "const int", "int const", "int *const", "std::vector<const int> const",
+            "int (*const)(const int)",
+        )) and not any(cpp_policy.top_level_const(value) for value in (
+            "const int *", "const int &", "std::vector<const int>", "const int **",
+            "int (*)(const int)",
+        )),
+    )
 
     # C++ ownership checks use the shipping Clang AST path, including headers.
     clang = shutil.which("clang++")
@@ -187,7 +207,9 @@ def main():
                 target.write(
                     "namespace demo { inline constexpr int limit = 2; "
                     "class Worker { public: int run() { int value = limit; return value; } }; }\n"
-                    "int main() { demo::Worker worker; return worker.run() - 2; }\n"
+                    "int main() { demo::Worker worker; const int* ptr = nullptr; "
+                    "const int& ref = demo::limit; (void)ptr; (void)ref; "
+                    "return worker.run() - 2; }\n"
                 )
             with open(header, "w", encoding="utf-8") as target:
                 target.write("extern int shared;\n")
@@ -231,6 +253,64 @@ def main():
             fails += check("cpp_policy: rejects header extern and bad local ownership",
                            rc == 1 and all(item in output for item in expected)
                            and "platform_api" not in output, output)
+
+        streamed_ast = (
+            '{"kind":"TranslationUnitDecl","inner":['
+            '{"kind":"FunctionDecl","name":"sample","loc":{"file":"sample.cpp","offset":0},'
+            '"inner":[{"kind":"VarDecl","name":"value",'
+            '"loc":{"offset":15},"type":{"qualType":"const int"},'
+            '"ignored":"' + ("x" * 262144) + '"}]}]}'
+        )
+        with tempdir() as project:
+            source = os.path.join(project, "sample.cpp")
+            with open(source, "w", encoding="utf-8") as target:
+                target.write("void sample() { const int value = 1; }\n")
+            stream_findings, stream_files = cpp_policy.inspect_ast_stream(
+                io.StringIO(streamed_ast),
+                cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
+            )
+            fails += check(
+                "cpp_policy: streams large ignored AST fields with source ancestry",
+                any(rule == "block-scope const" and symbol == "value"
+                    for _, _, rule, symbol in stream_findings)
+                and cpp_policy.Path(source) in stream_files,
+                repr(stream_findings),
+            )
+            try:
+                cpp_policy.inspect_ast_stream(
+                    io.StringIO('{"kind":"TranslationUnitDecl","inner":['),
+                    cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
+                )
+            except ValueError as error:
+                truncated_error = str(error)
+            else:
+                truncated_error = ""
+            fails += check(
+                "cpp_policy: refuses truncated AST instead of reporting no findings",
+                "malformed Clang AST JSON" in truncated_error,
+                truncated_error,
+            )
+            failed_compiler = os.path.join(project, "failed_compiler.py")
+            with open(failed_compiler, "w", encoding="utf-8") as target:
+                target.write('import sys\nprint("synthetic Clang failure", file=sys.stderr)\nsys.exit(2)\n')
+            failed_database = os.path.join(project, "compile_commands.json")
+            with open(failed_database, "w", encoding="utf-8") as target:
+                json.dump([{
+                    "directory": project,
+                    "file": source,
+                    "arguments": [sys.executable, failed_compiler, source],
+                }], target)
+            try:
+                cpp_policy.check_database(cpp_policy.Path(failed_database), cpp_policy.Path(project))
+            except RuntimeError as error:
+                compiler_error = str(error)
+            else:
+                compiler_error = ""
+            fails += check(
+                "cpp_policy: reports compiler failure with stderr",
+                "AST compile failed" in compiler_error and "synthetic Clang failure" in compiler_error,
+                compiler_error,
+            )
 
     # --- cleanup-files: validate the whole explicit set before unlinking -----
     cleanup = os.path.join(TOOLS, "cleanup-files")
