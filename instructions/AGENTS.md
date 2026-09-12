@@ -687,6 +687,11 @@ you need, extend it — and a tool without a doc update is unfinished.
   bounded interpreter only as diagnostic fallback). The web target is included in release planning and
   state inventory; if browser execution cannot currently preserve semantics, record it as blocked with an
   explicit migration action and measurable acceptance criteria.
+- **`~/repo/pages` owns every WebAssembly deployment.** A source project builds and verifies its
+  asset-free browser package and publishes a normal CI artifact; it does not deploy a separate Pages
+  site. Import the reviewed package into the matching `pages/public/<project-slug>/` route, run the
+  Pages verifier, commit and push `pages/main`, and verify the central live URL. Do not copy game
+  files, user saves, or derived restricted data into that repository or any hosted artifact.
 
 ## Engine migrations preserve the existing game source
 
@@ -923,6 +928,13 @@ An agent must be able to press inputs, read state, take screenshots, and measure
 - **Hosted checks may exercise only redistributable runtime code and synthetic fixtures.** A green
   decoder or cache test is useful engineering evidence but never title-conformance evidence. Local
   release tooling owns the real-input gate and produces an asset-free package.
+- **Every project release updates its Pages entry.** In the same release task, add or refresh the
+  project's listing in `~/repo/pages`: source and live links, description, release-relevant media,
+  and the generated intended-feature snapshot from the project's canonical `docs/project-state.md`.
+  Publish the Pages change and verify the deployed detail page before calling the release delivered.
+  A release artifact does not by itself promote a capability to `verified`; the project-state evidence
+  remains authoritative. If Pages publication fails, report the release as published with its
+  catalogue/deployment follow-up still open rather than silently claiming full delivery.
 
 - **`run.sh` never runs tests.** Its zero-argument path and every supported option are shipping
   launcher behavior: provision required inputs, validate prerequisites, build the product when
