@@ -100,10 +100,10 @@ staging only after native validation succeeds, and preserve the prior valid inst
 
 Use the Android ownership boundary in the canonical global instructions
 (`instructions/AGENTS.md`, “Android platform mechanics have one shared owner”). In particular,
-Lucent owns title-neutral runtime behavior inside the APK; `shared/android-port` owns the reusable
-cross-compiled dependency prefix plus deterministic Gradle/NDK/package/device mechanics; and the
-game owns title policy and composition. Do not restate or fork that contract here: update the
-canonical instruction when the shared boundary changes.
+Lucent supplies its existing optional runtime utilities inside the APK; `shared/android-port` owns
+the reusable cross-compiled dependency prefix plus deterministic Gradle/NDK/package/device mechanics;
+and the game owns title policy and composition. Lucent is not the Android engine. Do not restate or
+fork that contract here: update the canonical instruction when the shared boundary changes.
 
 An Android port also needs an authored touch-control owner before release. Map virtual controls
 through the same action/input policy as physical controllers, with documented reachability, safe-area
