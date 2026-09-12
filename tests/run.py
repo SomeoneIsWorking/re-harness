@@ -30,6 +30,7 @@ SCRATCH = os.path.join(ROOT, "scratch", "tests")
 os.makedirs(SCRATCH, exist_ok=True)
 sys.path.insert(0, TOOLS)
 import source_boundary  # noqa: E402
+import install_skills  # noqa: E402
 
 
 def tempdir():
@@ -354,7 +355,7 @@ def main():
             f.write("preserve me\n")
         installer = os.path.join(TOOLS, "install_skills.py")
         rc, out = run([installer, "--home", d, "install"], ROOT)
-        expected = 17 * 3
+        expected = len(install_skills.discover()) * 3
         links = []
         for agent in (".agents", ".codex", ".claude"):
             root = os.path.join(d, agent, "skills")

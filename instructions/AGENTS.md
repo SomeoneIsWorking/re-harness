@@ -246,10 +246,18 @@ USER 2026-09-04: "Use gh to create a remote, make it standard practice"
   user's task and not a reason to move on to unrelated investigation. Review, accept or reject, run
   combined gates, and land each finished batch while its context is current; never accumulate hours
   of invisible, uncommitted "finished" work.
+- **Tell active owners when a shared boundary changes.** If a global rule, shared API, or subsystem
+  ownership change affects another active agent's work, send that agent a concise note naming the
+  changed contract and canonical file. Coordinate before editing the same files; broad announcements
+  to unrelated tasks create noise rather than useful handoff.
 
 ## Subagent access is globally authorized
 
 USER 2026-09-04: "I want to transition all my static recomps away to dynamic recomps like JIT / dynarec etc (not familiar with the wording) I give you unlimited subagent access for all the projects"
+
+USER 2026-09-12: "You can also talk to the other agents when you need to, inform them of the structure changes being made etc"
+
+USER 2026-09-12: "And you can fan out subagents for parallel work"
 
 - **There is no user-imposed subagent count for projects.** Use as many concurrent subagents as the
   active product and service limits permit. A project-local stale zero or numeric allowance does not
@@ -388,6 +396,12 @@ USER 2026-09-08: "run.sh opens the INTENDED path ... run.sh is for me, if you ne
 
 USER 2026-08-14: "Also make a global rule to write clean code and especially DRY code"
 
+USER 2026-09-12: "Also DRY, extract common patterns as helpers into Lucent helpers"
+
+USER 2026-09-12: "Perhaps like something like LINQ for common vector operations, just an example, idk"
+
+USER 2026-09-12: "or even something that supersedes vectors"
+
 - **Keep one authoritative implementation of each rule, formula, parser, state transition, and data
   mapping.** Call or extend that implementation everywhere it is needed; do not copy it into a new
   helper, test, diagnostic, platform path, or game-specific path and let the copies drift.
@@ -404,6 +418,19 @@ USER 2026-08-14: "Also make a global rule to write clean code and especially DRY
 - **Do not abstract coincidental similarity.** DRY means one source of truth for the same semantics,
   not forcing distinct platform, game, or protocol behavior through a vague universal abstraction.
   Share the invariant core and keep genuinely different policy explicit.
+- **Put reusable C++ helper behavior in Lucent.** When a common pattern has the same title-neutral
+  contract across consumers, extract one focused helper into the appropriate Lucent module, test it
+  there, and switch callers to that helper; remove their duplicate implementations. Do not turn
+  title policy, lifecycle, rendering, input, or other application ownership into a generic helper.
+  A pattern shared only within one project still gets one helper in its owning module; move it to
+  Lucent when its semantics are genuinely reusable outside that project.
+- **Collection helpers are a candidate, not a mandated container replacement.** Repeated vector
+  filtering, mapping, grouping, searching, and projection may justify a Lucent range or collection
+  interface. First compare the actual call sites with standard algorithms and `std::ranges`; add a
+  Lucent API when it removes repeated policy or makes the operations clearer across consumers.
+  State whether it owns elements or views them, when it allocates, how iteration invalidates, and
+  what complexity it promises. A collection type that supersedes `std::vector` needs concrete
+  consumer evidence and performance tests before making it the project default.
 
 ## Agents use Clang; projects do not require it
 
@@ -412,6 +439,18 @@ USER 2026-08-20: "Make a global rule to always use clang for C++"
 USER 2026-08-20: "I have a global rule regarding C++ projects using clang but also add that they must also use clang formatting and a linter"
 
 USER 2026-08-24: "I previously put a rule, all C/C++ projects must use clang but the agents went overboard and make the projects reject other compilers, this is not what I meant, I meant the agents should use clang, not have the project code enforce it"
+
+USER 2026-09-12: "all C++ projects should use clang tidy defaults and"
+
+USER 2026-09-12: "- No extern, no local static variables, no local consts, always use header"
+
+USER 2026-09-12: "- OOP, classes, namespaces"
+
+USER 2026-09-12: "- no one line "if"s, all statements in their own line, no closures without curly braces, single statement "if"s need curly braces too"
+
+USER 2026-09-12: "Most projects right now like xmen2, uses like x2_* global methods, not ok"
+
+USER 2026-09-12: "Update global instructions and harden the clang rules"
 
 - **Every agent/maintainer verification build compiles C++ translation units with Clang (`clang++`).**
   Configure new CMake build trees with `CXX=clang++` or
@@ -440,10 +479,48 @@ USER 2026-08-24: "I previously put a rule, all C/C++ projects must use clang but
 - **Every C++ project uses `clang-format` with a tracked `.clang-format` configuration.** Format all
   touched first-party C and C++ source with it, and add a non-mutating format check to the project's
   normal verifier so formatting drift fails by file. Do not reformat generated or vendored code.
-- **Every C++ project uses `clang-tidy` as its linter with a tracked `.clang-tidy` configuration.**
-  Run it against the real compile commands for all touched first-party C++ translation units, and
-  make that check part of the normal verifier. Fix diagnostics at their cause; do not silence them
-  with blanket exclusions, warning suppressions, or a weaker replacement linter merely to pass.
+  Configure `AllowShortIfStatementsOnASingleLine: Never`, `AllowShortLoopsOnASingleLine: false`,
+  `AllowShortBlocksOnASingleLine: Never`, `AllowShortFunctionsOnASingleLine: None`,
+  `AllowShortLambdasOnASingleLine: None`, and `InsertBraces: true` (or the installed formatter's
+  equivalent). An `if`, `else`, loop, function, or lambda body uses braces even for one statement;
+  put the condition, body statement, and closing brace on separate lines. Do not pack two statements
+  onto one line or rely on formatting alone to add missing braces.
+- **Every C++ project uses `clang-tidy` with its default diagnostics preserved.** The tracked
+  `.clang-tidy` must retain `clang-diagnostic-*` and add `clang-analyzer-*`, `bugprone-*`,
+  `performance-*`, and `readability-braces-around-statements` (with
+  `readability-braces-around-statements.ShortStatementLines: 0`), and set
+  `WarningsAsErrors: '*'`. Do not start `Checks` with `-*`,
+  replace the defaults with a narrow allowlist, or disable the brace check. Run against the real
+  compile database for all first-party C++ translation units, include first-party headers, treat
+  diagnostics as errors, and make the check part of the normal verifier. Confirm the configured
+  defaults with `clang-tidy --dump-config` and the active non-diagnostic groups with
+  `clang-tidy --list-checks`; a configured but unexecuted check is not a gate. Fix diagnostics at
+  their cause; do not silence them with blanket exclusions, warning
+  suppressions, or a weaker replacement linter merely to pass.
+- **First-party C++ APIs have named owners.** Put state and behavior in focused classes inside
+  project or subsystem namespaces, with RAII lifetimes and explicit dependencies. Pure stateless
+  algorithms may be namespace-scoped free functions; project-owned functions in the global
+  namespace, including title-prefixed `x2_*`-style APIs, are not an ownership model. Do not retain a
+  C-style global facade over a class merely to preserve old call sites. Keep a C ABI shim only when
+  an actual external or guest boundary requires it, and have it delegate to the owning C++ object.
+- **Declarations and constants live in owning headers.** Do not add `extern` declarations for
+  project-owned functions or variables in first-party C++; include the owning header instead, and
+  never use an `extern` global variable as shared state. A required `extern "C"` ABI declaration
+  belongs in that boundary's header. Do not declare block-scope `static`, `const`, or `constexpr`
+  variables. Put named constants in the owning header as `inline constexpr` namespace or class
+  members; keep computed runtime values as ordinary locals. This does not prohibit const-correct
+  parameters, pointees, accessors, or member functions.
+- **Harden existing projects at the owner, not with naming cosmetics.** When touching a legacy
+  global API, identify its state/lifetime owner, move its C++ callers to that class or namespace,
+  and remove the superseded global entry point. Update its `.clang-tidy`, `.clang-format`, and
+  verifier in the same migration; a green gate that ignores these rules is not complete. Apply the
+  policy to first-party C++ and its headers, not vendored/generated sources or C translation units;
+  any C interop remains an explicit narrow boundary rather than an excuse to keep C-style C++ APIs.
+- **Verify rules `clang-tidy` cannot express.** The normal verifier also needs syntax-aware checks
+  for project-owned global-namespace APIs, `extern` declarations, and block-scope `static`, `const`,
+  and `constexpr` variables. Give those checks accepted and rejected first-party fixtures and
+  include the actual shipping source tree in the gate. A text grep, undocumented exemption, or
+  `clang-tidy` setting that never diagnoses the forbidden form is not enforcement.
 
 ## Ask the user for DNF installs
 
