@@ -134,6 +134,13 @@
   immediate falsifier, stop extending the suspect change, and reproduce from the last known-good
   behavior. A green unit test cannot overrule the running product it failed to cover.
 - **Do what was asked.** A better idea is a suggestion to make, not a substitution to perform.
+- **Do not turn a destructive risk into a lazy blocker.** If the requested path requires an
+  irreversible action such as uninstalling an installed package, deleting user data, or replacing
+  a signing identity, identify the exact consequence and the smallest safe recovery or backup path.
+  If the user has already authorized that action, perform it and continue; otherwise ask for the
+  specific confirmation only when the action is genuinely irreversible. Never silently substitute
+  a stale artifact, abandon the requested verification, or call the work impossible merely because
+  a destructive step carries risk.
 
 ## Committed files must be clean & portable
 
