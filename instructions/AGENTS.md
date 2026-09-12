@@ -186,6 +186,32 @@ USER 2026-09-04: "Use gh to create a remote, make it standard practice"
   remote never authorizes publishing copyrighted game assets or machine-specific
   data.
 
+## Signing credentials are agent-owned
+
+- **Handle signing for every project without routine user questions.** This covers APKs, desktop
+  packages, installers, updates, and other signed artifacts. Inspect the repository's signing
+  workflow and discover available GitHub Actions secret names with `gh secret list -R OWNER/REPO`,
+  including configured environment or organization secrets. Use existing credentials through the
+  workflow and verify the resulting artifact. Secret names differ between repositories; map the
+  actual names instead of assuming a global naming convention. GitHub does not reveal stored secret
+  values to local clients, so dispatch the relevant Actions job when an existing secret is needed.
+- **Provision missing credentials yourself.** For a local verification build, generate a test key
+  when the platform accepts one. For a published artifact requiring a persistent identity, generate
+  a stable key, upload its material and passwords with `gh secret set` to the appropriate GitHub
+  Actions scope, wire the workflow, and verify its output. Reuse one signing key across the user's
+  projects when the format and platform trust rules allow it; being separate applications does not
+  itself require separate keys. When creating a shared key, upload the same bytes to every intended
+  repository or shared secret scope before discarding the local copy. If a key exists only as an
+  opaque secret in another repository, use it in that repository's CI or a deliberately shared
+  secret scope; it cannot be downloaded for local reuse. Preserve an already published product's
+  required signing identity.
+- **Keep credentials out of source and output.** Never commit, log, or print private keys or
+  passwords; use private, short-lived local files for provisioning and remove them afterward.
+  Do not overwrite an existing secret or rotate a published identity merely to make a build pass.
+  Report a signing blocker only after discovery, CI use, and permitted key generation have been
+  attempted and an exact remaining access, issuer, hardware, or platform constraint is known. Do
+  not ask the user to select a debug or release key for ordinary agent work.
+
 ## No dangling work: the worktree is agent-owned
 
 - **Never dismiss an existing change as user-owned or out of scope.** All worktree changes are agent
@@ -992,20 +1018,6 @@ USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when 
   JDK 26, use a compatible maintained pair rather than demanding JDK 21: AGP 9.2 with the pinned
   Gradle 9.4.1 wrapper is the current baseline. Verify a real assembly with that exact pair; Gradle
   support alone does not prove that an Android plugin or other third-party build plugin is compatible.
-- **Agents own Android signing without routine user interruption.** Before declaring signing blocked,
-  inspect the consuming repository's workflows and list its GitHub Actions secret *names* with `gh
-  secret list -R OWNER/REPO` (and relevant environment or organization secrets when configured).
-  Use the existing signing secrets in CI, mapping their actual names to the title's signing inputs;
-  do not assume one global secret naming scheme. GitHub does not return secret values to local
-  clients: run the signing job in Actions when those credentials are needed, then download and verify
-  the resulting artifact. For local assembly, use an automatically generated debug/test key and
-  verify the APK signature. If a repository has no signing secrets and needs a published APK,
-  generate a stable key for that application, store its key material and passwords as GitHub Actions
-  secrets, wire the release workflow to them, and verify the signed artifact. A published update must
-  retain its existing signing identity; never rotate a deployed application's key just to unblock a
-  build. Never commit, log, or print key material or passwords. Report a signing blocker only after
-  these paths were tried and an exact access or platform failure remains; do not ask the user to
-  choose between debug and release keys for ordinary agent work.
 - **Android ports declare the lowest Android API floor the complete shipped path supports.** The
   shared default is API 21: it is the first API level available to 64-bit Android ABIs and supports
   scoped SAF file selection. Compile and target SDKs may stay current. Raising a title's minimum API
