@@ -167,6 +167,24 @@ def main():
     )
     fails += check("cpp_policy: accepts required effective Clang config",
                    not cpp_policy.inspect_configs(tidy_config, format_config))
+    nested_format_config = format_config.replace(
+        "AllowShortFunctionsOnASingleLine: None",
+        "AllowShortFunctionsOnASingleLine:\n  Empty: false\n  Inline: false\n  Other: false",
+    )
+    fails += check("cpp_policy: accepts equivalent nested short-function settings",
+                   not cpp_policy.inspect_configs(tidy_config, nested_format_config))
+    fails += check("cpp_policy: accepts legacy false short-function spelling",
+                   not cpp_policy.inspect_configs(
+                       tidy_config,
+                       format_config.replace("AllowShortFunctionsOnASingleLine: None",
+                                             "AllowShortFunctionsOnASingleLine: false"),
+                   ))
+    fails += check("cpp_policy: rejects nested short-function opt-in",
+                   any("AllowShortFunctionsOnASingleLine" in finding for finding in
+                       cpp_policy.inspect_configs(
+                           tidy_config,
+                           nested_format_config.replace("Inline: false", "Inline: true"),
+                       )))
     rejected = cpp_policy.inspect_configs(
         tidy_config.replace("clang-diagnostic-*", "-*")
         .replace("WarningsAsErrors: '*'", "WarningsAsErrors: ''"),
@@ -176,13 +194,25 @@ def main():
                    len(rejected) >= 4, "\n".join(rejected))
     clang_cl_args = cpp_policy.compile_arguments({"arguments": [
         "clang-cl", "/TP", "/c", "/Foobj\\unit.obj", "/Fdobj\\unit.pdb",
-        "-c", "unit.cpp",
+        "-c", "--", "unit.cpp",
     ]})
     fails += check(
         "cpp_policy: clang-cl AST scan drops output flags",
         clang_cl_args == ["clang-cl", "/TP", "unit.cpp", "-fsyntax-only", "-Xclang", "-ast-dump=json"],
         repr(clang_cl_args),
     )
+    if os.name == "nt":
+        windows_command = (
+            r'"C:\Program Files\LLVM\bin\clang-cl.exe" /TP /c -- '
+            r'D:\a\jit-common\src\block_cache.cpp'
+        )
+        fails += check(
+            "cpp_policy: Windows command string preserves backslash paths",
+            cpp_policy.split_compile_command(windows_command) == [
+                r"C:\Program Files\LLVM\bin\clang-cl.exe", "/TP", "/c", "--",
+                r"D:\a\jit-common\src\block_cache.cpp",
+            ],
+        )
     fails += check(
         "cpp_policy: distinguishes top-level const from pointee const",
         all(cpp_policy.top_level_const(value) for value in (
