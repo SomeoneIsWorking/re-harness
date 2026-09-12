@@ -31,18 +31,8 @@ The codemap must not contain goals, project-state assertions, progress checklist
 current or next work, blockers, exit criteria, definitions of done, issue
 queues, or verification claims.
 
-## Information boundaries
-
-- `docs/project-goals.md`: epic-level intent and success conditions.
-- `docs/project-state.md`: authoritative verified/partial/blocked/missing
-  capabilities and outcomes.
-- `docs/issues/`: atomic tasks, bugs, investigations, blockers, and findings.
-- `docs/info/claims/`: evidence that an observed statement holds.
-- `docs/re-frontier.md`: specialized reverse-engineering dependency state.
-
-When planning or progress is found in a codemap, move it to its correct
-authority and leave only ownership and placement. Do not copy it and leave two
-sources of truth.
+When planning or progress is found in a codemap, move it to project goals,
+project state, or issues as appropriate. Leave only ownership and placement.
 
 ## Tool
 

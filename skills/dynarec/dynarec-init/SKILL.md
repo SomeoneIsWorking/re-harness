@@ -18,28 +18,19 @@ engine.
 Choose an accurate, scriptable reference emulator as the oracle. It may also supply hardware models
 during bring-up, but the product's execution boundary must remain explicit.
 
-Declare host backends as concrete OS/architecture pairs. ARM64 projects include both Apple Silicon
-macOS and Android arm64-v8a unless the project explicitly excludes one; design executable-memory,
-instruction-cache, ABI, and exception boundaries so each can be verified independently without an
-interpreter standing in for a missing host backend.
+Declare host backends as concrete OS/architecture pairs so their executable-memory,
+instruction-cache, ABI, and exception boundaries can be verified independently.
 
 ## Scaffold runtime ownership
 
 Create cohesive modules for CPU context, guest memory/address spaces, decoder/IR, host backend and
 code cache, platform services, native overrides, bounded fallback, and the differential harness.
-The default gameplay entry point always selects the dynarec. An interpreter-only mode is a separate
-diagnostic target or explicit diagnostic option; gameplay may reach the interpreter only through the
-reason-coded bounded fallback contract.
-
-The build contains only redistributable runtime code and metadata. Do not add an offline translator,
-generated-source directory, per-title emitted functions, or a build step that derives native code
-from the game binary.
+Wire their shared execution contract before adding title-specific behavior.
 
 ## Provision the user's game file
 
-Support explicit argument, environment/`.env`, and repo drop-in discovery in that order. Validate
-the exact revision before mapping it. Never commit or package the game file. A packaged first run
-uses the native file picker and persists the validated selection in OS user data.
+Resolve an explicit argument, environment/`.env`, then repo drop-in in that order. Validate the
+exact revision before mapping it.
 
 ## Build the harness first
 
@@ -51,13 +42,11 @@ locate the first divergence. See **dynarec-harness**.
 
 Start at the title entry point or a deterministic savestate boundary. Compile a bounded block,
 execute it, and prove its post-state against the oracle. Then expand coverage along reached control
-flow. An unsupported or unsafe block either fails with a precise guest PC or enters the bounded
-fallback with that PC, an explicit reason, and block/instruction counters. It never falls back
-silently.
+flow. An unsupported or unsafe block must fail with a precise guest PC or enter the bounded fallback
+contract.
 
 Initialization is complete when the runtime consumes the user's binary directly, produces at least
-one proven translated block, and proves ordinary cold blocks compile before execution. Report
-fallback entries with denominators and prove the discriminator was not reached only by interpretation.
+one oracle-proven translated block, and proves ordinary cold blocks compile before execution.
 
 ## Enter the port loop
 

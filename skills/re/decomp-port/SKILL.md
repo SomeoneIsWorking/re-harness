@@ -13,14 +13,12 @@ description: >-
 
 # Ghidra decompilation & behavior-porting pipeline
 
-Reusable across projects/games. The job: a stripped game binary → readable C for the functions
-you care about → re-implemented natively in your engine, verified against ground truth. This is
-the "porting machine." Game/arch specifics below are PARAMETERS — fill them per target.
+The job is to recover selected functions from a stripped binary, implement the owned behavior
+natively, and verify it against ground truth. Fill in the target's architecture and image layout.
 
 ## When this vs runtime guest execution
 
-- **dynarec-port / dynarec-runtime** — execute the complete guest binary through an interpreter or
-  on-demand dynamic translator.
+- **dynarec-port / dynarec-runtime** — execute the guest binary on demand.
 - **decomp-port (this)** — selectively decompile specific functions or subsystems and re-implement
   them as maintained native code. They compose: a recovered function can become a
   `dynarec-overrides` implementation while every unowned guest path stays executable at runtime.
@@ -31,11 +29,11 @@ Extract the executable and know its **load base** (so `file_offset = vaddr − l
   `0x00100000`. N64: the ROM's code segments (MIPS, base from the boot/entry). GC/Wii: DOL/REL
   (PPC). PS2: ELF. Verify the image against **live emulator RAM** at a few addresses if you have an
   oracle — a wrong base or bad decompression poisons everything downstream.
-- Keep the image OUT of git (it's ROM-derived). ROMs stay external (see dynarec-port provisioning).
+- Keep the derived image out of git.
 
 ## 1. Import + auto-analyze in Ghidra headless
-Ghidra is the only reliable function-boundary + C decompiler for stripped, mixed-mode binaries
-(linear capstone/objdump sweeps DESYNC on variable-length / mixed ARM↔Thumb / delay-slot code).
+Use Ghidra's function analysis and decompiler; verify boundaries in mixed-mode code rather than
+trusting a linear disassembly sweep.
 
 **Prefer a format-specific loader over BinaryLoader** when one exists — a real Loader parses
 sections, sets the right load base per section, marks code vs data, and populates the entry
@@ -51,12 +49,11 @@ documented user-extension directory):
 | GC · Wii / DOL · REL | [Cuyler36/Ghidra-GameCube-Loader](https://github.com/Cuyler36/Ghidra-GameCube-Loader) release matching your Ghidra version | Nintendo GameCube/Wii Binary + `PowerPC:BE:32:Gekko_Broadway` |
 
 ```
-GHIDRA=/opt/ghidra_*/support/analyzeHeadless     # 11.x/12.x; needs a JDK
-$GHIDRA <projdir> <projname> -import <code.bin>  # loader auto-detects when installed
+analyzeHeadless <projdir> <projname> -import <code.bin>
 # GC DOL specifically: turn off the OptionDialog symbol-map prompt (headless can't show it):
-$GHIDRA <projdir> <projname> -import <code.dol> -loader-autoloadMaps false
+analyzeHeadless <projdir> <projname> -import <code.dol> -loader-autoloadMaps false
 # Fallback (no format loader available):
-$GHIDRA <projdir> <projname> -import <code.bin> \
+analyzeHeadless <projdir> <projname> -import <code.bin> \
     -processor <LANG_ID> -loader BinaryLoader -loader-baseAddr <BASE>
 ```
 Pick `LANG_ID` for the target arch (`analyzeHeadless ... -processor ?` lists them):
@@ -72,31 +69,30 @@ Analysis of a few-MB binary takes minutes–tens of minutes and saves into the p
 `-Djava.io.tmpdir=<repo>/scratch/ghidra-tmp` so Ghidra's cache stays in the project's gitignored,
 bounded scratch area instead of a host-global temporary directory.
 
-**Ghidra ≥12 scripts:** Jython is gone; postScripts run under PyGhidra. Launch headless with
-`pyghidraRun -H <projdir> …` (not `analyzeHeadless`) so `-postScript foo.py` works. `analyzeHeadless`
-still works for `-import` / `-preScript` runs where no Python script fires.
+**Script runtime:** The bundled `DecompDump.py` is marked `#@runtime Jython` and uses Jython 2.
+Ghidra 11.x includes that engine. Ghidra 12.x requires installing the optional
+[Jython extension](https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Configurations/Public_Release/src/global/docs/WhatsNew.md)
+before running it with `analyzeHeadless`. PyGhidra runs CPython 3 scripts through
+`pyghidraRun -H`, but does not turn this bundled script into Python 3. See `ghidra-re` for the
+runtime distinction and [official headless arguments](https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/RuntimeScripts/support/analyzeHeadlessREADME.md).
 
 **Legacy pre-script fallback** (`DolLoad.py`) — only for Ghidra 11.x installs without the
 GameCube loader extension. See DolLoad.py header for the flag set. NOT needed once the extension
 is installed.
 
 ## 2. Inventory + decompile to C  (bundled `DecompDump.py`)
-Run the bundled headless script against the ANALYZED project (`-process`, `-noanalysis`):
+Run the bundled headless script against the analyzed project (`-process`, `-noanalysis`). Confirm
+the targets file exists first: this script currently emits the full inventory when the variable is
+unset or the named file is missing.
 ```
-# Ghidra 12+: run the bundled Python 3 script through PyGhidra.  Its CLI
-# accepts the binary path directly; DECOMP_TARGETS selects addresses/functions.
-OOT_REPO=$PWD DECOMP_TARGETS=<targets-file> pyghidra --skip-analysis \
-    --project-path <projdir> --project-name <projname> <code.bin> \
-    <dir-of-DecompDump.py>/DecompDump.py
-
-# Ghidra 11 and older only (Jython postScript provider):
-OOT_REPO=$PWD analyzeHeadless <projdir> <projname> -process <code.bin> -noanalysis \
+# Ghidra 11.x, or Ghidra 12.x with the Jython extension installed:
+DECOMP_TARGETS=<targets-file> analyzeHeadless <projdir> <projname> -process <code.bin> -noanalysis \
     -scriptPath <dir-of-DecompDump.py> -postScript DecompDump.py
 ```
 - No `DECOMP_TARGETS` → writes `build/decomp/functions.csv` (`vaddr,size,name` for all functions).
   Grep it to pick targets and gauge sizes.
 - `DECOMP_TARGETS=targets.txt` (one hex vaddr per line, `#` comments) → writes
-  `build/decomp/<vaddr>.c`, clean readable C per function. `OOT_REPO`/`DECOMP_OUT` set the out dir.
+  `build/decomp/<vaddr>.c`, readable C per function. `DECOMP_OUT` overrides the output directory.
 Re-decompiling is cheap; iterate (rename a struct/type in the project, re-dump).
 
 ## 3. Find anchors — where to start decompiling
@@ -116,9 +112,9 @@ DON'T read blind disassembly. For each target function:
 1. Ghidra-decompile the binary function to C.
 2. **Align** it to its twin in the reference source by structure + call graph + string/const
    fingerprints (same branch shape, same magic numbers, same call order).
-3. **Diff** the two — the remake's CHANGES (different anim system, tweaked constants, new state) are
-   exactly what you're porting; everything identical you can copy from the readable reference.
-This is ~10x faster than cold decompilation and tells you *why* the remake behaves differently.
+3. **Diff** the two — the remake's changes (different animation system, tweaked constants, new state)
+   identify the behavior to investigate. Preserve source provenance and implement the recovered
+   contract in the owning module.
 Keep a durable `addr ↔ reference-name` map as you go.
 
 ## 5. Re-implement + verify (faithful first)
@@ -134,4 +130,5 @@ enhancements only on a proven-faithful base (see dynarec-port "faithful first, t
   Ghidra's disassembly and force the mode at that address.
 - The decompiled `<vaddr>.c` is a READING/PORTING aid, not buildable as-is — it references absolute
   addresses and Ghidra intrinsics. Re-express it in your engine's symbols.
-- Jython (Ghidra scripts) is Python 2: ASCII or a `# -*- coding: utf-8 -*-` header.
+- Jython scripts use Python 2 syntax; PyGhidra scripts use CPython 3. Check the script's runtime
+  marker and installed Ghidra version before choosing a launcher.

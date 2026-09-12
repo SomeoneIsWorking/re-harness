@@ -26,18 +26,6 @@ Goals may overlap, and a state item may contribute to more than one goal. Do not
 encode capability progress in the goal. A goal changes only
 when product intent changes, not whenever implementation advances.
 
-## Boundaries
-
-- `docs/project-goals.md`: epic-level intent and success conditions.
-- `docs/project-state.md`: the authoritative verified/partial/blocked/missing
-  capability and outcome inventory.
-- `docs/issues/`: atomic work points, bugs, investigations, and blockers.
-- `docs/codemap.md`: which subsystem owns a responsibility and where it lives
-  or should live.
-- `docs/info/claims/`: evidence that an observed statement holds.
-- `docs/re-frontier.md`: the specialized ground-truth dependency chain for RE,
-  not the general project-state inventory.
-
 ## Consulting and maintaining
 
 Read the goals document before answering why the project exists, what outcomes

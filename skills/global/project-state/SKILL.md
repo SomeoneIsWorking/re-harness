@@ -75,18 +75,6 @@ dependencies, goal links, issue links, exactly one current focus (or explicit
 text. It prints the number of state items, goals, and issue links checked so an
 empty corpus cannot look green.
 
-## Boundaries
-
-- Goals are epic-level intent and success conditions; they do not track current
-  capability state.
-- Project state is the current coverage inventory of observable outcomes.
-- Issues are atomic tasks, bugs, investigations, findings, and blockers linked
-  to affected state items.
-- The codemap says which subsystem owns a responsibility and where it belongs.
-- Claims supply evidence for state assertions; they do not define priority.
-- The RE frontier is a specialized ground-truth dependency view beneath relevant
-  state items, not general project state.
-
 ## Consulting and maintaining
 
 Read `docs/project-state.md` before answering project status, current focus,

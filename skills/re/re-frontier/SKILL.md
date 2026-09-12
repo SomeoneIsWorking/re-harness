@@ -3,49 +3,19 @@ name: re-frontier
 description: Track the ordered reverse-engineering evidence dependency chain toward faithful implementation — which step is grounded in the binary or asset versus a hack that jumped ahead. Use for the RE frontier, hack debt, or next ground-truth-ready RE step. This is not the project's goals or general state inventory; the codemap only maps ownership and placement.
 ---
 
-# RE frontier — the ordered RE progress tracker
+# RE frontier
 
-Reverse-engineering a game (or any binary) toward a faithful reimplementation is
-a **dependency chain**: you cannot faithfully render the menu logo until you've
-RE'd the import-resolution mechanism; you cannot drive AI until the behavior
-graph runs. The single most damaging failure mode is **jumping ahead** — faking
-the output of a step whose RE isn't done (a magic offset, a C++ clone standing in
-for the real mechanism, a native overlay instead of the real UI) — which makes a
-broken reimplementation *look* finished and quietly blocks the real work.
+Faithful behavior depends on an ordered chain of recovered mechanisms. A plausible output can hide
+an unimplemented upstream stage. Track the chain so the next task starts at the earliest missing
+mechanism, not a downstream symptom.
 
-**Build the map from BOOT toward the target, not bottom-up from features.** An RE
-map is essential on any RE project, and it must be organized as the real
-EXECUTION SPINE — the ordered sequence the program actually runs from process
-boot to the target behavior — not an arbitrary list of features. When a target
-(a menu, a level, a screen) is wrong "in every way," the cause is almost always
-that an early stage of that spine was never reproduced (an init/Kismet/Matinee/
-setup step), and every downstream symptom flows from that one gap. So: **RE the
-whole spine boot→target FIRST**, find the earliest missing stage, and reimplement
-from there — do NOT debug individual downstream symptoms. **Debugging an
-unimplemented feature is the anti-pattern**: if an output is missing/wrong on a
-feature that was never faithfully implemented, that is not a bug to debug, it is a
-stub to RE and implement. Reach for a debugger only on a faithfully-implemented
-feature that regressed.
+Build the map along the execution path from boot to the target. If a menu or level is broadly
+wrong, check which setup, initialization, or dispatch stage first diverges. Debug a regression in
+implemented behavior; reverse-engineer a stage that has never been implemented.
 
-This tracker exists to make that distinction impossible to lose. Each RE step
-carries a status on one axis: **real RE vs jumped-ahead hack.**
-
-## The RE-project tracking stack
-
-- **project goals** (`project-goals` skill) — *which epic-level outcome matters
-  and why.* Keyed by durable intent.
-- **project state** (`project-state` skill) — *what capability or outcome is
-  verified, partial, blocked, or missing.* Keyed by factual current coverage.
-- **codemap** (`codemap` skill) — *which subsystem owns a responsibility and
-  where it lives or should live.* Keyed by subsystem.
-- **issue-catalog** (`issue-catalog` skill) — *did a past session already hit /
-  rule out this atomic point.* Keyed by issue or symptom.
-- **re-frontier** (this skill) — *which ordered RE step is real vs a hack, and
-  what's the next RE-ready step.* Keyed by RE dependency order.
-
-They compose: goals state the epic outcome, project state records factual
-coverage, codemap points at the owner, re-frontier tells which RE dependency is
-honestly ready, and the issue catalog holds the atomic work and history.
+Each step records whether its implementation is grounded in binary or asset evidence, is still in
+progress, or is a shortcut awaiting replacement. Project goals, capability state, issues, and
+ownership remain in their separate authorities.
 
 ## Statuses (the core axis)
 
@@ -62,15 +32,15 @@ honestly ready, and the issue catalog holds the atomic work and history.
 ⏸ blocked         COMPUTED: a todo/in-progress step whose deps aren't all satisfied
 ```
 
-`⛔ hack` is never an acceptable resting state. It is the debt list. A step is
-only `re-verified` with **cited ground-truth evidence** (a binary function, a
-cooked-asset chain) AND a real verification on real data — never "compiles",
-never a vibe.
+`hack` is debt. A step is `re-verified` only with cited ground-truth evidence and verification on
+real data; compiling alone does not qualify.
 
-## The tool: `re_frontier.py` (bundled)
+## Shared tool: `tools/re_frontier.py`
 
-Zero-dependency, stdlib-only. Operates over a greppable markdown roadmap
-(`docs/re-frontier.md` by default; override with `$RE_FRONTIER_ROADMAP`).
+Run the canonical `shared/re-harness/tools/re_frontier.py` from the consuming repository root. It
+reads that repository's `docs/re-frontier.md` by default; `$RE_FRONTIER_ROADMAP` overrides the path.
+Use the discoverable `re_frontier.py` link when installed. Never copy the shared implementation into
+the consumer.
 
 ```
 re_frontier.py next [--area A]   steps ready to work (all deps satisfied) + hacks to replace  <-- START HERE
@@ -111,17 +81,8 @@ re_frontier.py set <id> status=... gap=... ...   update fields (clean round-trip
 4. `re_frontier.py check` before committing — fix unknown deps / cycles /
    re-verified-without-evidence. Glance at `hacks` — is the debt shrinking?
 
-## Bootstrapping in a new RE project
+## Bootstrapping
 
-1. Copy `re_frontier.py` into the project's `tools/` (it resolves the roadmap
-   relative to itself: `<repo>/docs/re-frontier.md`).
-2. `tools/re_frontier.py scaffold` → edit `docs/re-frontier.md` into the real
-   ordered chain (steps + deps + honest statuses + cited evidence).
-3. Reference it from the project's `AGENTS.md`/`AGENTS.md` alongside codemap and
-   issue-catalog ("consult `re_frontier.py next` first; update it — and run
-   `check` — in the same commit that changes a step"). Put project-specific
-   status vocabulary / area names in a project-level `re-frontier` skill.
-
-**Honesty is the whole value** — same as the codemap. The moment a hack is
-mislabeled `re-verified`, the tracker lies and stops protecting against
-jumping-ahead, which is the exact failure it exists to prevent.
+Run `re_frontier.py scaffold` from the consumer root, then replace the scaffold with the actual
+boot-to-target dependency chain, honest statuses, and cited evidence. Keep project-specific area
+names in the project's roadmap; the shared tool and status meanings stay in one place.
