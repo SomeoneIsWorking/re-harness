@@ -119,8 +119,9 @@ Pin Android's Gradle wrapper distribution and checksum together with an Android 
 that officially supports it. Select a coherent installed JDK whose `java` and `javac` come from the
 same home and whose major version the pinned Gradle release supports. Prefer updating the maintained
 Gradle/AGP pair when that makes the host's current JDK supported; do not require an older JDK merely
-because the project retained an obsolete wrapper ceiling. Keep release signing fail-closed and use a
-clearly named ephemeral key only for local pipeline verification, never for a published APK.
+because the project retained an obsolete wrapper ceiling. Follow the canonical Android signing
+instructions in `instructions/AGENTS.md` for existing GitHub secrets, local test keys, and release
+identity.
 
 Saves and settings must use one per-application OS user-data resolver (XDG on Linux, Application
 Support on macOS, app-data APIs on Windows/Android), never the checkout, current working directory,

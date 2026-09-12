@@ -987,12 +987,25 @@ USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when 
 - **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
   an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
   `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
-  host's current JDK instead of requiring an older JDK because of a stale wrapper ceiling. An
-  ephemeral test key may prove assembly locally, but only the long-lived maintainer key may sign a
-  published APK. **Gradle 9.4.0 and later support running on JDK 26.** When an Android port is on
+  host's current JDK instead of requiring an older JDK because of a stale wrapper ceiling.
+  **Gradle 9.4.0 and later support running on JDK 26.** When an Android port is on
   JDK 26, use a compatible maintained pair rather than demanding JDK 21: AGP 9.2 with the pinned
   Gradle 9.4.1 wrapper is the current baseline. Verify a real assembly with that exact pair; Gradle
   support alone does not prove that an Android plugin or other third-party build plugin is compatible.
+- **Agents own Android signing without routine user interruption.** Before declaring signing blocked,
+  inspect the consuming repository's workflows and list its GitHub Actions secret *names* with `gh
+  secret list -R OWNER/REPO` (and relevant environment or organization secrets when configured).
+  Use the existing signing secrets in CI, mapping their actual names to the title's signing inputs;
+  do not assume one global secret naming scheme. GitHub does not return secret values to local
+  clients: run the signing job in Actions when those credentials are needed, then download and verify
+  the resulting artifact. For local assembly, use an automatically generated debug/test key and
+  verify the APK signature. If a repository has no signing secrets and needs a published APK,
+  generate a stable key for that application, store its key material and passwords as GitHub Actions
+  secrets, wire the release workflow to them, and verify the signed artifact. A published update must
+  retain its existing signing identity; never rotate a deployed application's key just to unblock a
+  build. Never commit, log, or print key material or passwords. Report a signing blocker only after
+  these paths were tried and an exact access or platform failure remains; do not ask the user to
+  choose between debug and release keys for ordinary agent work.
 - **Android ports declare the lowest Android API floor the complete shipped path supports.** The
   shared default is API 21: it is the first API level available to 64-bit Android ABIs and supports
   scoped SAF file selection. Compile and target SDKs may stay current. Raising a title's minimum API
