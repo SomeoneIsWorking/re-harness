@@ -32,9 +32,12 @@ automation does not require an installed MCP connector.
 
 ## Own one isolated session
 
-Set `WEBLUA_DIR` to the active project's fixed `scratch/weblua/` path for **every**
-server and CLI invocation. This selects PID, logs, downloads, and default output
-locations; it does not select a personal Chrome profile. Use an agent-owned
+Set `WEBLUA_DIR` to the active project's fixed, disk-backed `scratch/weblua/`
+path for **every** server and CLI invocation. This selects PID, logs, downloads,
+default output locations, and the isolated Chrome profile at
+`$WEBLUA_DIR/chrome-profile`. Verify that Chrome uses this profile before a
+large OPFS import; Rod's default `/tmp/rod/user-data` profile can exhaust tmpfs
+and make browser writes or service-worker installation fail. Use an agent-owned
 browser, headless unless visible presentation is requested. Never attach the
 user's personal browser profile or reuse another task's server.
 
