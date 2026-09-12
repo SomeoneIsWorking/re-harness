@@ -9,9 +9,8 @@ description: >-
 
 # Console → PC dynamic-recompiler port
 
-A dynamic recompiler translates guest instructions while the game runs and caches host
-machine code. The shipped runtime consumes the user's original game binary directly. It does
-not generate C/C++, compile per-title guest source, or depend on a pre-generated native image.
+A dynamic recompiler translates reached guest instructions while the game runs and caches host
+machine code. This skill connects the runtime, title policy, native overrides, and oracle.
 
 ## Focused skills
 
@@ -27,35 +26,17 @@ title-owned policy. The user's binary remains data. At runtime:
 
 `guest PC → cache lookup → decode/lower missing block → emit host code → execute → return to dispatcher`
 
-The default shipping path is the dynarec/JIT. A DuckStation-style bounded interpreter fallback may
-execute only blocks the JIT explicitly cannot compile or fetch safely, with typed reasons, guest PCs,
-and block/instruction denominators. It returns to JIT dispatch and must not become a first profiling
-pass, asynchronous-compilation bridge, missing-backend substitute, or normal compatibility mode. An
-interpreter-only mode remains an explicit test/diagnostic surface. All paths share canonical CPU
-state, memory, exception, and service semantics. Static analysis may produce reviewable symbols or
-non-executable metadata; it must not produce guest function bodies or another title-specific source
-corpus.
+All execution paths share canonical CPU state, memory, exception, and service semantics. The global
+dynarec policy governs the shipping JIT, bounded fallback, and analysis metadata boundaries.
 
 ## Migration from generated-source recompilers
 
-Use break-first ordering:
-
-1. Preserve only independently useful binary/behavior evidence, native subsystem contracts, and
-   oracle scenarios.
-2. Delete the generator, generated-source build rules and corpora, static dispatch, generation-only
-   seeds, static-only tests/config/selectors, and stale methodology before implementing the dynarec.
-3. Make the resulting broken build name one explicit missing runtime-executor boundary. Do not keep
-   the static product runnable as a bridge, comparison arm, fallback, or temporary convenience.
-4. Put CPU state, memory, imports/syscalls, native overrides, bounded exits, and invalidation behind
-   the runtime interface, then route real guest code through the dynarec and compare against an
-   independent emulator, hardware, binary evidence, or separately built test oracle.
-5. Expand runtime coverage through representative interactive gameplay and qualify each released
-   host backend.
-
-Do not preserve a compatibility mode that can silently select the old pipeline. A migration is
-complete only when a fresh clone builds and launches the native/dynarec hybrid from the user-supplied
-binary without an offline translation step, ordinary cold blocks compile before execution, and every
-fallback is reason-coded and measured.
+Follow the global break-first deletion contract. Preserve independently useful behavioral evidence
+and oracle scenarios, then expose one missing runtime-executor boundary. Wire CPU state, memory,
+imports/syscalls, overrides, exits, and invalidation through that boundary. Resume from a real guest
+entry point or deterministic savestate and expand coverage along reached control flow. The migration
+is complete only after a fresh clone launches from the user's binary, ordinary cold blocks compile
+before execution, and representative gameplay passes the oracle gate on each released host.
 
 ## Core loop
 
@@ -72,21 +53,7 @@ Maintain a faithful mode that can be compared with the original before adding wi
 rate, rendering, input, or loading enhancements. Enhancements intentionally diverge and need their
 own observable gates; they do not weaken the faithful baseline.
 
-## Game-file provisioning
-
-Game binaries stay outside Git and packages. Support both an environment/`.env` path and a repo
-drop-in, with resolution order: explicit argument, environment/`.env`, then drop-in. Packaged apps
-use the platform's file picker and persistent user-data location. Validate exact title identity
-before execution.
-
 ## Verification discipline
 
-Never claim parity from boot, a clean internal trace, or a single frame. Verify deterministic real
-gameplay, audio, rendering, timing, and state against a trusted oracle, and name the measured scope.
-
-Host qualification is per operating-system/architecture pair. In particular, AArch64 support must
-cover both Apple Silicon macOS and Android arm64-v8a with the shipping backend. Test executable-memory
-publication and protection changes, instruction-cache coherence, ABI transitions, signals/exceptions,
-packaging, and representative gameplay on each; an emitter unit test or a different AArch64 OS is not
-substitute evidence. Never fill an unimplemented host backend with interpreter execution or claim a
-backend from a fallback-dominated run.
+Verify deterministic real gameplay, audio, rendering, timing, and state against a trusted oracle;
+name the measured interval and released host. See **dynarec-harness** for first-divergence evidence.

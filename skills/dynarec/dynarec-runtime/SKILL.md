@@ -8,8 +8,7 @@ description: >-
 
 # Dynamic-recompiler runtime
 
-The runtime consumes guest bytes and translates executable blocks on demand. There is no offline
-guest-code emission step and no generated C/C++ corpus in the build.
+The runtime owns live block discovery, translation, publication, and invalidation.
 
 ## One execution contract
 
@@ -44,15 +43,9 @@ correctness fallback, not the final design when bounded invalidation is availabl
 
 ## Bounded interpreter fallback
 
-The zero-argument product always starts in dynarec mode and offers every cold block to the JIT. An
-interpreter may execute a block only after the JIT explicitly refuses compilation or safe fetch. The
-fallback records a typed reason, guest PC, block count, and instruction count, then returns to JIT
-dispatch. It is not a profiling first pass, an asynchronous-compilation bridge, a missing-backend
-substitute, or a general compatibility mode.
-
-An interpreter-only mode may provide a correctness oracle and bring-up route only behind an explicit
-test/diagnostic target or option. Enforce the dynarec default, bounded entry edges, and telemetry with
-build/selector and positive/negative tests. A zero fallback count alone does not prove the boundary.
+Implement the global bounded-fallback contract at one explicit JIT refusal edge. Test a compiled
+cold block, a reason-coded refusal, return to JIT dispatch, and a selector that cannot make
+interpreter-only execution the default. A zero fallback count alone does not prove the boundary.
 
 ## Instruction semantics
 
@@ -66,8 +59,6 @@ instruction or block regression that reproduces it. Never special-case the faili
 
 ## Determinism and diagnostics
 
-Provide block compile/hit/invalidation counters, guest-PC-aware failures, bounded traces, and
-fallback blocks/instructions by reason with denominators. Test targets report oracle and
-interpreter-only entries separately.
-Deterministic inputs and guest time are required for differential verification. Prove diagnostic
-positive and negative cases before trusting a silent result.
+Use the global runtime counters to locate compilation, cache, and fallback behavior by guest PC.
+Test targets report oracle and interpreter-only entries separately. Deterministic inputs and guest
+time are required for differential verification; prove diagnostic positive and negative cases.

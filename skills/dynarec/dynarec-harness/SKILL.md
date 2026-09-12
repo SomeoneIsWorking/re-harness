@@ -24,12 +24,10 @@ A helper that separately evaluates instructions is not evidence for the product.
 
 ## Make execution coverage visible
 
-Every product run reports translated block/instruction executions, cache hits/misses, invalidations,
-native overrides, fallback block/instruction entries by reason, and total relevant boundaries.
-Include denominators. A run that never executes translated code, reaches the discriminator only by
-fallback, or is dominated by interpretation must fail a JIT-specific gate even if it matches the
-oracle. A separate interpreter-only oracle reports its entries independently; gameplay gates also
-inspect the default engine selector and bounded fallback entry edges.
+Apply the global runtime telemetry contract to both legs. A JIT-specific gate must fail when the
+discriminator was reached only by fallback, even if state matches the oracle. Report a separate
+interpreter-only oracle independently and inspect the default selector and bounded fallback entry
+edges in gameplay gates.
 
 Add discriminators that must exercise both a cache hit and a retranslation after guest code changes.
 Validate that the instrumentation can report the opposite result before trusting a clean run.
@@ -47,12 +45,9 @@ bound the exact field and lifecycle in which they differ.
 3. Classify the owner: decode/semantic lowering, cache invalidation, CPU state transfer, memory map,
    exception/timing, service emulation, or native override.
 4. Fix that owner and add the smallest regression through the shipping path.
-5. Re-run the focused discriminator, then the combined landing gate once semantic edits are frozen.
+5. Re-run the focused discriminator.
 
 ## Artifacts
 
-Write bounded logs, state dumps, frames, and audio under the project's stable gitignored `scratch/`
-activity directories, never `/tmp`. Overwrite or rotate one previous run; do not accumulate numbered
-run trees. Build products stay under `build/`; persistent runtime caches belong in OS user data.
-
-Parity claims require real title data and must name the exercised interval. Boot alone is not parity.
+Keep the minimal state dump, frame, or audio sample needed to explain the first divergence. Parity
+claims require real title data and must name the exercised interval; boot alone is not parity.

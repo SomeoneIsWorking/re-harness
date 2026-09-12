@@ -1,13 +1,6 @@
 # Global working principles
 
-**Unlabeled content is machine convention, revisable by any session. USER lines are verbatim dated
-quotes and only those.**
-
 ## Canonical shared configuration
-
-USER 2026-08-26: "And ~/.codex and ~/.claude etc can point to these skills so everything is converged at one point and also portable"
-
-USER 2026-08-30: "All global skills and instructions and tools should be under one repo and things like ~/.claude or ~/.codex should just reference them"
 
 - **`shared/re-harness` is the only editable authority for user-maintained global instructions,
   skills, and tools.** It categorizes
@@ -21,10 +14,6 @@ USER 2026-08-30: "All global skills and instructions and tools should be under o
 
 ## Browser automation with WebLua
 
-USER 2026-09-08: "weblua is SomeoneIsWorking/weblua (private, you can use gh), should be in \~/repo/weblua"
-
-USER 2026-09-08: "All agents should know how to use it"
-
 - **Use WebLua for browser automation and browser verification when the user requests it.**
   Consult the discoverable `weblua` skill (`skills/global/weblua/SKILL.md` in this repository).
   Before declaring browser verification unavailable because Chromium or a browser tool is missing,
@@ -36,8 +25,6 @@ USER 2026-09-08: "All agents should know how to use it"
   WebGPU or WASM gameplay. Do not copy WebLua's stale temporary-path or personal-path examples.
 
 ## Godot tool discovery
-
-USER 2026-09-08: "godot is in `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/` Note this globally and don't forget"
 
 - **On this host, check the user-provided Godot installation before declaring Godot unavailable.**
   Prefer `GODOT_BIN` when set, then the executable in
@@ -82,8 +69,6 @@ USER 2026-09-08: "godot is in `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/` Not
 
 ## Work must dominate process — prevent churn
 
-USER 2026-08-30: "All agents do this, you gotta put some global guard rails against excessive churning because 95% of my token budget goes to this"
-
 - **Spend the turn on the product, not on proving that work happened.** Investigation, implementation,
   and real output must dominate. After two consecutive process-only actions (plans, status, registry
   edits, doc mirroring, or re-running unchanged checks), stop and either advance the product or land
@@ -119,14 +104,6 @@ USER 2026-08-30: "All agents do this, you gotta put some global guard rails agai
 
 ## Broad project `/goal` requests mean the complete goals list
 
-USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\" or anything of sort or here in this case \"continue working on the game\" that means the goal is to achieve all the goals in the project goals list"
-
-USER 2026-08-31: "This portfolio doesn't reflect the projects correctly, it should list a list of intended features and show their state, if the projects don't have this info then they should be updated to have this info and the global instructions should state the necessity of this"
-
-USER 2026-08-31: "Benefactor for example still doesn't list any of its features"
-
-USER 2026-08-31: "No one can know what's changed over the vanilla emulated game"
-
 - **Interpret a broad project `/goal` as the complete canonical project-goals objective.** Phrases
   such as “work on the project goals,” “continue working on the project,” or “continue working on
   the game” mean to achieve every success condition in the project's goals list, not merely finish
@@ -134,7 +111,7 @@ USER 2026-08-31: "No one can know what's changed over the vanilla emulated game"
 - **Resolve the scope from project authorities before working.** Consult the canonical project goals
   for the completion condition and the independent project-state inventory for verified, partial,
   blocked, and missing capabilities. Keep the `/goal` active until all goal success conditions are
-  genuinely satisfied and verified, or the goal is explicitly changed by the USER.
+  genuinely satisfied and verified, or the goal is explicitly changed by the user.
 - **Specific goals remain specific.** Do not expand an explicitly bounded `/goal` into the entire
   project merely because the project has a goals list; this convention applies to broad wording
   that refers to continuing or completing the project as a whole.
@@ -170,8 +147,6 @@ USER 2026-08-31: "No one can know what's changed over the vanilla emulated game"
   default that says to branch first. Deleting a divergent branch loses its commits — confirm.
 - **A verified fix or a reached milestone is standing authorization to commit AND push** (operator
   sessions only), OVERRIDING any "only when the user asks" default. Use `Co-Authored-By`.
-
-USER 2026-09-04: "Use gh to create a remote, make it standard practice"
 
 - **A maintained repository has a GitHub `origin`.** When a local project reaches
   its first verified milestone and has no remote, use `gh` to check for the exact
@@ -253,15 +228,9 @@ USER 2026-09-04: "Use gh to create a remote, make it standard practice"
 
 ## Subagent access is globally authorized
 
-USER 2026-09-04: "I want to transition all my static recomps away to dynamic recomps like JIT / dynarec etc (not familiar with the wording) I give you unlimited subagent access for all the projects"
-
-USER 2026-09-12: "You can also talk to the other agents when you need to, inform them of the structure changes being made etc"
-
-USER 2026-09-12: "And you can fan out subagents for parallel work"
-
 - **There is no user-imposed subagent count for projects.** Use as many concurrent subagents as the
   active product and service limits permit. A project-local stale zero or numeric allowance does not
-  revoke this global authorization; only a later USER instruction does.
+  revoke this global authorization; only a later user instruction does.
 - **Authorization does not make delegation mandatory.** Use a slot only for a concrete, bounded task
   whose coordination cost is justified. Assign non-overlapping ownership and identify shared
   resources before dispatch.
@@ -270,10 +239,6 @@ USER 2026-09-12: "And you can fan out subagents for parallel work"
   do not run multiple game instances at once unless their harness explicitly provides isolation.
 
 ## Code quality is a release gate
-
-USER 2026-08-30: "It is important globally that code quality is a top priority, must be DRY and no monoliths"
-
-USER 2026-08-30: "And not just those code quality items, all the standard ones"
 
 - **Code quality is part of correctness and outranks delivery speed.** A feature is not complete when
   it merely works on the reported case. It must leave the owning code clearer, cohesive, maintainable,
@@ -332,23 +297,6 @@ USER 2026-08-30: "And not just those code quality items, all the standard ones"
 
 ## The default launcher runs the project target
 
-USER 2026-08-14: "Global rule for all projects also, a ./run.sh script that works on the default path, I don't want a ./run.sh that runs something outdated or missing an important flag and ideally the default target path shouldn't be hidden behind flags. Default doesn't mean vanilla btw, default means the project target."
-
-USER 2026-08-24: "My goal was to have OotB experience where
-If someone has a C++ compiler (gcc, clang, AppleClang) and uv installed and the game files available
-Without requiring anything as such as Ghidra
-It should work when they run run.sh"
-
-USER 2026-08-24: "Well ok compiler + dependencies like SDL must be installed"
-
-USER 2026-08-24: "This applies to all my projects in ~/repo"
-
-USER 2026-08-24: "Add a global rule that run.sh must be a slim shim to call python initializers etc and it should work OotB as long as uv and C++ dependencies exist, you can prompt a question like ask brew dependencies on macOS or ask user to sudo apt/dnf install in linux maybe too"
-
-USER 2026-08-24: "And for Windows... I have no idea, I hate Windows :)"
-
-USER 2026-09-08: "run.sh opens the INTENDED path ... run.sh is for me, if you need multiple paths yourself, make another tool"
-
 - **`./run.sh` is the one user launcher for the project's intended target.** It has one zero-argument
   product path and must not expose alternate products, legacy implementations, diagnostics, tests,
   verification, or maintainer-only selectors as subcommands or flags. The project instructions and
@@ -394,14 +342,6 @@ USER 2026-09-08: "run.sh opens the INTENDED path ... run.sh is for me, if you ne
 
 ## Clean and DRY code is a correctness requirement
 
-USER 2026-08-14: "Also make a global rule to write clean code and especially DRY code"
-
-USER 2026-09-12: "Also DRY, extract common patterns as helpers into Lucent helpers"
-
-USER 2026-09-12: "Perhaps like something like LINQ for common vector operations, just an example, idk"
-
-USER 2026-09-12: "or even something that supersedes vectors"
-
 - **Keep one authoritative implementation of each rule, formula, parser, state transition, and data
   mapping.** Call or extend that implementation everywhere it is needed; do not copy it into a new
   helper, test, diagnostic, platform path, or game-specific path and let the copies drift.
@@ -433,24 +373,6 @@ USER 2026-09-12: "or even something that supersedes vectors"
   consumer evidence and performance tests before making it the project default.
 
 ## Agents use Clang; projects do not require it
-
-USER 2026-08-20: "Make a global rule to always use clang for C++"
-
-USER 2026-08-20: "I have a global rule regarding C++ projects using clang but also add that they must also use clang formatting and a linter"
-
-USER 2026-08-24: "I previously put a rule, all C/C++ projects must use clang but the agents went overboard and make the projects reject other compilers, this is not what I meant, I meant the agents should use clang, not have the project code enforce it"
-
-USER 2026-09-12: "all C++ projects should use clang tidy defaults and"
-
-USER 2026-09-12: "- No extern, no local static variables, no local consts, always use header"
-
-USER 2026-09-12: "- OOP, classes, namespaces"
-
-USER 2026-09-12: "- no one line "if"s, all statements in their own line, no closures without curly braces, single statement "if"s need curly braces too"
-
-USER 2026-09-12: "Most projects right now like xmen2, uses like x2_* global methods, not ok"
-
-USER 2026-09-12: "Update global instructions and harden the clang rules"
 
 - **Every agent/maintainer verification build compiles C++ translation units with Clang (`clang++`).**
   Configure new CMake build trees with `CXX=clang++` or
@@ -524,8 +446,6 @@ USER 2026-09-12: "Update global instructions and harden the clang rules"
 
 ## Ask the user for DNF installs
 
-USER 2026-08-20: "new global rule: ask the user for dnf installs"
-
 - **When a required packaged tool or library is missing on a DNF-based system, stop and ask the user
   to install it with DNF.** Identify the exact package names and provide the complete
   `sudo dnf install ...` command. Do not download or extract RPMs, install an alternate package
@@ -534,8 +454,6 @@ USER 2026-08-20: "new global rule: ask the user for dnf installs"
   Resume the blocked work after the user confirms the installation is complete.
 
 ## Use Lucent for HTTP servers in C++ projects
-
-USER 2026-08-20: "Note in the global agents to use lucent for http server"
 
 - **C++ projects use Lucent's `lucent::http::Server` for local HTTP servers and control channels.**
   Do not reimplement socket setup, bounded request parsing, concurrent dispatch, response framing, or
@@ -546,10 +464,6 @@ USER 2026-08-20: "Note in the global agents to use lucent for http server"
   project rather than moving domain logic into Lucent.
 
 ## Project tooling is Python, except the launcher
-
-USER 2026-08-21: "scripts like re_xref.sh should be python"
-
-USER 2026-09-04: "make sure all your scripts are in python and modular and DRY"
 
 - **Write project automation, verification, RE, maintenance, and migration tools in Python, not
   shell.** A shell wrapper around a Python tool is still a second interface and should be removed;
@@ -568,12 +482,6 @@ USER 2026-09-04: "make sure all your scripts are in python and modular and DRY"
   parallel implementations.
 
 ## Scratch output & diagnostics
-
-USER 2026-08-14: "Don't try to execute raw \"rm -rf\", codex blocks it, create a global rule against this, instead create cleanup scripts and use them"
-
-USER 2026-09-04: "You don't need a cleanup script, I asked for one because Claude Code blocks rm -rf on some cases"
-
-USER 2026-08-31: "new global rule, scratch is used for replacement of /tmp, builds don't go into scratch, they go into build dir"
 
 - **Cleanup does not require a one-off script.** Resolve and validate every target first, keep the
   command explicitly scoped to those exact paths, and never target a workspace root, home directory,
@@ -613,8 +521,6 @@ USER 2026-08-31: "new global rule, scratch is used for replacement of /tmp, buil
   and passes the relevant slice to each owner. Environment names, defaults, precedence, persistence,
   CLI overrides, and validation have one source of truth; a new environment read elsewhere is an
   architecture violation, not a convenience.
-
-USER 2026-08-30: "Agents used scratch directories too agressively and didn't care for disk size, now stale files take up much space, clean them up a bit and then make rules for this"
 
 - **`scratch/` is disposable working space with a size budget, not an archive.** Write only what the
   current task needs, at the smallest fidelity that answers the question (sampled frames, not every
@@ -661,22 +567,6 @@ skill is the entry point (`info.py brief <words>` — one query across every reg
 `issue-catalog` answers "tried before?" and `codemap` answers "where does this belong?" (update it in the SAME
 change that moves, adds or re-owns anything; a stale map is worse than none). If consulting is hard,
 that is a workflow defect and it outranks the task in hand. Keep these authorities distinct:
-
-USER 2026-08-26: "Hmm, make something better structured, what's done, what's missing should be independent of the goals too, goals are like epics, what's missing, what's done should be like idk milestones or something and then there are issues, lowest level points at least that's what I think so"
-USER 2026-08-26: "I don't think \"milestones\" is the right term here, more like current-state or something"
-USER 2026-08-26: "But you can decide on a better name"
-
-USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\" or anything of sort or here in this case \"continue working on the game\" that means the goal is to achieve all the goals in the project goals list"
-
-- **Project-wide `/goal` language means the whole project-goals list.** When an active goal says to
-  work on the project goals, continue the project/game, finish the project, or equivalent broad
-  language, its completion condition is every durable goal and success condition in the project's
-  `docs/project-goals.md`, not merely the current focus, one state item, or the next milestone.
-- **Intermediate milestones do not complete a project-wide goal.** Use `docs/project-state.md` and
-  the registries to select and verify the next unmet capability, land coherent verified milestones,
-  and continue within the same active goal until the complete project-goals list is achieved or a
-  genuine blocker requires user action. A specifically scoped `/goal` remains limited to its stated
-  scope.
 
 - **Goals are epic-level intent in `docs/project-goals.md`.** Each stable goal ID states a durable
   outcome, why it matters, success conditions, constraints, and non-goals. Goals do not carry
@@ -730,20 +620,6 @@ USER 2026-08-30: "if I set a goal with `/goal` like \"work on the project goals\
 you need, extend it — and a tool without a doc update is unfinished.
 
 ## Guest code executes at runtime; generated-source recomps are retired
-
-USER 2026-09-04: "I'm not going to do any more code generation style static recomps anymore, you can remove everything about that methodology"
-
-USER 2026-09-04: "To be clear I don't want ANY interpreter when playing a game, interpreter can only be used in testing"
-
-USER 2026-09-04: "Okay then I'll allow you doing what DuckStation does"
-
-USER 2026-09-04: "For all projects, not just PSX"
-
-USER 2026-09-04: "And uh weaker consoles like NES/GBA/Amiga can be interpreter, sorry I forgot about them"
-
-USER 2026-09-04: "But delete static recomp first (remember break-first)"
-
-USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
 
 - **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; every
   remaining guest function executes through an on-demand dynamic recompiler/JIT. Do not translate
@@ -807,10 +683,6 @@ USER 2026-09-04: "Try to also make arm64 work for both arm64 macs and Android"
 
 ## Engine migrations preserve the existing game source
 
-USER 2026-08-31: "Even if I said \"reimplement under different engine\" this should NEVER mean, rewrite the entire game source code"
-
-USER 2026-08-31: "when that isn't possible you can transpile using a tool but in this case, it shouldn't be needed"
-
 - **Changing engines is a source-preserving port, not a gameplay rewrite.** Start from the existing
   game source and retain its domain logic, content, data, progression, state transitions, and tests.
   Replace or adapt only the APIs and owners coupled to the old engine: lifecycle, rendering, input,
@@ -818,7 +690,7 @@ USER 2026-08-31: "when that isn't possible you can transpile using a tool but in
 - **Port before translating; translate before rewriting.** Prefer direct compilation and narrow
   adapters. If the source language or runtime genuinely cannot target the new engine, use a
   deterministic transpiler or source-to-source migration tool and keep the generated relationship
-  reviewable. A manual gameplay rewrite is a last resort and requires explicit USER authorization;
+  reviewable. A manual gameplay rewrite is a last resort and requires explicit user authorization;
   “reimplement under another engine” alone never grants it.
 - **Prove impossibility rather than assuming it.** Before replacing existing game code, identify the
   exact incompatible boundary and demonstrate why adapters, refactoring, direct compilation, or
@@ -910,15 +782,11 @@ and a product links only the adapter for its guest platform. `x86port` and
 title rather than submodules owned by Alchemy, so Alchemy never pulls both
 execution frameworks into an unrelated consumer.
 
-USER 2026-08-26: "And ~/.codex and ~/.claude etc can point to these skills so everything is converged at one point and also portable"
-
 `shared/re-harness/tools/install_skills.py` is the only global-surface installer. It creates relative
 instruction, skill, and tool links for `.agents`, `.codex`, `.claude`, and the `~/repo` instruction
 scope; those locations are not independent sources. Vendor-owned system files remain untouched.
 
 ## Fork dependencies; do not carry patch files
-
-USER 2026-08-24: "Agents should fork the repos and apply the changes instead of making .patch files"
 
 - **Third-party changes live as commits in a maintained fork, never as tracked
   `.patch` files.** Create or reuse the fork, make the change in its source
@@ -977,9 +845,7 @@ A thing is not checked until it is checked as the user will meet it.
 
 ## An agent must be able to DRIVE its work, not just launch it
 
-USER 2026-08-18: *"an agent must be able to interact with its work
-interactively"* — press inputs, read state, take screenshots, measure, WHILE it
-runs.
+An agent must be able to press inputs, read state, take screenshots, and measure while its work runs.
 
 - **Build a control channel into the artefact**, opt-in and off by default (a
   local port, a socket, a REPL), never a wrapper around logs. Client in the
@@ -987,27 +853,14 @@ runs.
 - **A launch-and-read-logs loop forces pre-baked scripts, and a pre-baked
   script that drifts is worse than no evidence** — it produces a run that looks
   like a measurement and never reached the thing under test.
-- **Play-through runs OBSERVE; they never gate.** USER: *"these idiotic 'play
-  the game' scripts are only for testing scenarios, not to build gates on"*.
+- **Play-through runs OBSERVE; they never gate.** Use them only for testing scenarios.
   Gate on unit tests, runtime invariants, counters with denominators. Before
   reading the ABSENCE of a symptom as a fix, prove the run reached the code.
 - **An automated or windowless run must not seize the machine** — no audio out
   of a run nobody is watching, no stealing focus. Where silence would change
   behaviour, use a silent device whose cursors still advance, not no device.
 
-## Persistent broad project goals
-
-USER 2026-08-30: "if I set a goal with `/goal` like "work on the project goals" or anything of sort or here in this case "continue working on the game" that means the goal is to achieve all the goals in the project goals list"
-
-- **A broad `/goal` that refers to the project, the game, or the project goals scopes completion to
-  every goal recorded in `docs/project-goals.md`.** The current focus and intermediate milestones
-  only order the work; completing one focus item or making the project incrementally better does not
-  complete or narrow that persistent goal. Audit every recorded goal and its success conditions
-  before marking it achieved.
-
 ## Single-title completion discipline
-
-USER 2026-08-31: "Make a rule to not jump to other games without finishing one"
 
 - **Finish one title before starting another.** In a multi-title game-port project, choose one
   active title/revision as the conformance target. Do not begin title-specific reverse engineering,
@@ -1027,13 +880,7 @@ USER 2026-08-31: "Make a rule to not jump to other games without finishing one"
   current-state authority before changing focus; a probe of another game does not change that
   active-title requirement.
 
-## Launcher verification and packaged releases
-
-USER 2026-08-24: "Also run.sh should not run tests, agents need their own test commands"
-
 ## Runtime-execution verification and release inputs
-
-USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when applicable"
 
 - **Every maintained project has hosted CI for every applicable shipping platform.** Linux,
   Windows, and macOS jobs are required for portable desktop libraries, tools, and products that
@@ -1156,11 +1003,3 @@ USER 2026-09-04: "Also add Windows/Linux/macOS/Android CI for all projects when 
   an AppImage mount, the current working directory, or scratch output; an explicit portable/diagnostic
   override is allowed. Share this resolver across ports or extend Lucent when it owns the relevant
   runtime boundary instead of copying platform path logic.
-
-## Preserve verified behavior across ownership changes
-
-- **Before coupling configuration, persistence, rendering, input, timing, or UI
-  owners, search history and the project registries for the existing contract.**
-  Add a regression that exercises that production boundary first, and require it
-  to preserve the old behavior as well as prove the new path. A test written only
-  for the new coupling can certify the regression it introduced.
