@@ -283,6 +283,9 @@
   path launches the live development target identified by project goals and instructions, never a
   stock, legacy, demo, or diagnostic path. It does not expose alternate products, tests, verification,
   or maintainer-only selectors as flags or subcommands; use separate named Python tools for those.
+  `run.sh` therefore has exactly one user-facing target: its zero-argument invocation must open the
+  intended product path, while any alternate launch, browser preview, diagnostic, or verification
+  path belongs in a separately named maintainer tool.
   Launching never runs tests, lint, format checks, or selftests.
 - **Required target behavior is invariant, not an optional default value.** Extra user arguments may
   add or override genuinely optional settings but must not accidentally replace a required renderer,
