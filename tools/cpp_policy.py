@@ -41,12 +41,18 @@ JSON_SCALAR_END = re.compile(r"[,\]}\s]")
 
 def settings(text):
     """Read scalar keys from tool-normalized configuration, not raw YAML syntax."""
-    return {
-        key.strip(): value.strip().strip("'\"")
-        for line in text.splitlines()
-        if ":" in line
-        for key, value in (line.split(":", 1),)
-    }
+    values = {}
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, raw = line.split(":", 1)
+        value = raw.strip()
+        if value.startswith('"') and value.endswith('"'):
+            value = json.loads(value)
+        else:
+            value = value.strip("'")
+        values[key.strip()] = value
+    return values
 
 
 def short_functions_disabled(format_output, formatter):

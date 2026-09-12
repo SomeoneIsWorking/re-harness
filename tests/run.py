@@ -167,6 +167,12 @@ def main():
     )
     fails += check("cpp_policy: accepts required effective Clang config",
                    not cpp_policy.inspect_configs(tidy_config, format_config))
+    quoted_tidy_config = tidy_config.replace(
+        f"Checks: '{tidy_checks}'",
+        f'Checks: "{tidy_checks}\\n"',
+    )
+    fails += check("cpp_policy: accepts Clang's escaped Checks scalar",
+                   not cpp_policy.inspect_configs(quoted_tidy_config, format_config))
     nested_format_config = format_config.replace(
         "AllowShortFunctionsOnASingleLine: None",
         "AllowShortFunctionsOnASingleLine:\n  Empty: false\n  Inline: false\n  Other: false",
