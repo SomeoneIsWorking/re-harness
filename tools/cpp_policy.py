@@ -8,6 +8,7 @@ checks cannot reliably prohibit.
 
 import argparse
 import bisect
+import ctypes
 import json
 import os
 import re
@@ -48,6 +49,27 @@ def settings(text):
     }
 
 
+def short_functions_disabled(format_output, formatter):
+    value = formatter.get("AllowShortFunctionsOnASingleLine")
+    if value in {"None", "false"}:
+        return True
+    if value != "":
+        return False
+    lines = format_output.splitlines()
+    for index, line in enumerate(lines):
+        if line != "AllowShortFunctionsOnASingleLine:":
+            continue
+        children = {}
+        for child in lines[index + 1:]:
+            if child and not child[0].isspace():
+                break
+            if ":" in child:
+                key, child_value = child.split(":", 1)
+                children[key.strip()] = child_value.strip()
+        return all(children.get(key) == "false" for key in ("Empty", "Inline", "Other"))
+    return False
+
+
 def inspect_configs(tidy_output, format_output):
     tidy = settings(tidy_output)
     formatter = settings(format_output)
@@ -64,8 +86,12 @@ def inspect_configs(tidy_output, format_output):
     if tidy.get("readability-braces-around-statements.ShortStatementLines") != "0":
         findings.append(".clang-tidy must set readability-braces-around-statements.ShortStatementLines: 0")
     for key, expected in REQUIRED_FORMAT_SETTINGS.items():
-        if formatter.get(key) != expected:
-            findings.append(f".clang-format must set {key}: {expected}")
+        if key == "AllowShortFunctionsOnASingleLine":
+            valid = short_functions_disabled(format_output, formatter)
+        else:
+            valid = formatter.get(key) == expected
+        if not valid:
+            findings.append(f".clang-format must set {key}: {expected} (effective: {formatter.get(key)!r})")
     return findings
 
 
@@ -368,7 +394,7 @@ def compile_arguments(entry):
     if "arguments" in entry:
         arguments = list(entry["arguments"])
     elif "command" in entry:
-        arguments = shlex.split(entry["command"])
+        arguments = split_compile_command(entry["command"])
     else:
         raise ValueError("compile command has neither arguments nor command")
     if not arguments:
@@ -380,13 +406,33 @@ def compile_arguments(entry):
             skip_next = False
         elif argument in {"-o", "-MF", "-MT", "-MQ", "/Fo", "/Fd"}:
             skip_next = True
-        elif argument in {"-c", "/c", "-MMD", "-MD", "-MP"} or argument.startswith(("/Fo", "/Fd")):
+        elif argument in {"-c", "/c", "--", "-MMD", "-MD", "-MP"} or argument.startswith(("/Fo", "/Fd")):
             continue
         else:
             filtered.append(argument)
     if skip_next:
         raise ValueError("compile command ends in an output or dependency option")
     return [*filtered, "-fsyntax-only", "-Xclang", "-ast-dump=json"]
+
+
+def split_compile_command(command):
+    """Preserve Windows paths and quoted arguments from CMake's command string."""
+    if os.name != "nt":
+        return shlex.split(command)
+    shell32 = ctypes.windll.shell32
+    shell32.CommandLineToArgvW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
+    shell32.CommandLineToArgvW.restype = ctypes.POINTER(ctypes.c_wchar_p)
+    kernel32 = ctypes.windll.kernel32
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    count = ctypes.c_int()
+    arguments = shell32.CommandLineToArgvW(command, ctypes.byref(count))
+    if not arguments:
+        raise OSError("CommandLineToArgvW could not parse the compile command")
+    try:
+        return [arguments[index] for index in range(count.value)]
+    finally:
+        kernel32.LocalFree(ctypes.cast(arguments, ctypes.c_void_p))
 
 
 def check_database(database, root, excluded=(), allowed_globals=()):
