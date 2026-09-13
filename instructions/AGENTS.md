@@ -287,6 +287,13 @@
   intended product path, while any alternate launch, browser preview, diagnostic, or verification
   path belongs in a separately named maintainer tool.
   Launching never runs tests, lint, format checks, or selftests.
+- **`./run.sh` serves the user; the agent uses its own tools.** The zero-argument path opens the
+  windowed, audible, real-time product, so an agent run seizes the desktop that belongs to the person
+  in front of it. Never run it to diagnose, measure, verify, or smoke-test your own work, and never
+  route an agent gate through it. Build or use a named maintainer tool that drives the product
+  offscreen, silent, and unpaced, and capture audio or video through a headless sink rather than a
+  device. Exercising the default route is a bounded check on the shipping interface the user meets —
+  not the evidence for a gameplay, audio, or performance claim.
 - **Required target behavior is invariant, not an optional default value.** Extra user arguments may
   add or override genuinely optional settings but must not accidentally replace a required renderer,
   backend, entry point, asset pack, or launch mode. Build the required argument vector explicitly.
