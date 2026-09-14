@@ -747,6 +747,15 @@ vendoring and does not move Activity, SAF, lifecycle, build, package, or device 
 **If you write something a second project will want, put it in `shared/` the
 first time, not the second.** The second time is when a fork already exists.
 
+**Land the shared change before the consumer that needs it, and build the
+consumer against a clean tree at the revision CI will check out.** A consumer's
+local build resolves the sibling checkout, so uncommitted work there passes
+locally and fails in CI, which builds the pin — measured: an Android job failed
+on `no member named 'top_left'` after a consumer was pushed against an
+uncommitted `shared/touch-ui`. Commit and push the shared repo, bump the
+consumer's pin, and re-run the consumer build with that checkout clean and at the
+pinned revision before pushing the consumer.
+
 For Xbox 360 UE3 titles, dependency direction is `title/series engine ->
 x360ue3 -> x360port -> Xenia`. A non-UE3 title such as MUA consumes `x360port`
 directly and its own engine layer (`shared/alchemy` for MUA); it must not acquire
