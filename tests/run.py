@@ -16,6 +16,7 @@ duplicating it.
     python3 tests/run.py
 """
 
+import contextlib
 import json
 import io
 import os
@@ -35,6 +36,21 @@ sys.path.insert(0, TOOLS)
 import source_boundary  # noqa: E402
 import install_skills  # noqa: E402
 import cpp_policy  # noqa: E402
+
+
+@contextlib.contextmanager
+def environment(**values):
+    """Run a block with these variables set, and leave the process as it was."""
+    previous = {name: os.environ.get(name) for name in values}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def tempdir():
@@ -219,15 +235,21 @@ def main():
                 r"D:\a\jit-common\src\block_cache.cpp",
             ],
         )
+    jobs_default = cpp_policy.scan_workers(64)
+    with environment(CPP_POLICY_JOBS="3"):
+        jobs_named = cpp_policy.scan_workers(64)
+        jobs_capped = cpp_policy.scan_workers(2)
+    with environment(CPP_POLICY_JOBS="0"):
+        try:
+            cpp_policy.scan_workers(4)
+        except ValueError as error:
+            jobs_refused = str(error)
+        else:
+            jobs_refused = ""
     fails += check(
-        "cpp_policy: distinguishes top-level const from pointee const",
-        all(cpp_policy.top_level_const(value) for value in (
-            "const int", "int const", "int *const", "std::vector<const int> const",
-            "int (*const)(const int)",
-        )) and not any(cpp_policy.top_level_const(value) for value in (
-            "const int *", "const int &", "std::vector<const int>", "const int **",
-            "int (*)(const int)",
-        )),
+        "cpp_policy: scans units in parallel and lets a caller say how many",
+        jobs_default > 1 and jobs_named == 3 and jobs_capped == 2 and "at least 1" in jobs_refused,
+        f"{jobs_default} {jobs_named} {jobs_capped} {jobs_refused!r}",
     )
 
     # C++ ownership checks use the shipping Clang AST path, including headers.
@@ -242,9 +264,9 @@ def main():
             with open(good, "w", encoding="utf-8") as target:
                 target.write(
                     "namespace demo { inline constexpr int limit = 2; "
-                    "class Worker { public: int run() { int value = limit; return value; } }; }\n"
-                    "int main() { demo::Worker worker; const int* ptr = nullptr; "
-                    "const int& ref = demo::limit; (void)ptr; (void)ref; "
+                    "class Worker { public: int run() { const int value = limit; return value; } }; }\n"
+                    "int main() { demo::Worker worker; const int* ptr = nullptr; constexpr int once = 1; "
+                    "const int& ref = demo::limit; (void)ptr; (void)ref; (void)once; "
                     "return worker.run() - 2; }\n"
                 )
             with open(header, "w", encoding="utf-8") as target:
@@ -274,7 +296,7 @@ def main():
             command = [os.path.join(TOOLS, "cpp_policy.py"),
                        "--compile-commands", database, "--root", project]
             rc, output = run(command, project)
-            fails += check("cpp_policy: accepts namespaced class and entry point",
+            fails += check("cpp_policy: accepts namespaced class, entry point, and const locals",
                            rc == 0 and "scanned 1 translation units" in output
                            and "0 violations" in output, output)
             with open(database, "w", encoding="utf-8") as target:
@@ -285,29 +307,34 @@ def main():
                 }], target)
             rc, output = run(command, project)
             expected = ("api.h:1: extern declaration", "bad.cpp:2: global-namespace function",
-                        "bad.cpp:2: block-scope static", "bad.cpp:2: block-scope const")
+                        "bad.cpp:2: block-scope static")
             fails += check("cpp_policy: rejects header extern and bad local ownership",
                            rc == 1 and all(item in output for item in expected)
-                           and "platform_api" not in output, output)
+                           and "platform_api" not in output
+                           and "block-scope const" not in output, output)
 
+        # The ignored payload is deliberately hostile to a bracket-counting
+        # reader: braces, brackets, escaped quotes and a trailing backslash all
+        # inside strings, and long enough to straddle the reader's read size.
+        noise = ('{[\\"}] ' * 4) + ("x" * (2 << 20)) + '\\\\'
         streamed_ast = (
             '{"kind":"TranslationUnitDecl","inner":['
             '{"kind":"FunctionDecl","name":"sample","loc":{"file":"sample.cpp","offset":0},'
-            '"inner":[{"kind":"VarDecl","name":"value",'
-            '"loc":{"offset":15},"type":{"qualType":"const int"},'
-            '"ignored":"' + ("x" * 262144) + '"}]}]}'
+            '"inner":[{"kind":"VarDecl","name":"value","storageClass":"static",'
+            '"loc":{"offset":16},"type":{"qualType":"int"},'
+            '"ignored":{"deep":["' + noise + '",{"deeper":"' + noise + '"}]}}]}]}'
         )
         with tempdir() as project:
             source = os.path.join(project, "sample.cpp")
             with open(source, "w", encoding="utf-8") as target:
-                target.write("void sample() { const int value = 1; }\n")
+                target.write("void sample() { static int value = 1; }\n")
             stream_findings, stream_files = cpp_policy.inspect_ast_stream(
                 io.StringIO(streamed_ast),
                 cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
             )
             fails += check(
                 "cpp_policy: streams large ignored AST fields with source ancestry",
-                any(rule == "block-scope const" and symbol == "value"
+                any(rule == "block-scope static" and symbol == "value"
                     for _, _, rule, symbol in stream_findings)
                 and cpp_policy.Path(source) in stream_files,
                 repr(stream_findings),
