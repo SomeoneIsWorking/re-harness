@@ -72,6 +72,14 @@ python3 tools/cpp_policy.py --audit-config .
 python3 tools/cpp_policy.py --root . --compile-commands build/debug/compile_commands.json --exclude third_party
 ```
 
+A port that already has ownership it cannot unpick in one change names those
+sites in a file and passes `--accept`, one `path:rule:symbol` per line with the
+reason above it. That turns the scan into a ratchet: what is named passes, and
+anything new fails. There is no line number in a site, so it survives edits to
+the file above it, and an accepted site that stops occurring is reported as a
+violation of its own — an allowance nobody removes when the code improves is
+how a gate quietly stops covering the thing it was written for.
+
 The config audit reads the effective `.clang-tidy` and `.clang-format` settings
 with the installed Clang tools and refuses disabled defaults or missing brace
 rules. It does not rewrite a project's policy.
