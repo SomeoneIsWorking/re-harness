@@ -574,6 +574,43 @@ def check_database(database, root, excluded=(), allowed_globals=()):
     return len(wanted), findings, visited
 
 
+def accepted_sites(path):
+    """Read a project's accepted ownership sites: `file:rule:symbol` per line.
+
+    No line number: a site keeps its meaning when the file above it changes,
+    and a list that goes stale on every edit gets regenerated instead of read.
+    """
+    sites = set()
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        text = line.split("#", 1)[0].strip()
+        if not text:
+            continue
+        parts = text.split(":")
+        if len(parts) != 3:
+            raise ValueError(f"{path}:{number}: expected 'file:rule:symbol', got {line.strip()!r}")
+        sites.add(tuple(part.strip() for part in parts))
+    return sites
+
+
+def apply_accepted(findings, root, accepted):
+    """Split findings into the ones still to answer for and the accepted ones.
+
+    An accepted site that no longer occurs comes back as a violation of its own.
+    An allowance nobody removes when the code improves is how a gate quietly
+    stops covering the thing it was written for.
+    """
+    remaining = []
+    matched = set()
+    for source, line, rule, symbol in findings:
+        named = str(source.relative_to(root)) if source.is_relative_to(root) else str(source)
+        site = (named, rule, symbol)
+        if site in accepted:
+            matched.add(site)
+        else:
+            remaining.append((source, line, rule, symbol))
+    return remaining, sorted(accepted - matched)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -582,6 +619,7 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, help="first-party source root for AST mode")
     parser.add_argument("--exclude", action="append", type=Path, default=[], help="exact vendored/generated subtree")
     parser.add_argument("--allow-global", action="append", default=[], help="exact required platform/ABI entry point")
+    parser.add_argument("--accept", type=Path, help="file listing accepted 'path:rule:symbol' ownership sites")
     arguments = parser.parse_args(argv)
     if arguments.audit_config:
         project = arguments.audit_config.resolve()
@@ -608,10 +646,26 @@ def main(argv=None):
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         print(f"cpp_policy: {error}", file=sys.stderr)
         return 2
-    print(f"cpp_policy: scanned {units} translation units, {len(visited)} first-party files, {len(findings)} violations")
+    stale = []
+    accepted = 0
+    if arguments.accept:
+        try:
+            sites = accepted_sites(arguments.accept.resolve())
+        except (OSError, ValueError) as error:
+            print(f"cpp_policy: {error}", file=sys.stderr)
+            return 2
+        remaining, stale = apply_accepted(findings, root, sites)
+        accepted = len(findings) - len(remaining)
+        findings = remaining
+    summary = f"cpp_policy: scanned {units} translation units, {len(visited)} first-party files"
+    if arguments.accept:
+        summary += f", {accepted} accepted sites"
+    print(f"{summary}, {len(findings) + len(stale)} violations")
     for source, line, rule, symbol in sorted(findings):
         print(f"{source}:{line}: {rule}: {symbol}")
-    return 1 if findings else 0
+    for named, rule, symbol in stale:
+        print(f"{arguments.accept}: accepted site no longer occurs: {named}:{rule}:{symbol}")
+    return 1 if findings or stale else 0
 
 
 if __name__ == "__main__":

@@ -312,6 +312,24 @@ def main():
                            rc == 1 and all(item in output for item in expected)
                            and "platform_api" not in output
                            and "block-scope const" not in output, output)
+            accepted = os.path.join(project, "accepted.txt")
+            with open(accepted, "w", encoding="utf-8") as target:
+                target.write(
+                    "# the boundary this project owns\n"
+                    "api.h:extern declaration:shared\n"
+                    "bad.cpp:global-namespace function:x2_run\n"
+                    "bad.cpp:block-scope static:count\n"
+                )
+            rc, output = run(command + ["--accept", accepted], project)
+            fails += check("cpp_policy: accepts the sites a project has named",
+                           rc == 0 and "3 accepted sites" in output
+                           and "0 violations" in output, output)
+            with open(accepted, "a", encoding="utf-8") as target:
+                target.write("bad.cpp:block-scope static:long_gone\n")
+            rc, output = run(command + ["--accept", accepted], project)
+            fails += check("cpp_policy: reports an accepted site that no longer occurs",
+                           rc == 1 and "no longer occurs" in output
+                           and "long_gone" in output, output)
 
         # The ignored payload is deliberately hostile to a bracket-counting
         # reader: braces, brackets, escaped quotes and a trailing backslash all
