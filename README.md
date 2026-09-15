@@ -52,9 +52,20 @@ no second mutable copy to drift.
 | `tools/safekill` | How to terminate an exact process without matching the calling shell |
 
 `tools/cpp_policy.py` checks first-party C++ global functions, `extern`
-declarations, and block-scope `static`/`const`/`constexpr` variables against
-Clang's AST from a real compile database. Invoke it from a project's normal
-verifier alongside clang-tidy and clang-format:
+declarations, and function-local `static` variables against Clang's AST from a
+real compile database. A local `const` or `constexpr` is not a finding: it is
+the recommended way to write a local, and flagging it buried the real ownership
+findings under a hundred good ones.
+
+Clang parses each unit in a child process, but *reading* the AST it prints is
+what dominates: one unit of a real port is 685 MB of JSON that Clang writes in
+two seconds. So the reader steps over that JSON a token at a time, never a
+character at a time, and resolves each file name once instead of once per node;
+and units are scanned in separate *processes* — threads would have taken turns
+on exactly the slow part — using every core unless `CPP_POLICY_JOBS` says
+otherwise. That port's seventeen units went from ten minutes to forty seconds.
+Invoke it from a project's normal verifier alongside clang-tidy and
+clang-format:
 
 ```text
 python3 tools/cpp_policy.py --audit-config .

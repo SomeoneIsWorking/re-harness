@@ -8,6 +8,7 @@ checks cannot reliably prohibit.
 
 import argparse
 import bisect
+import concurrent.futures
 import ctypes
 import json
 import os
@@ -34,9 +35,14 @@ REQUIRED_FORMAT_SETTINGS = {
     "AllowShortLambdasOnASingleLine": "None",
     "InsertBraces": "true",
 }
+#: The keys a rule reads. Everything else in a node is stepped over unparsed,
+#: which is most of the document: a `type` or `range` object costs nothing here.
+RECORDED_KEYS = {"kind", "loc", "name", "storageClass", "isImplicit"}
 JSON_SPACE = re.compile(r"\s+")
+JSON_KEY = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:')
+JSON_MARKER = re.compile(r'["{}\[\]]')
 JSON_STRING_MARKER = re.compile(r'["\\]')
-JSON_SCALAR_END = re.compile(r"[,\]}\s]")
+JSON_SCALAR = re.compile(r"[^,\]}\s]+")
 
 
 def settings(text):
@@ -120,7 +126,14 @@ def audit_configs(project):
     return inspect_configs(*outputs)
 
 
-def source_path(location, directory, previous):
+def source_path(location, directory, previous, resolved):
+    """The file a node sits in, carried forward when Clang omits an unchanged one.
+
+    `resolved` memoizes the path work. Resolving a name touches the filesystem
+    and a translation unit names the same few hundred files tens of millions of
+    times, so doing it once per name rather than once per node is most of what
+    makes this scan finish.
+    """
     if not isinstance(location, dict):
         return previous, {}
     position = location.get("spellingLoc", location)
@@ -128,8 +141,10 @@ def source_path(location, directory, previous):
         return previous, {}
     name = position.get("file")
     if name:
-        candidate = Path(name)
-        previous = (candidate if candidate.is_absolute() else directory / candidate).resolve()
+        if name not in resolved:
+            candidate = Path(name)
+            resolved[name] = (candidate if candidate.is_absolute() else directory / candidate).resolve()
+        previous = resolved[name]
     return previous, position
 
 
@@ -154,27 +169,6 @@ def first_party(source, root, excluded):
     return not any(source == item or source.is_relative_to(item) for item in excluded)
 
 
-def top_level_const(qualified_type):
-    """Distinguish a const object/pointer from a pointer or reference to const."""
-    without_templates = []
-    template_depth = 0
-    for char in qualified_type:
-        if char == "<":
-            template_depth += 1
-        elif char == ">" and template_depth:
-            template_depth -= 1
-        elif not template_depth:
-            without_templates.append(char)
-    spelling = "".join(without_templates)
-    if "&" in spelling:
-        return False
-    pointer = spelling.rfind("*")
-    object_suffix = spelling[pointer + 1:] if pointer >= 0 else spelling
-    if pointer >= 0:
-        object_suffix = object_suffix.split(")", 1)[0]
-    return re.search(r"\bconst\b", object_suffix) is not None
-
-
 class AstRecorder:
     """Keep only rule findings and source provenance while visiting AST nodes."""
 
@@ -187,12 +181,18 @@ class AstRecorder:
         self.excluded = excluded
         self.entry_points = ENTRY_POINTS | set(allowed_globals)
         self.line_cache = {}
+        self.resolved = {}
+        self.ours = {}
 
     def record(self, node, ancestors):
-        self.last_file, location = source_path(node.get("loc"), self.directory, self.last_file)
+        self.last_file, location = source_path(
+            node.get("loc"), self.directory, self.last_file, self.resolved
+        )
         source = self.last_file
         kind = node.get("kind", "")
-        if first_party(source, self.root, self.excluded) and location.get("offset") is not None:
+        if source not in self.ours:
+            self.ours[source] = first_party(source, self.root, self.excluded)
+        if self.ours[source] and location.get("offset") is not None:
             self.visited.add(source)
             line = line_number(location, source, self.line_cache)
             symbol = node.get("name", "")
@@ -203,28 +203,68 @@ class AstRecorder:
                 if kind == "FunctionDecl" and not c_boundary and symbol not in self.entry_points:
                     if not ancestors.intersection({"NamespaceDecl", "CXXRecordDecl", "ClassTemplateDecl", "RecordDecl"}):
                         self.findings.add((source, line, "global-namespace function", symbol))
+                # A function-local `static` is hidden state with an owner nobody
+                # named: its lifetime, its initialization order, and its sharing
+                # between callers are all invisible at the call site. An ordinary
+                # local `const` or `constexpr` is none of those things — it is the
+                # recommended way to write a local — so only the storage class is
+                # a finding here.
                 if kind == "VarDecl" and ancestors.intersection(FUNCTION_KINDS | {"LambdaExpr"}):
                     if node.get("storageClass") == "static":
                         self.findings.add((source, line, "block-scope static", symbol))
-                    type_info = node.get("type", {})
-                    qualifier = type_info.get("desugaredQualType", type_info.get("qualType", ""))
-                    if node.get("constexpr") or top_level_const(qualifier):
-                        self.findings.add((source, line, "block-scope const", symbol))
 
 
 class JsonStream:
-    """Parse Clang's large AST incrementally without retaining child subtrees."""
+    """Read Clang's AST as tokens, holding only the bytes a rule asks for.
+
+    One translation unit's JSON runs to hundreds of megabytes, so nothing here
+    loops over characters: every scan is a single regular-expression search
+    across a whole buffer, and the interpreter is asked to act once per token
+    instead of once per byte. Measured on a real port, that is the difference
+    between reading a unit in seconds and in minutes. Only the current buffer is
+    held, so a unit of any size still fits in memory.
+    """
+
+    CHUNK = 1 << 20
 
     def __init__(self, source):
         self.source = source
         self.buffer = ""
         self.position = 0
+        #: While a value is being captured, consumed text stays in the buffer so
+        #: the whole span can be handed to the C JSON parser in one piece.
+        self.holding = False
+
+    def refill(self):
+        chunk = self.source.read(self.CHUNK)
+        if not chunk:
+            return False
+        if self.holding:
+            self.buffer += chunk
+        else:
+            self.buffer = self.buffer[self.position:] + chunk
+            self.position = 0
+        return True
+
+    def ensure(self, count):
+        """Hold at least `count` characters, so a short token cannot straddle."""
+        while len(self.buffer) - self.position < count:
+            if not self.refill():
+                return
+
+    def find(self, pattern):
+        """The next match of `pattern`, reading more input until one appears."""
+        while True:
+            match = pattern.search(self.buffer, self.position)
+            if match is not None:
+                return match
+            self.position = len(self.buffer)
+            if not self.refill():
+                return None
 
     def peek(self):
         while self.position == len(self.buffer):
-            self.buffer = self.source.read(65536)
-            self.position = 0
-            if not self.buffer:
+            if not self.refill():
                 return ""
         return self.buffer[self.position]
 
@@ -235,7 +275,9 @@ class JsonStream:
         return char
 
     def space(self):
-        while self.peek():
+        while True:
+            if self.position == len(self.buffer) and not self.refill():
+                return
             match = JSON_SPACE.match(self.buffer, self.position)
             if match is None:
                 return
@@ -247,96 +289,96 @@ class JsonStream:
         if actual != expected:
             raise ValueError(f"malformed Clang AST JSON: expected {expected!r}, got {actual!r}")
 
-    def string(self, capture=True):
-        self.expect('"')
-        raw = ['"'] if capture else None
+    def string_body(self):
+        """Consume a string whose opening quote is already taken."""
         while True:
-            if not self.peek():
-                raise ValueError("truncated Clang AST JSON string")
-            match = JSON_STRING_MARKER.search(self.buffer, self.position)
+            match = self.find(JSON_STRING_MARKER)
             if match is None:
-                if raw is not None:
-                    raw.append(self.buffer[self.position:])
-                self.position = len(self.buffer)
-                continue
-            end = match.start()
-            if raw is not None:
-                raw.append(self.buffer[self.position:end + 1])
-            marker = self.buffer[end]
-            self.position = end + 1
-            if marker == '"':
-                return json.loads("".join(raw)) if raw is not None else None
-            escaped = self.take()
-            if not escaped:
+                raise ValueError("truncated Clang AST JSON string")
+            self.position = match.end()
+            if match.group() == '"':
+                return
+            if not self.take():
                 raise ValueError("truncated Clang AST JSON escape")
-            if raw is not None:
-                raw.append(escaped)
 
-    def scalar(self, capture=True):
-        self.space()
-        if self.peek() == '"':
-            return self.string(capture)
-        chars = []
-        while self.peek():
-            match = JSON_SCALAR_END.search(self.buffer, self.position)
-            end = len(self.buffer) if match is None else match.start()
-            if capture:
-                chars.append(self.buffer[self.position:end])
-            self.position = end
-            if match is not None:
-                break
-        if not chars:
-            if capture:
-                raise ValueError("malformed Clang AST JSON scalar")
-            return None
-        return json.loads("".join(chars))
-
-    def object(self):
-        self.expect("{")
-        result = {}
-        self.space()
-        if self.peek() == "}":
-            self.take()
-            return result
+    def container(self):
+        """Consume an object or array whose opening bracket is still ahead."""
+        depth = 0
         while True:
-            key = self.string()
-            self.expect(":")
-            result[key] = self.value()
-            self.space()
-            marker = self.take()
-            if marker == "}":
-                return result
-            if marker != ",":
-                raise ValueError("malformed Clang AST JSON object")
+            match = self.find(JSON_MARKER)
+            if match is None:
+                raise ValueError("unterminated Clang AST JSON container")
+            marker = match.group()
+            self.position = match.end()
+            if marker == '"':
+                self.string_body()
+            elif marker in "{[":
+                depth += 1
+            else:
+                depth -= 1
+                if depth == 0:
+                    return
 
-    def value(self):
-        self.space()
-        if self.peek() == "{":
-            return self.object()
-        return self.scalar()
+    def scalar_body(self):
+        while True:
+            self.ensure(64)
+            match = JSON_SCALAR.match(self.buffer, self.position)
+            if match is None or match.end() < len(self.buffer):
+                if match is not None:
+                    self.position = match.end()
+                return
+            self.position = match.end()
+            if not self.refill():
+                return
 
     def skip(self):
+        """Step over one value without building anything from it."""
         self.space()
         marker = self.peek()
         if marker == '"':
-            self.string(capture=False)
-        elif marker and marker in "{[":
-            end = "}" if marker == "{" else "]"
             self.take()
-            self.space()
-            if self.peek() == end:
-                self.take()
-                return
-            while True:
-                self.skip()
-                self.space()
-                separator = self.take()
-                if separator == end:
-                    return
-                if separator not in {",", ":"}:
-                    raise ValueError("malformed Clang AST JSON container")
-        else:
-            self.scalar(capture=False)
+            self.string_body()
+        elif marker and marker in "{[":
+            self.container()
+        elif marker:
+            self.scalar_body()
+
+    def value(self):
+        """The next value, parsed from its own text by the C JSON decoder."""
+        self.space()
+        start = self.position
+        self.holding = True
+        try:
+            self.skip()
+            text = self.buffer[start:self.position]
+        finally:
+            self.holding = False
+        if not text:
+            raise ValueError("malformed Clang AST JSON value")
+        return json.loads(text)
+
+    def key(self):
+        """The next object key and its colon.
+
+        Clang writes plain identifiers, so one anchored match takes the key and
+        the colon together; anything else falls back to a full string read.
+        """
+        self.space()
+        self.ensure(256)
+        match = JSON_KEY.match(self.buffer, self.position)
+        if match is not None:
+            self.position = match.end()
+            return match.group(1)
+        self.expect('"')
+        start = self.position - 1
+        self.holding = True
+        try:
+            self.string_body()
+            text = self.buffer[start:self.position]
+        finally:
+            self.holding = False
+        self.expect(":")
+        return json.loads(text)
 
 
 def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowed_globals=()):
@@ -354,8 +396,7 @@ def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowe
             recorder.record(node, ancestors)
             return
         while True:
-            key = stream.string()
-            stream.expect(":")
+            key = stream.key()
             if key == "inner":
                 recorder.record(node, ancestors)
                 recorded = True
@@ -374,7 +415,7 @@ def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowe
                             break
                         stream.take()
                 stream.expect("]")
-            elif key in {"kind", "loc", "name", "type", "storageClass", "constexpr", "isImplicit"}:
+            elif key in RECORDED_KEYS:
                 if recorded:
                     raise ValueError("Clang AST metadata followed child nodes")
                 node[key] = stream.value()
@@ -441,61 +482,96 @@ def split_compile_command(command):
         kernel32.LocalFree(ctypes.cast(arguments, ctypes.c_void_p))
 
 
+def check_unit(entry, root, excluded, allowed_globals):
+    """Scan one translation unit, returning its findings and the files it saw."""
+    directory = Path(entry["directory"]).resolve()
+    source = Path(entry["file"])
+    source = (source if source.is_absolute() else directory / source).resolve()
+    command = compile_arguments(entry)
+    process = subprocess.Popen(
+        command, cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="replace",
+    )
+    stderr_tail = []
+
+    def drain_stderr():
+        while chunk := process.stderr.read(65536):
+            stderr_tail.append(chunk)
+            if len(stderr_tail) > 2:
+                stderr_tail.pop(0)
+
+    stderr_reader = threading.Thread(target=drain_stderr)
+    stderr_reader.start()
+    try:
+        findings, files = inspect_ast_stream(
+            process.stdout, source, directory, root, excluded, allowed_globals
+        )
+    except (ValueError, json.JSONDecodeError) as error:
+        if process.poll() is None:
+            process.kill()
+        returncode = process.wait()
+        stderr_reader.join()
+        if returncode and stderr_tail:
+            raise RuntimeError(
+                f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}"
+            ) from error
+        raise RuntimeError(f"Clang emitted no readable AST for {source}: {error}") from error
+    finally:
+        process.stdout.close()
+    returncode = process.wait()
+    stderr_reader.join()
+    if returncode:
+        raise RuntimeError(f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}")
+    return findings, files | {source}
+
+
+def scan_workers(units):
+    """How many units to scan at once.
+
+    Clang parses each unit in a child process, but reading the AST it prints is
+    this tool's real cost: measured on a real port, the Python side held one core
+    at full tilt while every clang child sat blocked on a full pipe. So the units
+    are scanned in separate *processes* rather than threads — threads share one
+    interpreter and would take turns on exactly the work that is slow. A project's
+    verifier runs this on every change, and one core turned that port's seventeen
+    units into ten minutes.
+    """
+    override = os.environ.get("CPP_POLICY_JOBS")
+    if override:
+        try:
+            wanted = int(override)
+        except ValueError:
+            raise ValueError(f"CPP_POLICY_JOBS is not a number: {override!r}") from None
+        if wanted < 1:
+            raise ValueError(f"CPP_POLICY_JOBS must be at least 1, not {wanted}")
+        return min(wanted, units)
+    return max(1, min(units, os.cpu_count() or 1))
+
+
 def check_database(database, root, excluded=(), allowed_globals=()):
     entries = json.loads(database.read_text(encoding="utf-8"))
     if not isinstance(entries, list) or not entries:
         raise ValueError("compile database has no translation units")
-    findings = set()
-    visited = set()
-    units = 0
+    wanted = []
     for entry in entries:
         directory = Path(entry["directory"]).resolve()
         source = Path(entry["file"])
         source = (source if source.is_absolute() else directory / source).resolve()
-        if source.suffix not in CPP_SUFFIXES or not first_party(source, root, excluded):
-            continue
-        units += 1
-        command = compile_arguments(entry)
-        process = subprocess.Popen(
-            command, cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", errors="replace",
-        )
-        stderr_tail = []
-
-        def drain_stderr():
-            while chunk := process.stderr.read(65536):
-                stderr_tail.append(chunk)
-                if len(stderr_tail) > 2:
-                    stderr_tail.pop(0)
-
-        stderr_reader = threading.Thread(target=drain_stderr)
-        stderr_reader.start()
-        try:
-            current, files = inspect_ast_stream(
-                process.stdout, source, directory, root, excluded, allowed_globals
-            )
-        except (ValueError, json.JSONDecodeError) as error:
-            if process.poll() is None:
-                process.kill()
-            returncode = process.wait()
-            stderr_reader.join()
-            if returncode and stderr_tail:
-                raise RuntimeError(
-                    f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}"
-                ) from error
-            raise RuntimeError(f"Clang emitted no readable AST for {source}: {error}") from error
-        finally:
-            process.stdout.close()
-        returncode = process.wait()
-        stderr_reader.join()
-        if returncode:
-            raise RuntimeError(f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}")
-        findings.update(current)
-        visited.update(files)
-        visited.add(source)
-    if not units:
+        if source.suffix in CPP_SUFFIXES and first_party(source, root, excluded):
+            wanted.append(entry)
+    if not wanted:
         raise ValueError("compile database has no first-party C++ translation units")
-    return units, findings, visited
+    findings = set()
+    visited = set()
+    with concurrent.futures.ProcessPoolExecutor(max_workers=scan_workers(len(wanted))) as pool:
+        futures = [
+            pool.submit(check_unit, entry, root, excluded, allowed_globals) for entry in wanted
+        ]
+        for future in futures:
+            current, files = future.result()
+            findings.update(current)
+            visited.update(files)
+    return len(wanted), findings, visited
 
 
 def main(argv=None):
