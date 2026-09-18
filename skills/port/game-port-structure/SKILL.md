@@ -32,6 +32,13 @@ module API. Avoid service locators and unrelated subsystems gathered into one cl
 8. Extend the project's structure gate for any new boundary and update its codemap in the same
    change. Record the concrete owner and dependency direction, not a generic template.
 
+## Asking the player for game files
+
+A port that needs the player's own ROM, disc image, or install owns the picker and the title's
+identity, but not the screen: that is `shared/setup-ui`, and the `first-run-setup` skill covers
+adopting it. Do not design a setup dialog, message box, or terminal prompt as part of a port's
+structure.
+
 ## Shared port assets
 
 Use `${PORT_ASSETS_DIR}` when set, otherwise `${SHARED_DIR}/port-assets` when `SHARED_DIR` is set.
