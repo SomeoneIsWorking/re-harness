@@ -1,981 +1,341 @@
 # Global working principles
 
-## Canonical shared configuration
+## Canonical configuration and tools
 
-- **`shared/re-harness` is the only editable authority for user-maintained global instructions,
-  skills, and tools.** It categorizes
-  project-agnostic skills under `skills/global/`, port architecture under `skills/port/`, binary and
-  asset RE under `skills/re/`, and runtime guest-execution guidance under `skills/dynarec/`.
-- **Agent homes and `~/repo/AGENTS.md` are discovery surfaces, not copies.** Their instruction,
-  skill, and tool entries are relative links installed only by `tools/install_skills.py`; never edit one
-  as a separate authority. Vendor-owned system files remain untouched.
-- **Reusable executables live once under `tools/`.** Skill packages and compatibility entry points
-  link to the canonical implementation. Project-specific data remains in the consuming project.
+- **`shared/re-harness` is the only editable authority** for these instructions, shared skills
+  (`skills/global`, `skills/port`, `skills/re`, `skills/dynarec`), and shared tools (`tools/`).
+  Agent homes and `~/repo/AGENTS.md` are relative links installed by `tools/install_skills.py`;
+  never edit them as separate copies. Vendor-owned system files stay untouched.
+- **Browser automation uses WebLua** (`skills/global/weblua/SKILL.md`). Check the installed binary
+  and the `~/repo/weblua` checkout (private `SomeoneIsWorking/weblua`, via `gh`) before calling a
+  browser unavailable. Run headless on a dedicated loopback port with a project `scratch/weblua/`
+  as `WEBLUA_DIR`; never attach a personal profile. DOM success does not prove WebGPU or WASM.
+- **Godot discovery:** `GODOT_BIN`, then `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/`, then other
+  `~/dev/Godot*/` and `PATH`. This is a host hint, not a project prerequisite. If none exists on
+  Fedora, ask the user to run `sudo dnf install godot`.
+- **Missing DNF packages:** stop and give the user the exact `sudo dnf install ...` command. Do not
+  run it yourself unless asked, and do not download RPMs, substitute toolchains, or weaken the check.
 
-## Browser automation with WebLua
+## Fix the cause, not the symptom
 
-- **Use WebLua for browser automation and browser verification when the user requests it.**
-  Consult the discoverable `weblua` skill (`skills/global/weblua/SKILL.md` in this repository).
-  Before declaring browser verification unavailable because Chromium or a browser tool is missing,
-  check the installed WebLua binary and the `~/repo/weblua` checkout of the private
-  `SomeoneIsWorking/weblua` repository; use authenticated `gh` access if the checkout is absent.
-- **Keep browser sessions owned and isolated.** Run headless by default, use a dedicated loopback
-  port and a fixed project `scratch/weblua/` via `WEBLUA_DIR`, and never attach a personal browser
-  profile. Check the actual browser capabilities needed by the task; DOM success does not prove
-  WebGPU or WASM gameplay. Do not copy WebLua's stale temporary-path or personal-path examples.
+- **Name the root cause before fixing.** A change that hides a symptom without explaining why it
+  occurred is a bandaid. Stop if the change is a magic offset, a special case for the failing input,
+  a swallowed exception, `|| true`, retry-until-pass, a sleep for a race, a skipped check, a
+  hardcoded expected value, duplicated code to avoid a shared path, or anything "for now".
+- **If the real fix is too big, say so.** Name the proper fix and the stopgap's risk, let the user
+  decide, and mark an approved stopgap `// STOPGAP: <proper fix> because <why>`.
+- **Skips are complete, owned transitions.** Use the title's recovered cancellation route or a
+  purpose-built skip that establishes the same lifecycle, resource, and state invariants. Never
+  fast-forward simulation, bypass lifecycle callbacks, or write a phase, timer, or scene pointer.
+- **Loading-only screens do not ship.** Keep loading asynchronous and go straight to the next real
+  presentation. Logo screens accept Start/confirm (PSX: Cross) through a complete cancellation route.
+  Authored transition cutscenes are presentation, not loading, and stay; a title may give one a
+  minimum duration with the same cancellation route (Tomba! 2's area transition: five seconds).
+- **Widescreen is a deterministic projection change.** Feed the same vertex stream with topology,
+  UVs, depth, and colors preserved; widen the horizontal projection/viewport and override the
+  title's draw area/scissor and any proven horizontal culling owner. Never sample adjacent frames,
+  infer geometry from pixels, or stretch the final image. Interpolation is a separate opt-in feature
+  over matching source geometry only.
 
-## Godot tool discovery
+## Work over process
 
-- **On this host, check the user-provided Godot installation before declaring Godot unavailable.**
-  Prefer `GODOT_BIN` when set, then the executable in
-  `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/`, then other `~/dev/Godot*/` installations and
-  `PATH`. Keep the path home-relative and configurable; it is a discovery hint, not a project
-  prerequisite or a compiler/toolchain restriction. When no executable is found on Fedora, ask the
-  user to run `sudo dnf install godot` rather than attempting a privileged install.
-
-## No bandaids — fix the actual cause (read this first)
-
-- **The root cause is the unit of work, not the symptom.** Name the cause before "fixing"; if you
-  can't name it you're not ready. A change that makes the symptom vanish without explaining *why it
-  occurred* is a bandaid. The bar is correctness, not green.
-- **A skip action is a complete, correctly owned transition — never a fast-forward.** It may use a
-  title's recovered cancellation route or a purpose-built skip that establishes the same lifecycle,
-  resource, and state invariants. Never implement or propose “skipping” a logo, cinematic, loading
-  sequence, or other game flow by fast-forwarding simulation, bypassing lifecycle callbacks, or
-  writing a phase, timer, or scene pointer.
-- **Loading-only screens do not ship.** Remove a screen whose whole purpose is waiting for I/O; keep
-  loading work asynchronous and transition directly to its next real presentation. Logo screens must
-  accept Start or the platform-confirm equivalent (PSX: Cross) and take a complete cancellation/
-  transition route under the preceding rule. Do not remove an authored transition cutscene merely
-  because loading finishes early: it is presentation, not a loading screen. A title may give such a
-  cutscene an intentional minimum duration and the same complete Start/Cross cancellation route;
-  Tomba! 2's area-transition cutscene has a five-second minimum.
-- **Stop if your change is one of these:** a magic constant/offset that makes output line up;
-  special-casing the failing input; `try/except`-swallow, `|| true`, retry-until-pass, sleep-to-fix-a-
-  race; skipping the failing check; hardcoding an expected value; duplicating code to avoid touching
-  the shared path; anything "temporary" or "for now".
-- **If the real fix is too big right now, say so — don't silently patch.** Name the proper fix and
-  what the stopgap risks, let the user decide, and mark it `// STOPGAP: <proper fix> because <why>`.
-  An approved stopgap is a decision; an unmarked one is a lie.
-
-- **Widescreen is a deterministic projection/presentation change, never frame-aware sampling.**
-  Do not inspect adjacent frames, infer geometry from image pixels, select vertices by temporal
-  heuristics, or use content-dependent sampling to decide what appears in the extra horizontal
-  area. Start from the same source vertex stream and preserve topology, UVs, depth, and colors;
-  widen the horizontal projection/viewport and override the title's draw-area/scissor (and any
-  proven horizontal culling owner) at that boundary. Final-image stretching is not a substitute
-  for rendering the additional area. Interpolation is a separate opt-in feature and may blend only
-  matching source geometry with explicit provenance; it must never be part of widescreen coverage.
-
-## Work must dominate process — prevent churn
-
-- **Product work must dominate process.** After two consecutive process-only actions, advance the
-  product or land the milestone unless safety or a real blocker prevents it. If bookkeeping or
-  verification costs more than the change, collapse it to the minimum evidence and canonical update.
-- **Use the smallest discriminator while iterating.** Run the focused test, trace, build target, or
-  runtime scenario that can falsify the current hypothesis. Do not run the full suite, every registry
-  validator, every consumer, or a long play-through after each small edit.
-- **Run one comprehensive gate after semantic edits are frozen.** Develop with focused checks; batch
-  related fixes and run the combined gate at landing, never after each small edit. Later non-semantic
-  edits get only their lightweight check. Re-run the combined gate after a semantic edit only if it
-  can affect combined behavior. Report interrupted/environmental gates as incomplete; do not restart
-  them automatically while making unrelated edits.
-- **Record one fact in one authoritative home.** At a real milestone, update the nearest living
-  authority whose answer changed. Do not copy the same finding into an issue, claim, instrument,
-  project state, frontier, codemap, README, and plan merely because all exist. Add a second record only
-  when it serves a distinct consumer or prevents demonstrated rediscovery.
-- **Do not manufacture process assets for one-off observations.** A new verifier, issue, claim,
-  instrument, migration, or generalized tool is justified only by a durable contract, a reproduced
-  regression, or a recurring manual operation. Existing fail-fast behavior and a targeted trace are
-  sufficient for ordinary frontier exploration.
-- **Plans and status are coordination tools, not deliverables.** Plan genuinely multi-step work;
-  update at a course change or meaningful milestone, without narrating every command or polishing
-  the account instead of the product.
-
-## Broad project `/goal` requests mean the complete goals list
-
-- **A broad project `/goal` covers every success condition in `docs/project-goals.md`.** “Continue
-  working on the project/game” and equivalent broad wording are not satisfied by the current focus
-  or one milestone. Consult project goals and the independent `docs/project-state.md` inventory, then
-  keep the goal active until every condition is verified or the user changes it. A specifically scoped
-  goal remains limited to its stated scope.
+- **Product work dominates.** After two consecutive process-only actions, advance the product.
+  Collapse bookkeeping that costs more than the change.
+- **Build and test continuously, at the right size.** Iterate with the smallest build target,
+  focused test, trace, or scenario that can falsify the current hypothesis. Run the comprehensive
+  gate once when semantic edits are frozen, not after every small edit; re-run it only after a
+  semantic change that can affect combined behavior. Report an interrupted gate as incomplete.
+- **One fact, one home.** At a milestone, update the nearest authority whose answer changed; do not
+  copy the finding into every registry. Create a new verifier, issue, claim, or tool only for a
+  durable contract, a reproduced regression, or a recurring operation.
+- **A broad project `/goal` covers every success condition in `docs/project-goals.md`.** Keep it
+  active until each is verified against `docs/project-state.md`. A scoped goal stays scoped.
 
 ## Communication
 
-- **Be brutally honest. No sycophancy, no flattery, no validating a bad idea to be agreeable.**
-- **No praise or affirmation openers** — never "You're right", "Good point", "Great question",
-  "Exactly" or any equivalent, and don't compliment the user's ideas. Agreement is shown by doing the
-  thing. Hard style rule. But skipping the ritual is not blind compliance: apply a correction and
-  move on, and if the user is blatantly wrong on fact or logic say so plainly and proceed correctly —
-  silently "applying" a wrong correction is sycophancy in another form.
-- **Believe the user when they contradict you — especially when you're sure.** They observe the
-  running system; you infer. Investigate from "it's broken" rather than arguing the observation away.
-- **Report delivery state literally.** A subagent report, dirty worktree, focused test, local commit,
-  and pushed commit are five different states. Never call work "done", "fixed", or "delivered" until
-  the operator has integrated the combined tree, run the relevant combined gates, committed it, and
-  pushed it. Status updates name the current state and any remaining landing work explicitly.
-- **A user-observed regression outranks contradictory local evidence.** Treat the observation as an
-  immediate falsifier, stop extending the suspect change, and reproduce from the last known-good
-  behavior. A green unit test cannot overrule the running product it failed to cover.
-- **Do what was asked.** A better idea is a suggestion to make, not a substitution to perform.
-- **Do not turn a destructive risk into a lazy blocker.** If the requested path requires an
-  irreversible action such as uninstalling an installed package, deleting user data, or replacing
-  a signing identity, identify the exact consequence and the smallest safe recovery or backup path.
-  If the user has already authorized that action, perform it and continue; otherwise ask for the
-  specific confirmation only when the action is genuinely irreversible. Never silently substitute
-  a stale artifact, abandon the requested verification, or call the work impossible merely because
-  a destructive step carries risk.
+- **Be brutally honest.** No flattery, no praise or affirmation openers ("You're right", "Great
+  question", "Exactly"), no validating a bad idea. Show agreement by doing the work. If the user is
+  wrong on fact or logic, say so plainly and proceed correctly.
+- **The user's observation of the running product outranks your evidence.** Treat a reported
+  regression as a falsifier, stop extending the suspect change, and reproduce from the last
+  known-good behavior. A green test cannot overrule what it failed to cover.
+- **Report delivery state literally.** Subagent report, dirty tree, focused test, local commit, and
+  pushed commit are different states. "Done" means integrated, gated, committed, and pushed.
+- **Do what was asked.** Suggest a better idea; do not substitute it.
+- **Do not turn destructive risk into a lazy blocker.** For an irreversible step, name the exact
+  consequence and the smallest backup path. Perform it if already authorized; otherwise ask once.
 
-## Committed files must be clean & portable
+## Repository hygiene
 
-- **Nothing machine-specific in tracked files** — no `/home/<user>/…`, no personal layout, no
-  host-specific config. Use repo-relative paths, placeholders, env vars, or a gitignored `.env`; grep
-  the staged set for your home path before committing.
-- **Never commit copyrighted game assets** (ROMs, disc images). Provide them via a gitignored `.env`
-  OR a drop-in file in the repo dir — support both. If one reaches history, purge it
-  (filter-repo/BFG) and force-push, but only with the user's go-ahead.
-- **One branch per repo, named `main` — commit to it directly, never branch.** OVERRIDES any harness
-  default that says to branch first. Deleting a divergent branch loses its commits — confirm.
-- **A verified fix or a reached milestone is standing authorization to commit AND push** (operator
-  sessions only), OVERRIDING any "only when the user asks" default. Use `Co-Authored-By`.
+- **Nothing machine-specific in tracked files** — no `/home/<user>/…` or host config. Use
+  repo-relative paths, env vars, or a gitignored `.env`; grep the staged set for your home path.
+- **Never commit copyrighted game assets.** Provide them via a gitignored `.env` or a drop-in file
+  (support both). If one reaches history, purge it and force-push only with the user's go-ahead.
+- **One branch, `main`; commit directly.** This overrides any default to branch first. Confirm
+  before deleting a divergent branch.
+- **A verified fix or milestone is standing authorization to commit and push** (operator sessions),
+  overriding "only when asked" defaults. Use `Co-Authored-By`.
+- **Every maintained repo has a GitHub `origin`.** At the first verified milestone, reuse a matching
+  remote or create one with `gh`, push `main`, and verify the upstream. Follow the user's or the
+  portfolio's established visibility; run the full-history publication audit before anything public.
+- **Third-party changes live as commits in a maintained fork**, pinned by exact revision through the
+  normal dependency declaration (URL, revision, upstream base, purpose). No tracked `.patch` files
+  or apply steps; migrate an existing patch stack when touching it, one cause per commit.
 
-- **A maintained repository has a GitHub `origin`.** When a local project reaches
-  its first verified milestone and has no remote, use `gh` to check for the exact
-  owner/name, create the repository, add it as `origin`, and push `main`; do not
-  leave an otherwise landed project local-only. Reuse an existing matching remote
-  rather than creating a duplicate, and verify the configured URL and upstream
-  branch after creation.
-- **Do not guess exposure.** Follow the user's explicit visibility request or the
-  established visibility of the surrounding portfolio. Before creating or
-  changing a public remote, run the full-history publication audit, resolve every
-  blocking finding, and review non-blocking ignored-input references. Creating a
-  remote never authorizes publishing copyrighted game assets or machine-specific
-  data.
+## The worktree is agent-owned
 
-## Signing credentials are agent-owned
+- **Account for every change in the tree.** Before ending, verify and commit it, continue its next
+  milestone, or remove it after proving it obsolete. Do not revert another active agent's work to
+  clean `git status`; coordinate and gate the combined tree.
+- **Remove obsolete work outright** — old code, docs, outputs, compatibility paths — through exact
+  scoped targets. No tombstones, no broad deletion.
+- **The operator lands.** Subagents do not stage, commit, stash, or push. Review, gate, and land
+  each finished batch promptly. Tell an active agent when a shared contract it depends on changes.
+- **Subagents are authorized without a count limit**, but only for bounded tasks with
+  non-overlapping ownership. Serialize builds, tests, and runtimes that share state, ports, or
+  devices; never run two game instances without explicit isolation.
+- **Kill by PID, never `pkill` a shared binary name.** Capture `$!` at launch or find it with
+  `ps -eo pid,etimes,args`; the `safekill` tool helps. Put this in every brief that launches an app.
 
-- **Handle signing for every project without routine user questions.** This covers APKs, desktop
-  packages, installers, updates, and other signed artifacts. Inspect the repository's signing
-  workflow and discover available GitHub Actions secret names with `gh secret list -R OWNER/REPO`,
-  including configured environment or organization secrets. Use existing credentials through the
-  workflow and verify the resulting artifact. Secret names differ between repositories; map the
-  actual names instead of assuming a global naming convention. GitHub does not reveal stored secret
-  values to local clients, so dispatch the relevant Actions job when an existing secret is needed.
-- **Provision missing credentials yourself.** For a local verification build, generate a test key
-  when the platform accepts one. For a published artifact requiring a persistent identity, generate
-  a stable key, upload its material and passwords with `gh secret set` to the appropriate GitHub
-  Actions scope, wire the workflow, and verify its output. Reuse one signing key across the user's
-  projects when the format and platform trust rules allow it; being separate applications does not
-  itself require separate keys. When creating a shared key, upload the same bytes to every intended
-  repository or shared secret scope before discarding the local copy. If a key exists only as an
-  opaque secret in another repository, use it in that repository's CI or a deliberately shared
-  secret scope; it cannot be downloaded for local reuse. Preserve an already published product's
-  required signing identity.
-- **Keep credentials out of source and output.** Never commit, log, or print private keys or
-  passwords; use private, short-lived local files for provisioning and remove them afterward.
-  Do not overwrite an existing secret or rotate a published identity merely to make a build pass.
-  Report a signing blocker only after discovery, CI use, and permitted key generation have been
-  attempted and an exact remaining access, issuer, hardware, or platform constraint is known. Do
-  not ask the user to select a debug or release key for ordinary agent work.
-- **Android signing uses the common Android framework.** Put reusable keystore input validation,
-  secure CI restoration/generation, `apksigner` discovery and output parsing, and APK signature
-  verification in `shared/android-port`. A title supplies its package identity, secret names,
-  intended release certificate fingerprint, and release/version policy through narrow inputs.
-  Extend the shared owner before adding another title-local implementation; migrate duplicated
-  signing mechanics when touching an existing Android consumer.
+## Code quality and architecture
 
-## No dangling work: the worktree is agent-owned
+- **Quality is part of correctness.** Root-cause fixes; cohesive modules; one source of truth;
+  precise names and explicit contracts; bounded lifetimes; no dead code, stale vocabulary, or
+  warnings; formatter, linter, typechecker, and tests with negative coverage. Reduce scope rather
+  than lower the bar. Review the combined diff as a product before landing.
+- **Error handling preserves valid state.** Fail fast or propagate. Catch only where you can restore
+  an invariant, add context, safely retry an idempotent operation, or terminate cleanly. Never
+  catch-and-continue in a partially mutated state.
+- **No god files or classes.** New behavior goes in the smallest owning module; entry points compose.
+  Extract the touched subsystem from a mixed monolith as part of the change. Each class owns one
+  concept; prefer composition. Keep public API first and each method at one level of abstraction.
+  No catch-all `Utils`/`Manager`/`Common`/`Misc`, numbered fragments, or forwarding webs.
+- **Structure is enforced mechanically.** The verifier fails on source files over 1,200 lines
+  (2,000+ is critical), on growth of known legacy monoliths, on forbidden cross-layer dependencies,
+  on output outside the logger, and on environment reads outside the configuration owner. Limits
+  and allowlists only shrink.
+- **Before changing an ownership boundary, preserve the verified behavior** with a regression test
+  of the running boundary that covers the old contract as well as the new one.
+- **DRY: one implementation of each rule, formula, parser, state transition, and mapping.** Search
+  for the owner before adding code. Tests and diagnostics exercise the shipping implementation
+  through a seam, never a reimplementation. Do not abstract coincidental similarity.
+- **Reusable title-neutral C++ helpers go in Lucent**, tested there, with callers migrated.
+  Collection helpers need concrete call-site evidence over `std::ranges`, and must state ownership,
+  allocation, invalidation, and complexity.
 
-- **Account for every worktree change.** Inspect existing modified, staged, and untracked files as
-  shared agent work. Before ending or landing, verify and commit them, continue their next active
-  milestone now, or remove them after proving they are obsolete. Unexplained dirty status is not a
-  completed handoff.
-- **Remove obsolete work, not tombstone it.** Once a replacement is authoritative, remove its old
-  code, repository, docs, generated outputs, scratch, compatibility path, or placeholder through an
-  exact scoped cleanup target. Never use this authority for broad deletion. A named migration may
-  keep a recovery copy outside tracked state only until verification finishes.
-- **Do not erase another agent's in-flight work.** Shared ownership means coordinate with any active
-  agent touching the same files, combine the work, and run the gates on the resulting tree. It does
-  not authorize reverting changes merely to make `git status` clean.
-- **The operator owns landing.** Subagents still do not stage, commit, stash, or push; the operator
-  reviews their edits, finishes integration, verifies the combined result, and lands it on `main`.
-- **Integrate completed parallel work promptly.** A subagent becoming idle is not completion of the
-  user's task and not a reason to move on to unrelated investigation. Review, accept or reject, run
-  combined gates, and land each finished batch while its context is current; never accumulate hours
-  of invisible, uncommitted "finished" work.
-- **Tell active owners when a shared boundary changes.** If a global rule, shared API, or subsystem
-  ownership change affects another active agent's work, send that agent a concise note naming the
-  changed contract and canonical file. Coordinate before editing the same files; broad announcements
-  to unrelated tasks create noise rather than useful handoff.
+## C++ toolchain and style
 
-## Subagent access is globally authorized
-
-- **There is no user-imposed subagent count for projects.** Use as many concurrent subagents as the
-  active product and service limits permit. A project-local stale zero or numeric allowance does not
-  revoke this global authorization; only a later user instruction does.
-- **Authorization does not make delegation mandatory.** Use a slot only for a concrete, bounded task
-  whose coordination cost is justified. Assign non-overlapping ownership and identify shared
-  resources before dispatch.
-- **Parallel reasoning does not authorize unsafe concurrent execution.** Serialize builds, tests,
-  and tools that share mutable state, ports, devices, databases, or singleton runtimes. Game projects
-  do not run multiple game instances at once unless their harness explicitly provides isolation.
-
-## Code quality is a release gate
-
-- **Code quality is part of correctness and outranks delivery speed.** A feature is not complete when
-  it merely works on the reported case. It must leave the owning code clearer, cohesive, maintainable,
-  testable, portable, and no more duplicated or monolithic than before. Reduce scope or report the
-  proper larger fix rather than knowingly lowering the codebase's quality bar.
-- **Apply the full engineering baseline, not a two-item checklist.** This includes root-cause
-  correctness; cohesive modules/classes/functions; DRY sources of truth; precise naming and explicit
-  types/contracts; bounded lifetimes and resource ownership; explicit error handling; removal of dead
-  code, stale vocabulary, warnings, and obsolete compatibility paths; deterministic formatting,
-  linting, typechecking, tests, and negative/discriminator coverage; secure and portable configuration;
-  appropriate algorithmic complexity; and current ownership/docs/registries.
-- **Explicit error handling means preserve valid state, not catch more exceptions.** Fail fast or
-  propagate by default. Catch only at the boundary that can restore a proven invariant, translate the
-  failure with useful context, retry an operation known to be safe and idempotent, or terminate
-  cleanly. A catch that logs/defaults and lets execution continue in a partially mutated, unknown, or
-  invalid state is worse than the original failure. Never add broad catches, empty fallbacks, or
-  catch-and-continue merely to keep a process alive or make a test green.
-- **Review the combined diff as a product, not a pile of passing patches.** Before landing, inspect
-  every changed file for duplicated policy, mixed abstraction levels, hidden coupling, swallowed
-  failures, unclear state transitions, avoidable complexity, and growth of legacy monoliths. Green
-  tests do not waive a design defect, warning, linter finding, stale document, or unreviewed generated
-  change.
-- **Enforce quality mechanically.** Every repository's normal verifier carries the applicable
-  formatter, linter, typechecker, tests, structure limits, and portability checks. Fix findings at
-  their cause; never weaken, skip, suppress, or raise a limit merely to land work.
-
-## Architecture is a correctness requirement
-
-- **Preserve verified behavior before changing an ownership boundary.** Search history and the
-  project registries for the existing contract, then add a regression that exercises the running
-  boundary before coupling configuration, persistence, rendering, input, timing, or UI owners. The
-  new test must preserve the old contract as well as prove the new behavior; a test that only proves
-  the newly added path can certify a regression.
-
-- **Never grow a god file or god class.** New behavior belongs in the smallest cohesive module that
-  owns it; orchestration entry points wire modules together and do not absorb their implementations.
-- **Split by responsibility before extending a monolith.** If the relevant file/class already mixes
-  unrelated systems, extracting the touched subsystem is part of the change, not optional cleanup.
-- **Enforce the boundary mechanically in each repo.** Add a structure check to the normal verifier:
-  use 1,200 lines as the default source-file cap, treat 2,000+ lines as critical extraction territory,
-  prevent known legacy monoliths from growing, and fail with the exact file and measured line count.
-  Ratchet legacy limits downward as code is extracted; never raise a limit merely to land a feature.
-- **A pile of helper functions in the same oversized file is not structure.** Ownership requires a
-  dedicated header/source (or language-equivalent module), a narrow interface, and tests at that
-  interface. Avoid catch-all `Utils`, `Manager`, `Common`, and `Misc` modules.
-- **One class, one responsibility.** A class owns one cohesive concept and its invariants; unrelated
-  state machines, I/O, translation, policy, diagnostics, and orchestration belong in separate types
-  or modules. Prefer composition over expanding a class into a subsystem container.
-- **Structure the inside as carefully as the outside.** Keep public API before private machinery,
-  group members and methods by responsibility, and keep each method at one level of abstraction.
-  Extract a named operation when a method mixes phases, repeats a block, or requires section comments
-  to explain several unrelated jobs.
-- **Treat growth as a design signal.** Before adding substantial code to an already-large file or
-  class, identify the ownership boundary and split there. Do not postpone the extraction until after
-  the feature, and do not replace one monolith with numbered fragments or a web of forwarding files.
-
-## The default launcher runs the project target
-
-- **A runnable project provides `./run.sh` for its current intended product.** The zero-argument
-  path launches the live development target identified by project goals and instructions, never a
-  stock, legacy, demo, or diagnostic path. It does not expose alternate products, tests, verification,
-  or maintainer-only selectors as flags or subcommands; use separate named Python tools for those.
-  `run.sh` therefore has exactly one user-facing target: its zero-argument invocation must open the
-  intended product path, while any alternate launch, browser preview, diagnostic, or verification
-  path belongs in a separately named maintainer tool.
-  Launching never runs tests, lint, format checks, or selftests.
-- **`./run.sh` serves the user; the agent uses its own tools.** The zero-argument path opens the
-  windowed, audible, real-time product, so an agent run seizes the desktop that belongs to the person
-  in front of it. Never run it to diagnose, measure, verify, or smoke-test your own work, and never
-  route an agent gate through it. Build or use a named maintainer tool that drives the product
-  offscreen, silent, and unpaced, and capture audio or video through a headless sink rather than a
-  device. Exercising the default route is a bounded check on the shipping interface the user meets —
-  not the evidence for a gameplay, audio, or performance claim.
-- **Required target behavior is invariant, not an optional default value.** Extra user arguments may
-  add or override genuinely optional settings but must not accidentally replace a required renderer,
-  backend, entry point, asset pack, or launch mode. Build the required argument vector explicitly.
-- **Make the executable's own zero-argument path match when practical.** The primary product should
-  not require insiders to know a magic enable flag. Keep diagnostics and alternative backends behind
-  named flags; do not hide the intended product behind one.
-- **Treat launchers as shipping interfaces.** Exercise the no-argument/default route after material
-  target changes, keep its status text current, and refuse a missing or stale build input by name
-  instead of silently running a smaller or older artifact.
-- **`./run.sh` is also the fresh-clone setup contract for every project under `~/repo`.** Given the
-  project's documented native dependencies, `uv`, required user-supplied assets, and a compatible
-  host compiler (GCC, Clang, or AppleClang for C++ projects), it provisions every portable input and
-  launches the default target. Maintainer-only tools such as Ghidra are never player prerequisites;
-  commit the redistributable analysis metadata and derive restricted bytes from the user's assets.
-- **The launcher owns one locked Python environment end to end.** Declare every Python runtime/build
-  dependency in `pyproject.toml` and `uv.lock`, enter through `uv run --frozen`, and pass that exact
-  interpreter to CMake, subprocesses, generators, and tests. A bare `python3` that escapes to the
-  system interpreter is a launcher defect, even when a warm developer machine happens to pass.
-- **Keep `run.sh` a slim, stable shim.** It selects the repository root and hands control directly to
-  the locked Python initializer (normally `exec uv run --frozen python bootstrap.py "$@"`); discovery,
-  provisioning, validation, build policy, cleanup, and platform branching belong in Python. Do not
-  grow a second shell implementation of launcher behavior.
-- **Missing native packages produce an actionable platform-specific refusal.** Detect the host and
-  name the missing libraries/tools, then print the exact user-run Homebrew command on macOS or the
-  exact `sudo apt install ...` / `sudo dnf install ...` command on Linux. On Windows, name the
-  project's supported `winget`/`vcpkg` command or Visual Studio Installer workload. Ask the user to
-  run privileged package-manager commands; never run them silently. If the package mapping is unknown
-  or ambiguous, ask which supported platform/version and package path are in use instead of guessing.
-- **Verify the cold path, not only a warm checkout.** Provide a non-launching provisioning/test mode
-  where practical and exercise it without relying on an existing build, generated outputs, shared
-  checkout, or pre-populated virtual environment. System dependencies are refused by exact name;
-  they are not silently installed or substituted.
-- **Agents verify through standalone locked commands.** Document the exact test, lint, format,
-  provisioning, and platform gates. A Python verifier may reuse the launcher's provisioning/build
-  modules, but verification never routes through `run.sh`.
-
-## Clean and DRY code is a correctness requirement
-
-- **Keep one authoritative implementation of each rule, formula, parser, state transition, and data
-  mapping.** Call or extend that implementation everywhere it is needed; do not copy it into a new
-  helper, test, diagnostic, platform path, or game-specific path and let the copies drift.
-- **Before adding code, search for the existing owner.** If equivalent logic already exists, reuse it
-  through a narrow interface or move it to the correct shared module. A second implementation needs
-  an explicit semantic reason and an independent differential test; convenience is not a reason.
-- **Tests and diagnostics exercise the shipping implementation.** Make production logic injectable or
-  expose a pure seam so falsifiers run through the same code. A test-only reimplementation that agrees
-  with production proves nothing and violates DRY.
-- **Do not abstract coincidental similarity.** DRY means one source of truth for the same semantics,
-  not forcing distinct platform, game, or protocol behavior through a vague universal abstraction.
-  Share the invariant core and keep genuinely different policy explicit.
-- **Put reusable C++ helper behavior in Lucent.** When a common pattern has the same title-neutral
-  contract across consumers, extract one focused helper into the appropriate Lucent module, test it
-  there, and switch callers to that helper; remove their duplicate implementations. Do not turn
-  title policy, lifecycle, rendering, input, or other application ownership into a generic helper.
-  A pattern shared only within one project still gets one helper in its owning module; move it to
-  Lucent when its semantics are genuinely reusable outside that project.
-- **Collection helpers are a candidate, not a mandated container replacement.** Repeated vector
-  filtering, mapping, grouping, searching, and projection may justify a Lucent range or collection
-  interface. First compare the actual call sites with standard algorithms and `std::ranges`; add a
-  Lucent API when it removes repeated policy or makes the operations clearer across consumers.
-  State whether it owns elements or views them, when it allocates, how iteration invalidates, and
-  what complexity it promises. A collection type that supersedes `std::vector` needs concrete
-  consumer evidence and performance tests before making it the project default.
-
-## Agents use Clang; projects do not require it
-
-- **Every agent/maintainer verification build compiles C++ translation units with Clang (`clang++`).**
-  Configure new CMake build trees with `CXX=clang++` or
-  `-DCMAKE_CXX_COMPILER=clang++`; configure other build systems through their authoritative C++
-  compiler setting rather than relying on whichever compiler happens to be first on `PATH`.
-- **This requirement governs the agent's command, never the project's accepted toolchains.** Do not
-  encode agent policy as a compiler-ID fatal check, warning, forced compiler selection, or Clang-only
-  prerequisite in CMake, Meson, configure scripts, launchers, bootstrap code, product source, or the
-  project's normal tests and verifier. Agents select Clang in their own invocation and inspect that
-  build's metadata themselves.
-- **Projects remain usable with every compiler they otherwise support.** Keep the fresh-clone and
-  zero-argument launcher paths compatible with GCC, Clang, AppleClang, and any other documented
-  toolchain. Guard genuinely compiler-specific flags and features by capability or compiler family.
-  A project may refuse a compiler only for a demonstrated technical incompatibility independent of
-  this agent policy; document the exact incompatibility and its evidence.
-- **Remove policy-only compiler bans when encountered.** Delete the rejection and its tests or
-  project-local instructions instead of weakening it to a warning. Do not replace it with another
-  tracked mechanism that polices which compiler a user chose.
-- **Verify the selected compiler instead of assuming it.** Check the configure output or build
-  metadata (`CMAKE_CXX_COMPILER_ID=Clang` for CMake) before treating a build or test result as valid.
-  A cache already configured for another C++ compiler must be reconfigured in a clean project-local
-  build directory through the repository's scoped cleanup tooling.
-- **Do not silently fall back in verification.** If a platform, dependency, or project cannot build
-  its C++ with Clang, stop and report the incompatibility and proper remediation; do not switch the
-  agent's evidence build to another compiler merely to get a green result.
-- **Every C++ project uses `clang-format` with a tracked `.clang-format` configuration.** Format all
-  touched first-party C and C++ source with it, and add a non-mutating format check to the project's
-  normal verifier so formatting drift fails by file. Do not reformat generated or vendored code.
-  Configure `AllowShortIfStatementsOnASingleLine: Never`, `AllowShortLoopsOnASingleLine: false`,
+- **Agents build C++ with Clang** (`CXX=clang++` / `-DCMAKE_CXX_COMPILER=clang++`) and confirm
+  `CMAKE_CXX_COMPILER_ID=Clang`. This is agent policy only: projects must keep building with GCC,
+  AppleClang, and every other supported toolchain. Remove policy-only compiler bans when found. If
+  Clang cannot build a project, report it; do not fall back silently.
+- **`clang-format`** with a tracked `.clang-format` and a non-mutating check in the verifier. Set
+  `AllowShortIfStatementsOnASingleLine: Never`, `AllowShortLoopsOnASingleLine: false`,
   `AllowShortBlocksOnASingleLine: Never`, `AllowShortFunctionsOnASingleLine: None`,
-  `AllowShortLambdasOnASingleLine: None`, and `InsertBraces: true` (or the installed formatter's
-  equivalent). An `if`, `else`, loop, function, or lambda body uses braces even for one statement;
-  put the condition, body statement, and closing brace on separate lines. Do not pack two statements
-  onto one line or rely on formatting alone to add missing braces.
-- **Every C++ project uses `clang-tidy` with its default diagnostics preserved.** The tracked
-  `.clang-tidy` must retain `clang-diagnostic-*` and add `clang-analyzer-*`, `bugprone-*`,
-  `performance-*`, and `readability-braces-around-statements` (with
-  `readability-braces-around-statements.ShortStatementLines: 0`), and set
-  `WarningsAsErrors: '*'`. Do not start `Checks` with `-*`,
-  replace the defaults with a narrow allowlist, or disable the brace check. Run against the real
-  compile database for all first-party C++ translation units, include first-party headers, treat
-  diagnostics as errors, and make the check part of the normal verifier. Confirm the configured
-  defaults with `clang-tidy --dump-config` and the active non-diagnostic groups with
-  `clang-tidy --list-checks`; a configured but unexecuted check is not a gate. Fix diagnostics at
-  their cause; do not silence them with blanket exclusions, warning
-  suppressions, or a weaker replacement linter merely to pass.
-- **First-party C++ APIs have named owners.** Put state and behavior in focused classes inside
-  project or subsystem namespaces, with RAII lifetimes and explicit dependencies. Pure stateless
-  algorithms may be namespace-scoped free functions; project-owned functions in the global
-  namespace, including title-prefixed `x2_*`-style APIs, are not an ownership model. Do not retain a
-  C-style global facade over a class merely to preserve old call sites. Keep a C ABI shim only when
-  an actual external or guest boundary requires it, and have it delegate to the owning C++ object.
-- **Declarations and constants live in owning headers.** Do not add `extern` declarations for
-  project-owned functions or variables in first-party C++; include the owning header instead, and
-  never use an `extern` global variable as shared state. A required `extern "C"` ABI declaration
-  belongs in that boundary's header. Do not declare block-scope `static`, `const`, or `constexpr`
-  variables. Put named constants in the owning header as `inline constexpr` namespace or class
-  members; keep computed runtime values as ordinary locals. This does not prohibit const-correct
-  parameters, pointees, accessors, or member functions.
-- **Harden existing projects at the owner, not with naming cosmetics.** When touching a legacy
-  global API, identify its state/lifetime owner, move its C++ callers to that class or namespace,
-  and remove the superseded global entry point. Update its `.clang-tidy`, `.clang-format`, and
-  verifier in the same migration; a green gate that ignores these rules is not complete. Apply the
-  policy to first-party C++ and its headers, not vendored/generated sources or C translation units;
-  any C interop remains an explicit narrow boundary rather than an excuse to keep C-style C++ APIs.
-- **Verify rules `clang-tidy` cannot express.** The normal verifier also needs syntax-aware checks
-  for project-owned global-namespace APIs, `extern` declarations, and block-scope `static`, `const`,
-  and `constexpr` variables. Give those checks accepted and rejected first-party fixtures and
-  include the actual shipping source tree in the gate. A text grep, undocumented exemption, or
-  `clang-tidy` setting that never diagnoses the forbidden form is not enforcement.
+  `AllowShortLambdasOnASingleLine: None`, `InsertBraces: true`. Every body is braced, one statement
+  per line. Do not reformat generated or vendored code.
+- **`clang-tidy`** keeps its defaults (never start `Checks` with `-*`) and adds `clang-analyzer-*`,
+  `bugprone-*`, `performance-*`, and `readability-braces-around-statements`
+  (`ShortStatementLines: 0`), with `WarningsAsErrors: '*'`. Run it over the real compile database
+  for every first-party unit and header in the verifier; confirm with `--dump-config` and
+  `--list-checks`. Fix findings; never blanket-suppress.
+- **Named owners, not global C APIs.** State and behavior live in focused classes in project
+  namespaces with RAII and explicit dependencies; stateless algorithms may be namespace functions.
+  No project functions in the global namespace (including `x2_*`-style prefixes) and no C facade
+  over a class; keep a C ABI shim only at a real external or guest boundary.
+- **Declarations live in owning headers.** No `extern` declarations of project functions or
+  variables and no `extern` globals as shared state; an `extern "C"` ABI belongs in its boundary
+  header. No function-local `static` variables; named constants are `inline constexpr` members of
+  the owning header. Local `const`/`constexpr` values are fine.
+- **Enforce what `clang-tidy` cannot** (global-namespace APIs, `extern`, function-local `static`)
+  with the AST-based `tools/cpp_policy.py` over the real tree, with accepted and rejected fixtures.
+  When touching a legacy global API, move its callers to the owner and delete the global entry.
+- **One logger per project: Lucent** (C++20+). Product code never calls `printf`, `fprintf(stderr)`,
+  `std::cerr`, or platform debug prints; one line per log call, never wrapped in `if`.
+- **One configuration owner reads the environment** once into a typed immutable config; no other
+  subsystem calls `getenv`.
+- **Local HTTP servers and control channels use `lucent::http::Server`.** Consumers own only routes;
+  extend and test Lucent for missing generic capability.
 
-## Ask the user for DNF installs
+## Launcher and Python tooling
 
-- **When a required packaged tool or library is missing on a DNF-based system, stop and ask the user
-  to install it with DNF.** Identify the exact package names and provide the complete
-  `sudo dnf install ...` command. Do not download or extract RPMs, install an alternate package
-  manager, build a substitute toolchain, or silently weaken or replace the required check.
-- **Do not run the privileged DNF install yourself unless the user explicitly asks you to do so.**
-  Resume the blocked work after the user confirms the installation is complete.
+- **`./run.sh` launches the project's one intended product with zero arguments** — never a legacy,
+  demo, or diagnostic path, and no selector flags or subcommands. Extra arguments may override
+  optional settings but never a required backend, renderer, entry point, or asset. The executable's
+  own zero-argument path should match. Refuse missing or stale build inputs by name.
+- **`run.sh` is also the fresh-clone setup contract:** given documented native dependencies, `uv`,
+  user assets, and a supported compiler, it provisions everything and launches. It stays a slim shim
+  (`exec uv run --frozen python bootstrap.py "$@"`); all logic is Python. Maintainer tools such as
+  Ghidra are never player prerequisites.
+- **Agents never run `./run.sh`.** It opens the user's windowed, audible product. Verify through
+  separately named headless, silent, unpaced maintainer tools that reuse the same build modules.
+- **One locked Python environment:** every dependency in `pyproject.toml`/`uv.lock`, entered via
+  `uv run --frozen`/`--locked`, and that interpreter passed to CMake, generators, and tests. A bare
+  `python3` is a defect. Verify the cold path without a warm build or venv.
+- **Missing native packages get a platform-specific refusal** naming the exact Homebrew, `apt`,
+  `dnf`, `winget`, or `vcpkg` command for the user to run; ask when the mapping is ambiguous.
+- **Project tooling is modular Python, not shell** (`run.sh` excepted): CLI at the entry point,
+  logic in importable modules with injected boundaries. Migrate a shell tool to Python when touching
+  it, with positive and negative tests, and delete the shell file.
 
-## Use Lucent for HTTP servers in C++ projects
+## Build, scratch, and cleanup
 
-- **C++ projects use Lucent's `lucent::http::Server` for local HTTP servers and control channels.**
-  Do not reimplement socket setup, bounded request parsing, concurrent dispatch, response framing, or
-  server lifecycle in each project. Consumers own only their routes and application-specific
-  semantics.
-- **When a generally reusable HTTP capability is missing, extend Lucent and test it there first.**
-  Keep application state, input policy, graphics probes, and endpoint behavior in the consuming
-  project rather than moving domain logic into Lucent.
+- **Builds go only under gitignored top-level `build/`**; run artifacts go in gitignored `scratch/`,
+  not `/tmp` (tmpfs quota ~6 GB; diagnose with `quota -s`).
+- **Keep scratch small**: one fixed `scratch/<activity>/` per probe, overwritten; at most one
+  `<activity>.prev/`; no copies of caches, SDKs, or checkouts. Delete it when the milestone lands.
+- **Clean up with scoped tools, never raw broad `rm`:** `tools/scratch_gc.py` (dry-run by default,
+  refuses paths outside `~/repo`) for scratch, `tools/cleanup-files` for explicit files. Never
+  target a root, home, unresolved variable, or broad glob.
+- **Large CMake corpora use Ninja**, with the builder migrating a legacy generator's exact build
+  child. An unchanged second build must compile nothing.
 
-## Project tooling is Python, except the launcher
+## Knowledge and registries
 
-- **Write project automation, verification, RE, maintenance, and migration tools in Python, not
-  shell.** A shell wrapper around a Python tool is still a second interface and should be removed;
-  give the Python entry point a shebang and executable bit when direct invocation matters.
-- **Python tooling is modular and DRY.** Keep CLI parsing and presentation at the entry point, put
-  reusable policy and operations in cohesive importable modules, inject filesystem/process/runtime
-  boundaries for tests, and maintain one source of truth for paths, schemas, validation, and state
-  transitions. Do not replace a shell monolith with one Python monolith or duplicate production
-  behavior inside a test helper.
-- **`./run.sh` is the deliberate exception.** It remains the stable zero-argument launcher required
-  above, but delegates non-trivial discovery, build policy, provisioning, validation, and cleanup to
-  Python tools rather than growing shell logic.
-- **When touching an existing non-launcher shell tool, migrate it to Python in the same change.**
-  Preserve its supported CLI and exit behavior or update every caller atomically, add positive and
-  negative tests for the migrated behavior, and delete the superseded shell file rather than keeping
-  parallel implementations.
+- **Write what you learn into the nearest living doc in the repo, in the same session.** Agent-home
+  memory holds only cross-project preferences. Fix a wrong note instead of adding another.
+- **Consult before re-deriving** with the `project-info` skill (`info.py brief <words>`),
+  `issue-catalog`, and `codemap`; update the codemap in the change that moves or adds an owner.
+- **Keep the authorities distinct:**
+  - `docs/project-goals.md` — epic intent: stable IDs, outcomes, success conditions, non-goals.
+  - `docs/project-state.md` — required for every project: the complete intended capability set,
+    each item `verified`/`partial`/`blocked`/`missing` with evidence or exact gap, plus one current
+    focus. It includes a `Comparison baseline` (the original, upstream, or prior workflow) with each
+    user-visible delta (widescreen, controls, speed, loading, platforms, …) as its own item.
+  - `docs/issues/` — one task, bug, finding, blocker, or dead end per issue.
+  - `docs/codemap.md` — placement only.
+  - Portfolio/catalogue entries show every item's canonical state and the baseline, traceable to
+    `project-state.md`, never inferred from README or screenshots.
+- **A claim needs a falsifier** (`--expires-on`); when one falls, fix what relied on it.
+- **An instrument is trusted only after it has shown the other answer.** Uniform output is the tell.
+- **Build the tool instead of re-reasoning** a recurring task, and document it.
 
-## Scratch output & diagnostics
+## Diagnostics that cannot lie
 
-- **Cleanup does not require a one-off script.** Resolve and validate every target first, keep the
-  command explicitly scoped to those exact paths, and never target a workspace root, home directory,
-  unresolved variable, or broad glob. Use `~/.codex/bin/cleanup-files` for individual files when
-  convenient. A recurring cleanup operation belongs as a reviewed modular Python tool under the
-  repository's `tools/`; do not manufacture and then delete a script merely to remove one audited
-  target. When an agent environment blocks a direct safe deletion, use the existing scoped tool or a
-  durable project cleanup command rather than weakening the scope.
+- **Design the negative first:** a diagnostic prints what it scanned and matched ("scanned N,
+  matched 0"), refuses a missing corpus, caps the boring case while reporting every state change,
+  and treats skipped input as failure.
+- **Prove it fires in the shipping artifact** with a selftest whose case must come out positive,
+  and run a discriminator against both classes before trusting it. A grep count is text, not reached
+  code.
+- **Verify in the shipped form:** art rasterized at target size over light, dark, and mid-tone
+  backgrounds; shipped measured constants generated from or diffed by code against the measurement.
+  A trace proves mechanism, not faithfulness.
+- **Build a control channel into the product** (opt-in loopback port or socket, client in the
+  project's language) so agents can drive input, read state, and capture frames. Play-throughs
+  observe; gates use tests, invariants, and counters with denominators. Prove a run reached the code
+  before reading an absent symptom as a fix. Automated runs are headless and silent (a silent device
+  whose cursors advance) and never steal focus.
 
-- **Use project `scratch/` instead of `/tmp` for run artifacts.** This host's RAM-backed `/tmp` has a
-  ~6 GB per-user quota; diagnose quota failures with `quota -s`, not `df`. Keep logs, captures, and
-  dumps in gitignored `scratch/` by kind; a zero-byte control FIFO may remain in `/tmp`.
-- **Build only under the gitignored top-level `build/`.** Compiler outputs, generated build files,
-  dependency trees/prefixes, SDKs, caches, and compile databases belong there, never in `scratch/`.
-  Launchers, verifiers, IDE presets, and docs resolve the same stable build children. Migrate all
-  callers from `scratch/build` or `_build` together and remove the old tree without a compatibility
-  fallback. Build cleanup is explicit and separate from `scratch_gc.py`.
-- **One configurable logger per project, one line per call site, never wrapped in an `if`.** In C++20
-  or newer that logger is `lucent` (`github.com/SomeoneIsWorking/lucent`, MIT, the user's) — extend it
-  rather than working around it. Product and runtime modules do not call `printf`, `fprintf(stderr,
-  ...)`, `std::cerr`, platform debug-print APIs, or ad-hoc logging macros. The logger implementation
-  and one pre-logger fatal-startup adapter are the only permitted output boundaries. Never scatter
-  gated prints (`if (dbg) fprintf(…)`); the configured logger owns filtering, sinks, and levels.
-- **Environment variables enter through one configuration owner.** Product subsystems never call
-  `getenv`, `std::getenv`, or platform environment APIs. The configuration/bootstrap module reads
-  permitted environment overrides once, validates and converts them into a typed immutable config,
-  and passes the relevant slice to each owner. Environment names, defaults, precedence, persistence,
-  CLI overrides, and validation have one source of truth; a new environment read elsewhere is an
-  architecture violation, not a convenience.
+## Game ports: guest execution
 
-- **Keep scratch small and disposable.** Capture only the fidelity needed, reuse one fixed
-  `scratch/<activity>/` path per recurring probe, and overwrite it instead of accumulating numbered,
-  dated, `_v2`, `_final`, or `mktemp` runs. Keep at most one `<activity>.prev/` when comparison
-  requires it. Do not copy caches, SDKs, emulator images, oracle captures, or upstream checkouts
-  there when a canonical copy exists. Delete your output when its milestone lands; preserve valuable
-  findings in the nearest living doc or one committed reference image.
-- **Garbage-collect scratch with the scoped tool, never raw `rm`.** `~/.codex/bin/scratch_gc.py`
-  (canonical: `shared/re-harness/tools/scratch_gc.py`) is dry-run by default, removes files older than
-  `--days` (default 14) and prunes emptied dirs; `--keep GLOB` protects active artifacts. Point it at
-  a specific `scratch` dir, or at any root under `~/repo` (e.g. `scratch_gc.py --apply ~/repo`) to
-  sweep every `scratch/` at any depth. It refuses targets outside `~/repo`. Run it with `--apply` at
-  natural cleanup points and when a project's `scratch/` grows past ~1 GB. Check overall usage with
-  `du -sh ~/repo/*/scratch`, and remember the tmpfs quota is diagnosed with `quota -s`, not `df`.
+- **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; all
+  other guest code runs through an on-demand JIT. No offline or install-time translation into
+  C/C++/objects, no prebuilt translated corpus, no static seed lists. Static analysis may produce
+  only non-executable knowledge (symbols, types, identity, override metadata).
+- **Dynarec first; the interpreter is a bounded fallback** used only after the JIT reports a block
+  cannot be compiled or fetched safely, recorded with reason, PC, and counts. Interpreter-only mode
+  is diagnostic, never the default, and never gameplay or performance evidence. Exception: low-power
+  8/16-bit targets (NES, GBA, Amiga) classified so in their goals may ship an interpreter, qualified
+  on real gameplay on every released host.
+- **A runtime translation cache is optional disposable data** keyed to guest image, runtime version,
+  host architecture, and configuration; a fresh install translates on its own.
+- **Invalidate on self-modifying and loaded code** (guest writes, overlays, bank switches, DMA,
+  address-space changes, cache control) before reuse.
+- **The runtime reports its work with denominators:** translated blocks and instructions, cache
+  hits/misses, invalidations, overrides, fallbacks by reason. Gameplay gates require nonzero dynarec
+  execution.
+- **Migrating a static recomp: delete it first.** Keep independent evidence, oracles, overrides,
+  HLE, rendering, audio, input, and saves; remove the generator, generated corpora, static dispatch,
+  and their tests and docs. The build may fail at the missing executor until the dynarec lands.
+- **ARM64 means both Apple Silicon macOS and Android arm64-v8a**, each with a real AArch64 backend
+  qualified separately (executable memory, icache, ABI, signals, packaging, gameplay).
+- **WASM is a required frontier** for migrated projects, running the same dynarec-first runtime in
+  the browser, or recorded `blocked` with a migration action and acceptance criteria.
 
-## Never `pkill` a shared binary name — kill by PID
+## Game ports: structure and titles
 
-Several agents and the user's own session run the SAME binary, so `pkill -f/-x <name>` kills sibling
-agents' runs mid-gate and can match the wrapper shell running the command. Capture the PID at launch
-(`prog & P=$!`) or find it in `ps -eo pid,etimes,args` (`etimes` separates the user's long-lived
-process from the one you just started). The `safe-kill` skill ships a `safekill` helper. Put this in
-every agent brief that launches the app.
+- **No project is the global template.** Each port's `docs/codemap.md` is its structure authority;
+  the `game-port-structure` skill is the guide. Entry points compose; lifecycle, guest execution,
+  platform, rendering, audio, input, UI, configuration, persistence, provisioning, diagnostics, and
+  title behavior are separate owners. C++ owners are focused RAII classes composed explicitly; C
+  uses opaque contexts, never global state.
+- **Engine migrations preserve the game source.** Adapt only engine-coupled APIs. Prefer direct
+  compilation, then a deterministic transpiler; a manual gameplay rewrite needs proof that neither
+  works and explicit user authorization.
+- **Finish one title before starting another** in a multi-title project: exact-revision identity,
+  parity, headless gameplay, packaging, and performance. Title-neutral work must serve the active
+  title. Record the active title and unmet gates before switching.
 
-## Where knowledge goes
+## Shared repositories
 
-**Write what you learn into the nearest living doc IN THE REPO, in the same session.** `~/.Codex` is
-machine-local and unsearchable by subagents — cross-project preferences and pointers only, never a
-project's only home for a hard-won fact. Fix a note that turns out wrong rather than adding a second
-one; **no tombstones** — delete the retired thing, don't annotate it. Shed heavy context with
-`/compact` (never a handoff brief) at a clean boundary only — never mid-edit, mid-verification, or
-with an unrecorded finding in flight — and keep going in the same turn.
-
-**Consult the project's registry BEFORE re-deriving, and write back at the end.** The `project-info`
-skill is the entry point (`info.py brief <words>` — one query across every registry); alongside it,
-`issue-catalog` answers "tried before?" and `codemap` answers "where does this belong?" (update it in the SAME
-change that moves, adds or re-owns anything; a stale map is worse than none). If consulting is hard,
-that is a workflow defect and it outranks the task in hand. Keep these authorities distinct:
-
-- **Goals are epic-level intent in `docs/project-goals.md`.** Each stable goal ID states a durable
-  outcome, why it matters, success conditions, constraints, and non-goals. Goals do not carry
-  current-work or done/missing state.
-- **Project state independently owns capability coverage in `docs/project-state.md`.** Each stable
-  state-item ID is an observable capability/outcome marked `verified`, `partial`, `blocked`, or
-  `missing`, with evidence, exact gaps, factual dependencies, and optional links to goals and
-  issues. It separately names one current focus. This inventory is the authoritative answer to what
-  works now and what remains; it is not a roadmap or schedule.
-- **Every maintained project must publish its intended feature set and current state.** A missing
-  `docs/project-state.md` is a project defect, not an acceptable absence to work around. Create and
-  validate the inventory before making status claims: include the complete intended capability set,
-  preserve stable IDs, classify every item as `verified`, `partial`, `blocked`, or `missing`, and
-  state evidence or the exact remaining gap. Keep epic intent in `docs/project-goals.md`; do not
-  shrink the state inventory to only features that already work.
-- **Name the comparison baseline and enumerate each user-visible delta separately.** When a project
-  changes, replaces, ports, remakes, or wraps an existing product, `docs/project-state.md` includes a
-  `Comparison baseline` naming the original, upstream, emulated, or prior workflow a user would
-  otherwise experience. Every project exposed through a portfolio or catalogue must provide this
-  section; a greenfield project names the manual, fragmented, or absent prior workflow instead of
-  omitting the comparison. Give every independently stateable difference its own state item: do not
-  collapse widescreen, controls, physics, speed, loading, cheats, renderer effects, or platform
-  delivery into a generic “modern features” row. Fidelity/parity work, user-visible enhancements,
-  packaging, and developer tooling may all remain in one inventory, but their labels must make the
-  difference from the baseline understandable without reading source code or commit history.
-- **Portfolios and project catalogues display state from the project authority.** Every project
-  detail must list intended capabilities with their canonical state, including partial, blocked,
-  and missing work rather than presenting implemented highlights as the complete feature set. Keep
-  catalogue snapshots traceable to the corresponding `docs/project-state.md` items and update them
-  when that authority changes; do not infer progress from README prose, code presence, screenshots,
-  or a single project-wide status label. Show the named comparison baseline beside the feature list
-  when one exists, so a visitor can tell what the project adds over the original or upstream product.
-- **Issues are the lowest-level work points in `docs/issues/`.** A task, bug, investigation,
-  blocker, finding, or dead end is one issue and links to affected state items when known. Split
-  independently completable points; do not use issues as disguised state items.
-- **The codemap owns placement only.** It maps responsibilities to owning subsystems, current or
-  intended locations, entry points, and deep docs. It contains no goals, progress checklist,
-  project state, current focus, issue queue, or evidence ledger. Move misplaced content to
-  the correct authority rather than copying it.
-
-- **A CLAIM needs a falsifier.** Record with `--expires-on <what would falsify this>`; a claim with no
-  falsifier is a belief, not a finding. When one is falsified, grep for who relied on it — the damage
-  is downstream, not local.
-- **An INSTRUMENT is trusted only once it has shown the OTHER answer.** A broken one fails silently,
-  and uniform output (all-black, all-zero, "no diff", "no matches") is the tell. Validate by feeding
-  it a case that MUST differ; when one lies, mark it distrusted and re-check every result that used
-  it. **Verify before declaring done** — a real check on real data, cited, never a vibe or a
-  cherry-picked sample.
-
-**Build the tool instead of re-reasoning.** When a task recurs, or your tooling cannot show you what
-you need, extend it — and a tool without a doc update is unfinished.
-
-## Guest code executes at runtime; generated-source recomps are retired
-
-- **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; every
-  remaining guest function executes through an on-demand dynamic recompiler/JIT. Do not translate
-  guest code offline or at install time into C, C++, object files, or another title-specific
-  executable corpus.
-- **Gameplay is dynarec-first with only a DuckStation-style bounded interpreter fallback.** Every
-  cold executable block is offered to the JIT first. The gameplay runtime may interpret a block only
-  after the shipping JIT explicitly reports that the block cannot be compiled or fetched safely; it
-  must record the reason, guest PC, block/instruction counts, and return to JIT dispatch afterward.
-  Do not use interpretation as a first profiling pass, while compiling asynchronously, as the normal
-  cold-cache path, or as a hidden substitute for an unfinished host backend.
-- **Interpreter-only execution remains diagnostic.** A selectable interpreter mode belongs behind an
-  explicit test/diagnostic option and is never the zero-argument/default product. A run dominated by
-  fallback, a run with zero translated blocks, or a measured-interpreter FMV/boot run is not dynarec
-  gameplay, compatibility, or performance evidence.
-- **Low-power console ports may deliberately ship an interpreter.** NES, GBA, Amiga, and a comparable
-  8/16-bit target explicitly classified that way in its project goals may use a maintained interpreter
-  as the default CPU execution owner. It still composes with native host and title subsystems, keeps
-  generated-source execution absent, and must qualify representative interactive gameplay—not boot,
-  logos, FMV, or menus—on every released OS/architecture pair. Do not apply this exception to PSX,
-  x86, Xbox 360, or another target merely because its dynarec is incomplete.
-- **A runtime-populated translation cache is allowed; a prebuilt substrate is not.** Cache entries
-  are optional, disposable runtime data keyed to the exact guest image, runtime version, host
-  architecture, and semantic configuration. A fresh install must be able to execute by dynamically
-  translating the user's binary itself.
-- **Static analysis may produce non-executable knowledge only.** Symbols, address maps, recovered
-  types, title identity, and hand-authored native-override metadata remain useful. They must not
-  encode translated guest function bodies or become a disguised generated-code build input.
-- **Break first: delete the static product before implementing its dynarec replacement.** Preserve
-  independently useful binary/behavior evidence and native subsystem code, then remove the generator,
-  generated-source build rules and corpora, static dispatch, generation-only seed lists, static-only
-  tests/config/selectors, and stale methodology as the first migration change. Let the build fail at
-  one explicit missing runtime-executor boundary until the dynarec lands; never keep the old product
-  runnable as a bridge, comparison arm, fallback, or temporary convenience.
-- **Keep the reusable parts.** Differential oracle harnesses, test-only interpreter semantics, native
-  overrides, platform HLE, rendering, audio, input, saves, and RE evidence survive when they are
-  independent of generated functions. Rename and re-own them where old vocabulary hides that
-  boundary.
-- **The runtime must make its work measurable.** Report translated block/instruction executions,
-  cache hits and misses, invalidations, native overrides, and fallback block/instruction entries by
-  reason, all with denominators. A gameplay gate requires nonzero dynarec execution and explicit
-  fallback accounting; it must fail if the intended discriminator was reached only by interpretation
-  or if an unbounded/default interpreter selector is available.
-- **Self-modifying and runtime-loaded code is a cache-invalidation contract, not a discovery list.**
-  Guest writes, overlays, bank switches, DMA, address-space changes, and relevant cache-control
-  operations invalidate affected translations before reuse. Do not replace runtime correctness with
-  an ever-growing static seed manifest.
-- **ARM64 means both Apple Silicon macOS and Android arm64-v8a.** Every maintained platform
-  framework must provide a real AArch64 dynarec backend for both hosts before claiming ARM64
-  support. Qualify their executable-memory allocation/protection transitions, instruction-cache
-  coherence, host ABI transitions, signals/exceptions, packaging, and representative gameplay
-  separately; code-generation unit tests or success on one OS do not prove the other. A missing host
-  backend is an explicit unsupported capability, never permission to run the product primarily in
-  the interpreter or claim ARM64 dynarec support from fallback execution.
-- **WASM is a required maintenance frontier for migrated projects.** Every maintained project that is
-  part of or completed through JIT migration must expose a browser-capable WebAssembly path that
-  executes gameplay through the same shipping runtime/discovery path as desktop (dynarec-first,
-  bounded interpreter only as diagnostic fallback). The web target is included in release planning and
-  state inventory; if browser execution cannot currently preserve semantics, record it as blocked with an
-  explicit migration action and measurable acceptance criteria.
-- **`~/repo/pages` owns every WebAssembly deployment.** A source project builds and verifies its
-  asset-free browser package and publishes a normal CI artifact; it does not deploy a separate Pages
-  site. Import the reviewed package into the matching `pages/public/<project-slug>/` route, run the
-  Pages verifier, commit and push `pages/main`, and verify the central live URL. Do not copy game
-  files, user saves, or derived restricted data into that repository or any hosted artifact.
-
-## Engine migrations preserve the existing game source
-
-- **Changing engines is a source-preserving port, not a gameplay rewrite.** Start from the existing
-  game source and retain its domain logic, content, data, progression, state transitions, and tests.
-  Replace or adapt only the APIs and owners coupled to the old engine: lifecycle, rendering, input,
-  audio, storage, resource loading, timing, and platform integration.
-- **Port before translating; translate before rewriting.** Prefer direct compilation and narrow
-  adapters. If the source language or runtime genuinely cannot target the new engine, use a
-  deterministic transpiler or source-to-source migration tool and keep the generated relationship
-  reviewable. A manual gameplay rewrite is a last resort and requires explicit user authorization;
-  “reimplement under another engine” alone never grants it.
-- **Prove impossibility rather than assuming it.** Before replacing existing game code, identify the
-  exact incompatible boundary and demonstrate why adapters, refactoring, direct compilation, or
-  transpilation cannot preserve it. Engine-shaped code may be rewritten at that boundary; portable
-  game code must not be recreated merely because a new host is being built.
-
-## Game-port structure is defined by owned responsibilities
-
-- **No project is the global architecture template.** Design each port from its verified behavior,
-  platform boundaries, language, and product requirements. Do not inspect or copy another game
-  project merely to obtain a default directory or class layout.
-- **The port's codemap is its structure authority.** It names each cohesive responsibility, current
-  and intended location, public entry point, and dependency direction. Update it in the same change
-  that adds, moves, splits, or re-owns a subsystem.
-- **Entry points compose; subsystems implement.** Keep lifecycle/orchestration separate from guest
-  execution, platform/window events, rendering, audio, input/action policy, UI, configuration,
-  persistence, provisioning, diagnostics, and title-native behavior. Each owner holds its own state
-  and exposes a narrow interface.
-- **Use object-oriented boundaries deliberately in C++.** Represent stateful owners and their
-  invariants as focused classes with RAII lifetimes, explicit constructor dependencies, narrow public
-  APIs, and composition instead of inheritance-heavy frameworks or service locators. Pure algorithms
-  remain free functions or value types. In C, use the equivalent opaque context plus cohesive module
-  interface; do not simulate classes with global state.
-- **Use the target's constraints to choose boundaries.** Shared vocabulary is useful, but identical
-  folder names are not an architecture. Split where invariants, lifetime, test seams, platform
-  dependencies, or rates of change differ; do not create forwarding layers or catch-all modules to
-  imitate a reference tree.
-- **The `game-port-structure` skill is the self-contained guide.** Projects record their own concrete
-  mapping in `AGENTS.md` and `docs/codemap.md`; they do not record conformance to another game.
-- **Structure is mechanically enforced.** The normal verifier checks source-file size/growth,
-  forbidden cross-layer dependencies, direct stderr/debug output outside the logger boundary, and
-  environment access outside the configuration owner. Allowlists name exact owning files and shrink
-  as legacy code is migrated; agents may not weaken, bypass, or broaden them to land a change.
-
-## A shared port framework is separate from Lucent
-
-- **Lucent is a helper library, not an Android framework, port framework, or game engine.** It owns
-  logging, layered configuration, HTTP, and focused title-neutral helpers. Android Activities, SAF,
-  contact acquisition, insets, lifecycle, rendering, audio, and orchestration belong to their
-  platform/host owners as specified in the Android ownership table below. Move misplaced Android
-  runtime mechanics out of Lucent.
-- **Build a common host framework through proven port contracts.** Ports need reusable lifecycle,
-  input, audio, rendering presentation, storage integration, and packaging across browser/WASM,
-  Android, macOS, Windows, and Linux. Keep that framework distinct from Lucent and from a title's
-  gameplay or guest CPU. SDL3 may be one adapter, not a required foundation; non-SDL3 Android ports
-  still reuse the applicable shared Android build/device mechanics and Lucent utilities they need.
-- **Share proven semantics, keep backend differences explicit.** Put a capability in the common core
-  when its behavior and lifetime are the same across consumers. Put SDL3, native OS, browser, and
-  non-SDL3 engine integration behind narrow adapters when their event loops, rendering, audio, or
-  packaging contracts differ. Do not create a second game engine in each title, force a title onto
-  SDL3 to reuse unrelated Android mechanics, or replace its preserved gameplay source.
-- **Qualify each shipped host separately.** Record backend/platform coverage in project state and
-  exercise each claimed shipped path; a shared API or desktop build does not prove another host.
-
-## The shared repos, and what belongs in one
-
-`shared/` holds what more than one project needs. These are **consumed, not
-vendored**: a project resolves the checkout, and the resolver REFUSES by naming
-every path it tried rather than falling back to an in-tree copy. A stale
-vendored copy that silently wins is the exact failure this split exists to end
-— nine forked copies of one tool had drifted into seven versions before it.
-
-The narrow exception is `shared/android-port`: it may vendor Lucent at a pinned revision for
-logging, configuration, and focused DRY helpers. Keep the vendored source identifiable and update
-it from Lucent rather than maintaining divergent implementations. This permission does not require
-vendoring and does not move Activity, SAF, lifecycle, build, package, or device ownership into Lucent.
+`shared/` repos are consumed, never vendored: the resolver refuses by naming every path it tried.
+Put something a second project will want in `shared/` the first time. Land and push the shared
+change first, bump the consumer's pin, and build the consumer against that clean pinned revision.
+`shared/android-port` alone may vendor Lucent at a pinned, identifiable revision.
 
 | Repo | Holds |
 |---|---|
-| `shared/re-harness` | canonical portable skills grouped as global, port, RE, and dynarec; shared information/validation tools live once under `tools/`. Project DATA stays in each project. |
-| `shared/port-assets` | the art ports keep redrawing: Xbox 360 gamepad glyphs, keyboard key caps. SVG, scalable, with a legibility check at the target size. |
-| `shared/alchemy` | one common Alchemy engine repository for X-Men 2 and Marvel: Ultimate Alliance. Its neutral `shared` layer owns engine behavior and formats without a CPU-framework dependency; separately linked `x86` and `x360` adapters translate platform ABI/context contracts through `x86port` and `x360port`. Exact title addresses, identities, and policy remain in each game. X-Men 2 proves the first shared and x86 contracts; MUA consumes and extends them through the x360 adapter only after X-Men 2's complete goals pass. |
-| `shared/jit-common` | guest-ISA-neutral executable-memory and runtime block-cache primitives shared only after two frameworks prove the same need. |
-| `shared/x86port` | the x86-32 runtime execution framework; it owns product JIT execution and separately built test-oracle interpretation while consumers own title policy until a second consumer proves a lower shared boundary. |
-| `shared/x360port` | intended title-neutral Xbox 360 runtime framework over Xenia's dynarecs: authenticated XEX mapping, CPU/thread contexts, Xbox services/devices, raw Xenos/XMA boundaries, typed imports, runtime overrides, original calls, invalidation, and explicit singleton constraints. Gears and MUA are first-class consumers. |
-| `shared/x360ue3` | intended independently authored UE3-on-Xbox-360 integration over `x360port`: versioned engine ABI descriptions, UE3 RHI semantics, binding schemas, and engine object/resource/thread/frame lifetime. It never owns a title's addresses, hashes, pass roster, gameplay, navigation, saves, or application composition. |
-| `shared/ue3` | developer reference material only, never a source, build, runtime, packaging, or distribution dependency for a clean port. Independently authored shared code belongs in the appropriate clean framework such as `x360ue3`; do not copy the reference checkout into it. |
-| `shared/android-port` | Android Activity/SAF runtime adapters, deterministic build/package plumbing, and the shared `codex_shared_api35` emulator contract. Lucent remains an optional helper dependency, not the Android framework. |
-| `shared/setup-ui` | the in-app first-run setup screen a port shows instead of a system modal or a browser page: RmlUi markup drawn into the port's own SDL3 window, a per-platform picker hand-off, and one staged-set validator contract shared by the desktop, Android, and browser products. Consumers own title identity, acceptance rules, and where a committed set is stored. |
-| `shared/touch-ui` | the shared on-screen control overlay for touch products: safe-area and DPI layout, pointer ownership so a control press is never also a click or tap, reference-counted actions, presentation state on controller use, and art rasterised from `shared/port-assets` glyphs at the size it is drawn. Consumers own their action set, glyph choice, and visibility policy. |
+| `shared/re-harness` | global instructions, categorized skills, shared tools |
+| `shared/port-assets` | scalable SVG controller glyphs and key caps, legibility-checked at size |
+| `shared/alchemy` | one Alchemy engine repo (X-Men 2, MUA): neutral core without CPU-framework dependency, plus separate `x86`/`x360` adapters over `x86port`/`x360port` pinned by each title. X-Men 2 first; MUA after X-Men 2's goals pass |
+| `shared/jit-common` | ISA-neutral executable memory and block cache, once two frameworks need it |
+| `shared/x86port` | x86-32 runtime JIT plus a separately built test-oracle interpreter |
+| `shared/x360port` | title-neutral Xbox 360 runtime over Xenia's dynarecs: XEX mapping, contexts, services, Xenos/XMA boundaries, typed imports, overrides, original calls, invalidation |
+| `shared/x360ue3` | UE3-on-360 contracts over `x360port`: engine ABI descriptions, RHI semantics, binding schemas, lifetimes; never title addresses, hashes, gameplay, or composition |
+| `shared/ue3` | developer reference only; never a source, build, runtime, or distribution dependency |
+| `shared/android-port` | Android Activity/SAF, build/package/signing plumbing, dependency prefix, emulator contract |
+| `shared/setup-ui` | in-window RmlUi first-run setup, picker hand-off, staged-set validator |
+| `shared/touch-ui` | touch overlay: safe-area/DPI layout, pointer ownership, glyph rasterization |
 
-**If you write something a second project will want, put it in `shared/` the
-first time, not the second.** The second time is when a fork already exists.
+Dependency direction: UE3 360 titles `title -> x360ue3 -> x360port -> Xenia`; MUA uses `x360port`
+and `shared/alchemy` directly. Lucent is a helper library (logging, config, HTTP, paths, identity,
+ZIP, touch routing), not a port framework; the common host framework (lifecycle, input, audio,
+presentation, storage, packaging) is separate, with SDL3 as one adapter. Qualify each shipped host
+separately.
 
-**Land the shared change before the consumer that needs it, and build the
-consumer against a clean tree at the revision CI will check out.** A consumer's
-local build resolves the sibling checkout, so uncommitted work there passes
-locally and fails in CI, which builds the pin — measured: an Android job failed
-on `no member named 'top_left'` after a consumer was pushed against an
-uncommitted `shared/touch-ui`. Commit and push the shared repo, bump the
-consumer's pin, and re-run the consumer build with that checkout clean and at the
-pinned revision before pushing the consumer.
+## CI, releases, and platforms
 
-For Xbox 360 UE3 titles, dependency direction is `title/series engine ->
-x360ue3 -> x360port -> Xenia`. A non-UE3 title such as MUA consumes `x360port`
-directly and its own engine layer (`shared/alchemy` for MUA); it must not acquire
-a false `x360ue3` or Gears dependency merely because the CPU platform is shared.
+- **Hosted CI covers every applicable shipping platform** (Linux, Windows, macOS; Android for
+  Android-capable products and shared runtime components), or `project-state.md` records why one is
+  inapplicable. Jobs configure, build, lint, test, and package through the project's Python owners
+  and run runtime checks (JIT, executable memory, icache, ABI, invalidation, install) on the matching
+  host. Linux uses Clang, macOS AppleClang, Windows a documented MSVC/clang-cl setup.
+- **Workflows are deterministic and least-privileged:** actions pinned by SHA, downloads checksummed,
+  timeouts and permissions explicit, caches optional and free of game data. No green placeholder
+  jobs.
+- **Real-title conformance stays local.** Game files and derived caches never enter CI, secrets,
+  commits, or packages.
+- **Major updates publish a GitHub Release** with verified asset-free packages per platform (Windows
+  installer/app, macOS `.app` archive, Linux AppImage, signed APK). WASM deploys only through
+  `~/repo/pages/public/<slug>/`: import, run the Pages verifier, push, check the live URL. Every
+  release refreshes its Pages entry (links, media, state snapshot) and verifies the deployed page.
+- **Packaged builds have a no-terminal first-run setup** with a native Browse picker, validation,
+  and persistence in the platform's user-config store (env vars and CLI paths stay developer
+  overrides). Accept the primary ROM/EXE directly or from one bounded ZIP searched by content:
+  exactly one identity match; reject unsafe paths, duplicates, corrupt entries, and oversize
+  archives; keep the previous valid selection on failure. Lucent owns ZIP mechanics; the port owns
+  identity and install policy. AppImages use the desktop launcher; Android uses SAF with persisted
+  grants.
+- **Saves and settings live in the OS user-data location** (XDG, Application Support, app-data),
+  never the checkout, AppImage mount, cwd, or scratch; one shared resolver.
+- **Signing is agent-owned.** Discover secrets with `gh secret list`, use them through CI, and
+  generate and upload missing keys yourself (a test key for local builds; a stable shared key for
+  published artifacts, uploaded to every intended scope). Never print or commit key material, never
+  rotate a published identity to pass a build.
 
-`shared/alchemy` is one repository with cohesive neutral, x86-adapter, and
-x360-adapter components; do not split it into `x86alchemy` and `x360alchemy`
-repositories. Its neutral core must build without either platform framework,
-and a product links only the adapter for its guest platform. `x86port` and
-`x360port` remain sibling dependencies composed and pinned by the consuming
-title rather than submodules owned by Alchemy, so Alchemy never pulls both
-execution frameworks into an unrelated consumer.
+## Android
 
-## Fork dependencies; do not carry patch files
-
-- **Third-party changes live as commits in a maintained fork, never as tracked
-  `.patch` files.** Create or reuse the fork, make the change in its source
-  tree, verify it there, and pin the consuming project to the exact fork commit.
-- **The dependency declaration is the source of truth.** Record the fork URL,
-  immutable revision, upstream base, and purpose through the project's normal
-  submodule, lockfile, or dependency resolver. Do not add a patch directory,
-  patch-application build step, or bootstrap-time `git apply` path.
-- **Migrate patch stacks when encountered.** Applying, editing, or depending on
-  an existing `.patch` file makes its migration part of the current change:
-  turn the series into reviewed commits in the appropriate fork, update every
-  consumer atomically, verify the pinned result, and delete the superseded
-  patch files and application machinery. Do not add another patch to a legacy
-  stack.
-- **Keep fork history upstreamable.** Put each independent cause in its own
-  commit, retain provenance to the upstream revision, and avoid mixing project
-  policy or generated artefacts into the dependency change.
-
-## A diagnostic that can print nothing is lying — design the negative FIRST
-
-In production code "handle the edge gracefully — return empty, skip, continue"
-is right. In DIAGNOSTIC code it is a lie, and `if (found) report()` makes
-silence the branch nobody writes.
-
-- **Before writing the check, write what a NEGATIVE will print**: *scanned N
-  candidates, matched 0, cannot see shape X*. A bare "(none)" cannot be told
-  from "I never looked".
-- **Refuse, do not return empty, when the corpus is missing.** Measured: a
-  catalog tool returned "(no matches)" exit 0 from a directory that did not
-  exist.
-- **Cap the BORING case, not the interesting one** — first N *plus every state
-  change*. `if (n++ < 4)` showed 4 of 78,278 events and "proved" an array was
-  always empty.
-- **Silently-skipped input is a failure, not a filter** — a parser that ignores
-  what it cannot match, a name that no-ops on a typo, a tolerant `try/except`.
-- **Prove it fires, in the SHIPPING artefact.** A `--selftest` feeding a case
-  that MUST come out positive, wired into the suite. A selftest over a pure
-  helper *beside* the shipping path tests different code.
-- **Run a discriminator against BOTH classes before trusting it.** Not reasoned
-  about — run. One scored 25 on the negative case and 0 on the positive.
-- **A grep count is text, not code.** It counts comments, docs and dead
-  references alongside live call sites. Confirm the symbol is REACHED before
-  sizing any work from it.
-
-## Verify at the size, in the form, that ships
-
-A thing is not checked until it is checked as the user will meet it.
-
-- **Art is checked RASTERISED at its target size**, over light, dark and
-  mid-tone backgrounds, point-filtered. Every glyph defect in `port-assets` was
-  something that looked right in the editor and was mush in the cell.
-- **A measured constant that ships must be diffed BY CODE** against the
-  measurement it came from, or generated from it. Nothing hand-compared.
-- **An internal trace is a mechanism check, not faithfulness.** "The call site
-  was reached" is not "the output matches the real thing on real data".
-
-## An agent must be able to DRIVE its work, not just launch it
-
-An agent must be able to press inputs, read state, take screenshots, and measure while its work runs.
-
-- **Build a control channel into the artefact**, opt-in and off by default (a
-  local port, a socket, a REPL), never a wrapper around logs. Client in the
-  project's own language; **no shell**.
-- **A launch-and-read-logs loop forces pre-baked scripts, and a pre-baked
-  script that drifts is worse than no evidence** — it produces a run that looks
-  like a measurement and never reached the thing under test.
-- **Play-through runs OBSERVE; they never gate.** Use them only for testing scenarios.
-  Gate on unit tests, runtime invariants, counters with denominators. Before
-  reading the ABSENCE of a symptom as a fix, prove the run reached the code.
-- **An automated or windowless run must not seize the machine** — no audio out
-  of a run nobody is watching, no stealing focus. Where silence would change
-  behaviour, use a silent device whose cursors still advance, not no device.
-
-## Single-title completion discipline
-
-- **Finish one title before starting another.** In a multi-title game-port project, choose one
-  active title/revision as the conformance target. Do not begin title-specific reverse engineering,
-  profile authoring, provisioning, gameplay, renderer, performance, or enhancement work for another
-  game until the active title's declared compatibility and performance gates are complete and its
-  exact conformance report passes.
-- **Shared engine work is not a loophole.** Title-neutral work may continue when it is driven by a
-  demonstrated need in the active title or by a separately stated engine contract, but it must not
-  become a second title workstream. Inspecting another title's metadata is allowed only when needed
-  to validate a shared boundary; do not turn that inspection into implementation or testing for the
-  other game.
-- **Do not call a title finished from identity or boot alone.** The project must represent and pass
-  the active title's exact-revision identity, retained/native parity, headless gameplay, packaging,
-  and performance criteria. If compatibility and enhancements are separate gates, both remain open
-  until each is genuinely complete.
-- **Switch titles deliberately.** Record the active title and any unmet gate in the project's
-  current-state authority before changing focus; a probe of another game does not change that
-  active-title requirement.
-
-## Runtime-execution verification and release inputs
-
-- **Every maintained project has hosted CI for every applicable shipping platform.** Linux,
-  Windows, and macOS jobs are required for portable desktop libraries, tools, and products that
-  claim those hosts. Android-capable products and shared runtime/build components also require an
-  Android job. A project may omit a platform only when its goals make that platform genuinely
-  inapplicable; record the exact reason in `docs/project-state.md` instead of silently leaving the
-  matrix incomplete.
-- **CI proves the real redistributable boundary on that platform.** Configure, compile, lint, test,
-  and package through the same locked owners used by maintainers. A cross-compile or syntax-only job
-  does not prove runtime support: execute synthetic dynarec/interpreter, executable-memory,
-  instruction-cache, ABI, invalidation, and package-install checks on the matching host/architecture
-  whenever the project claims those capabilities. Real-title gameplay and performance remain local
-  evidence because CI has no game files.
-- **Use native platform toolchains without narrowing user support.** Linux C/C++ CI uses Clang;
-  macOS exercises AppleClang and the claimed Intel or Apple-Silicon architecture; Windows uses a
-  documented supported MSVC/clang-cl configuration. Android uses the pinned shared
-  `shared/android-port` Gradle/AGP/NDK/JDK contract and builds every claimed ABI/API combination.
-  Platform-specific CI commands call the project's canonical Python verifier/build modules rather
-  than duplicating policy in workflow YAML.
-- **Hosted workflows are deterministic and least-privileged.** Pin third-party actions to full
-  commit SHAs, lock downloaded dependencies and toolchains with checksums, set explicit job
-  timeouts, grant only required permissions, and fetch full history when project-information or
-  publication checks need it. Caches are accelerators only: a cold job must remain correct, and no
-  cache may contain game files or derived restricted data.
-- **No green placeholder jobs.** An unavailable runner, missing backend, skipped test, absent
-  package, or unsupported architecture is a named failure or an explicitly recorded inapplicable
-  platform, never a successful no-op. Required matrix jobs and their package/runtime assertions are
-  part of the normal release gate.
-
-- **Keep real-title conformance local.** ROMs, discs, executables, extracted code, and derived
-  translation caches never enter CI, hosted secrets, commits, or packages. Hosted checks use only
-  redistributable code and synthetic fixtures; a green decoder/cache test is not title conformance.
-  Local release tooling owns the real-input gate and produces asset-free packages.
-- **Major updates publish real platform packages in a GitHub Release.** For each applicable shipping
-  platform, attach the verified, asset-free product artifact: the project's supported Windows
-  installer or packaged application, a downloadable archive or disk image containing the macOS
-  `.app`, the Linux AppImage, and the signed Android APK. A CI build or workflow artifact alone is
-  not a release package. Record a platform omission and its exact reason in `docs/project-state.md`;
-  do not claim support from a cross-build or fabricate a placeholder artifact. WebAssembly is the
-  exception: publish its browser package only through the sibling `~/repo/pages` deployment path
-  above, not as a separate source-project Pages site or GitHub Release asset.
-- **Every project release updates its Pages entry.** In the same release task, add or refresh the
-  project's listing in `~/repo/pages`: source and live links, description, release-relevant media,
-  and the generated intended-feature snapshot from the project's canonical `docs/project-state.md`.
-  Publish the Pages change and verify the deployed detail page before calling the release delivered.
-  A release artifact does not by itself promote a capability to `verified`; the project-state evidence
-  remains authoritative. If Pages publication fails, report the release as published with its
-  catalogue/deployment follow-up still open rather than silently claiming full delivery.
-
-- **Desktop and mobile releases must have a no-terminal first-run setup.** An AppImage or APK must
-  show an initial setup screen when its required ROM/EXE is not configured, with a Browse action
-  using the platform-native file picker. Validate the selected file before continuing and persist
-  the resulting path or URI with the platform's user configuration/data API; environment variables
-  and command-line paths remain maintainer/developer overrides, never player prerequisites.
-- **Packaged setup accepts the primary ROM/EXE directly or from one bounded nested ZIP.** Search ZIP
-  entries by content at any folder depth and accept exactly one title-identity match. Reject unsafe
-  paths, duplicate matches, unreadable or corrupt entries, excessive entry counts, and compressed or
-  expanded byte budgets before committing; validate the complete install, including required sibling
-  assets, and preserve the previous valid selection on every failure. Lucent owns reusable ZIP
-  discovery/extraction and archive bounds; each port owns title identity and complete-install policy.
-- **Packaged setup uses each host's player interface.** Linux AppImages use the desktop launcher;
-  Android SDL3 ports use the Activity/SAF path and persist required URI grants. Document the exact
-  user-supplied asset and reset/reselection behavior for both.
-- **Android platform mechanics belong in `shared/android-port`.** SDL3-specific Activity/runtime
-  staging applies only to SDL3 consumers; common build, signing, package, SAF, and device contracts
-  also serve non-SDL3 consumers. Lucent supplies focused helpers only:
-
-  | owner | owns | does not own |
-  |---|---|---|
-  | **Lucent** | optional title-neutral logging, configuration, HTTP, paths, content identity, ZIP/file helpers, and platform-neutral touch routing | Activity/SAF mechanics, app lifecycle, Android contact acquisition/insets, build policy, or title behavior |
-  | **`shared/android-port`** | shared Android Activity and SAF adapters, persisted read grants, bounded private staging, raw contact/inset handoff, pinned Gradle/AGP/NDK inputs, native-dependency prefix, `libmain`/SDL/NDK runtime staging, APK inspection/signing, and emulator policy | title identity, player setup wording, game input meaning, rendering, or engine lifecycle |
-  | **consuming title** | package/application identity, complete-install validation and publication after Android staging succeeds, native entry composition, title JNI bridge, touch actions/layout/art, orientation, and release-performance evidence | copied shared Activity, SAF, prefix-builder, Gradle/NDK, staging, or emulator mechanics |
-
-  The Android native-dependency prefix is build input owned by `shared/android-port`; titles consume
-  its CMake interface instead of fetching SDL, SDL_image, FreeType, or equivalent shared dependencies.
-  Extend the owning shared repo when a reusable capability is missing. **PSX, X-Men 2, and LF2 must
-  consume `shared/android-port`; they must not copy a local Android support library, Gradle/package
-  helper, dependency prefix, Activity base, or emulator contract.**
-- **Android builds pin a coherent maintained toolchain.** Pin the Gradle wrapper URL and checksum and
-  an officially compatible Android Gradle Plugin version. Select one JDK home whose `java` and
-  `javac` share a supported major version; prefer a maintained Gradle/AGP update that supports the
-  host's current JDK instead of requiring an older JDK because of a stale wrapper ceiling.
-  **Gradle 9.4.0 and later support running on JDK 26.** When an Android port is on
-  JDK 26, use a compatible maintained pair rather than demanding JDK 21: AGP 9.2 with the pinned
-  Gradle 9.4.1 wrapper is the current baseline. Verify a real assembly with that exact pair; Gradle
-  support alone does not prove that an Android plugin or other third-party build plugin is compatible.
-- **Android ports declare the lowest Android API floor the complete shipped path supports.** The
-  shared default is API 21: it is the first API level available to 64-bit Android ABIs and supports
-  scoped SAF file selection. Compile and target SDKs may stay current. Raising a title's minimum API
-  needs a concrete runtime dependency and an evidence-backed explanation; newer platform calls stay
-  behind runtime guards in `shared/android-port` or the title. Build native dependency prefixes per
-  API and ABI so a lower-floor test or release cannot overwrite a newer-floor build.
-- **CMake ports with large or generated translation-unit corpora use Ninja, not Unix Makefiles.**
-  Makefiles conservatively rebuild every object after a CMake reconfigure because regenerated
-  `flags.make` becomes newer than the corpus; Ninja compares actual compiler commands and preserves
-  valid objects. The authoritative builder selects `-G Ninja`, detects a legacy generator from its
-  CMake cache, and migrates only the exact generated build child after validating its scope. Verify
-  the incremental contract with one unchanged second build that performs zero compilations; never
-  describe a full corpus rebuild after a non-compile-policy CMake edit as normal or acceptable.
-- **Android ports need an authored touch-control layer before release.** Map touch controls through
-  the same action/input policy as physical controllers; define a reachable layout, multi-touch and
-  pause/cancel behavior, safe-area/inset handling, scale-aware hit regions, and a way to hide or
-  reconfigure the overlay when a controller is present. Do not fake touch support by translating
-  arbitrary taps directly in the Activity.
-- **Android performance is an evidence gate, not an assumption.** Qualify the release APK on named
-  device classes with frame-time percentiles, sustained thermal behavior, memory, loading, and
-  rendering/audio correctness. A desktop result (including an Apple Silicon laptop) is not evidence
-  for Android performance; publish the tested device/renderer/settings matrix and refuse to call an
-  APK release verified while that matrix is missing.
-- **Persistent saves and settings belong to the OS user-data location.** Resolve one per-application
-  directory using XDG config/data conventions on Linux, Application Support on macOS, and the
-  platform app-data API on Windows and Android. Never default saves or user settings to the checkout,
-  an AppImage mount, the current working directory, or scratch output; an explicit portable/diagnostic
-  override is allowed. Share this resolver across ports or extend Lucent when it owns the relevant
-  runtime boundary instead of copying platform path logic.
+- **Platform mechanics belong in `shared/android-port`:** Activity/SAF adapters, persisted grants,
+  private staging, contact/inset handoff, pinned Gradle/AGP/NDK/JDK, the native dependency prefix,
+  SDL runtime staging, APK signing/inspection, and emulator policy. Titles own package identity,
+  install validation, native entry, JNI bridge, touch layout and art, orientation, and performance
+  evidence. PSX, X-Men 2, and LF2 consume it; never copy its mechanics.
+- **Toolchain:** pinned wrapper URL and checksum, a compatible AGP, one JDK for `java`/`javac`.
+  On JDK 26 the baseline is AGP 9.2 with Gradle 9.4.1; verify a real assembly.
+- **Minimum API 21** unless a concrete runtime dependency requires more; guard newer calls; build
+  prefixes per API and ABI.
+- **Release needs an authored touch layer** through the same action policy as controllers, with
+  multi-touch, pause, safe areas, scale-aware hit regions, and hiding when a controller is present.
+- **Release performance is measured on named Android devices** (frame-time percentiles, thermals,
+  memory, loading, correctness); desktop results are not evidence.
