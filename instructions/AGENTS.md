@@ -221,8 +221,10 @@
 - **Verify in the shipped form:** art rasterized at target size over light, dark, and mid-tone
   backgrounds; shipped measured constants generated from or diffed by code against the measurement.
   A trace proves mechanism, not faithfulness.
-- **Build a control channel into the product** (opt-in loopback port or socket, client in the
-  project's language) so agents can drive input, read state, and capture frames. Play-throughs
+- **Build a control channel into the product**, always open on loopback (also under `./run.sh`
+  and the bare executable, so the user's own session can be probed; an env var may move the port,
+  never close it), client in the project's language, so agents can drive input, read state, and
+  capture frames. Play-throughs
   observe; gates use tests, invariants, and counters with denominators. Prove a run reached the code
   before reading an absent symptom as a fix. Automated runs are headless and silent (a silent device
   whose cursors advance) and never steal focus.
