@@ -50,6 +50,7 @@ no second mutable copy to drift.
 | `tools/go_public.py` | Which history entries contain material that must not ship publicly |
 | `tools/cleanup-files` | How to remove an explicit set of in-tree files without partial cleanup |
 | `tools/safekill` | How to terminate an exact process without matching the calling shell |
+| `tools/swarm.py` | Which bounded jobs a free LLM worker completed that a scripted gate accepted (`swarmkit/` owns worktrees, backends, slots, verdicts) |
 
 `tools/cpp_policy.py` checks first-party C++ global functions, `extern`
 declarations, and function-local `static` variables against Clang's AST from a

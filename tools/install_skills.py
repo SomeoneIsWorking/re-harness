@@ -29,6 +29,7 @@ TOOL_NAMES = (
     "re_frontier.py",
     "safekill",
     "scratch_gc.py",
+    "swarm.py",
 )
 TOOL_DESTINATIONS = (Path(".agents/bin"), Path(".codex/bin"), Path(".claude/bin"))
 

@@ -689,6 +689,14 @@ def main():
             out,
         )
 
+    if sys.platform.startswith("linux"):
+        sys.path.insert(0, HERE)
+        import swarm_checks
+        fails += swarm_checks.run_checks(check, SCRATCH)
+    else:
+        rc, out = run([os.path.join(TOOLS, "swarm.py"), "report", SCRATCH], ROOT)
+        fails += check("swarm: refuses by name off Linux", rc == 1 and "Linux-only" in out, out)
+
     print("shared-skills selftest: %s (%d check(s) failed)"
           % ("FAILED" if fails else "PASSED", fails))
     return fails
