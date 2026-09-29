@@ -24,6 +24,7 @@ TOOL_NAMES = (
     "codemap.py",
     "cpp_policy.py",
     "go_public.py",
+    "heavy.py",
     "info.py",
     "project_state.py",
     "re_frontier.py",

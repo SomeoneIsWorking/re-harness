@@ -86,12 +86,6 @@ def parser() -> argparse.ArgumentParser:
         "or ~/repo/scratch/locks)",
     )
     run.add_argument(
-        "--heavy-lock",
-        type=Path,
-        default=None,
-        help="flock file for heavy gates (default: <lock-dir>/heavy.lock)",
-    )
-    run.add_argument(
         "--slots",
         type=positive,
         default=config.DEFAULT_SLOTS,
@@ -150,7 +144,7 @@ def command_run(args: argparse.Namespace) -> int:
         backend=BACKENDS[args.backend],
         model=args.model,
         retries=args.retries,
-        heavy_lock=(args.heavy_lock or settings_config.heavy_lock).resolve(),
+        heavy_lock_dir=settings_config.lock_dir,
         slots=MachineSlots(settings_config.slot_dir, settings_config.slots),
         memory=memory,
         lifetime=RunLifetime(),

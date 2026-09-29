@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -30,12 +31,15 @@ EMPTY_FEEDBACK = (
 )
 
 
+HEAVY_CLI = Path(__file__).resolve().parent.parent / "heavy.py"
+
+
 @dataclass(frozen=True)
 class RunSettings:
     backend: Backend
     model: str
     retries: int
-    heavy_lock: Path
+    heavy_lock_dir: Path
     slots: MachineSlots
     memory: MemoryFloor
     lifetime: RunLifetime
@@ -99,8 +103,16 @@ class JobRunner:
     def _gate_argv(self, job: Job) -> list[str]:
         if not job.heavy_gate:
             return list(job.gate)
-        self.settings.heavy_lock.parent.mkdir(parents=True, exist_ok=True)
-        return ["flock", str(self.settings.heavy_lock), *job.gate]
+        return [
+            sys.executable,
+            str(HEAVY_CLI),
+            "--kind",
+            "build",
+            "--lock-dir",
+            str(self.settings.heavy_lock_dir),
+            "--",
+            *job.gate,
+        ]
 
     def _attempt(
         self,

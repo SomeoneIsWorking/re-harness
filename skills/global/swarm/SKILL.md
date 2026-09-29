@@ -55,7 +55,7 @@ One JSON object per line:
 - **Gate output is feedback.** With `--retries N` a rejected worker is re-prompted in the same
   worktree with the gate's last 60 lines, so make failures say what differed.
 - `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run,
-  including time spent waiting for the heavy lock.
+  including time spent waiting for a heavy slot.
 
 ## Slots, heavy gates, and memory
 
@@ -64,10 +64,12 @@ One JSON object per line:
   per running job. Several projects' swarms together never exceed the slot count. Keep `--slots`
   at the default unless every concurrent user agrees; the cap is only as strong as the smallest
   value in use. `--workers` (default 8) is this invocation's own ceiling.
-- **Heavy gates** (full builds, game runs, anything with a large RSS or `-j nproc`) set
-  `heavy_gate: true`; the gate then runs as `flock <lock-dir>/heavy.lock <gate...>`, so heavy work
-  from swarms and from operators using the same lock is serialized. Do not run a heavy gate
-  without it.
+- **Heavy commands** go through `heavy.py [--kind build|run] -- <command...>` (on PATH). `build`
+  (compilers, verifiers; 2 at once, each with a moderate `-j`) and `run` (one game, browser,
+  Ghidra or bot instance; 4 at once) are separate flock slot sets under `<lock-dir>/heavy-<kind>/`,
+  and admission also waits for 2048 MiB of `MemAvailable`. The wrapper holds the slot, so a daemon
+  the command leaves behind never keeps it. A job with `heavy_gate: true` runs its gate as a
+  `build`. Do not run heavy work outside it; the old single `heavy.lock` is retired.
 - **Memory floor.** No worker starts while `MemAvailable` is below `--mem-floor-mib` (default 3072).
 - Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
   `--standalone` so its model server is inside that group; through the shared `opencode serve`
