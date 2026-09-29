@@ -24,6 +24,7 @@ No capability gap is currently active; S009 completed the portable-tooling verif
 | S007 | The shared tools and installer have positive and negative verification controls | verified | S005, S006 | G001, G003 |
 | S008 | Global project guidance requires every maintained project and catalogue to expose a complete stateful intended-feature inventory | verified | S001, S005 | G001, G002 |
 | S009 | Hosted CI exercises the portable repository on every applicable platform | verified | S007 | G001, G003 |
+| S010 | Bounded jobs fan out to a free LLM worker in isolated worktrees and are accepted only by a scripted gate, under a machine-wide slot cap | partial | S005, S007 | G003 |
 
 ## State details and evidence
 
@@ -88,3 +89,20 @@ jobs from commit `951b2ba`; its first Windows execution also falsified locale-de
 subprocess handling before the UTF-8 boundary was corrected. Android is inapplicable here: this
 repository ships host-side Python instructions, skills, and maintenance tools, not an Android
 runtime, package, or native library.
+
+### S010 — Gated LLM swarm: partial
+
+Evidence: `tools/swarm.py` (`tools/swarmkit/`) runs each job in a detached worktree under
+`<repo>/scratch/swarm/<run>/<id>/tree`, snapshots the worker's changes before the gate, and cannot
+record `accepted` without gate exit 0. `tests/swarm_checks.py` proves accept, gate rejection with
+feedback retry, a nonzero gate never accepted, worker timeout killing the whole process group,
+worker failure, empty-patch rejection, the flock slot cap (peak 2 of 6 concurrent jobs), the
+memory floor, heavy-gate serialization, interruption leaving no verdict, `$PWD`/attachment
+placement, apply with conflict refusal, and scoped gc. Live smoke on 2026-09-29: both the
+`opencode` and `pi` backends reached `opencode/space-bunny-free` and each had 2/2 demo jobs
+accepted (create a file; fix a one-line bug), with the patch applied and a second conflicting
+apply refused.
+
+Gap: Linux only (flock(1), `/proc/meminfo`, POSIX process groups); off Linux the CLI refuses by
+name and CI asserts that refusal. No project has run a production batch through it yet.
+
