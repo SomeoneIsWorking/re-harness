@@ -282,7 +282,9 @@
   works and explicit user authorization.
 - **Finish one title before starting another** in a multi-title project: exact-revision identity,
   parity, headless gameplay, packaging, and performance. Title-neutral work must serve the active
-  title. Record the active title and unmet gates before switching.
+  title. Record the active title and unmet gates before switching. Later titles may progress in
+  parallel on Space Bunny (boot, RE, title-local owners), but the active title's work lands first,
+  and nothing merged for a later title may regress the active title's gates.
 
 ## Shared repositories
 
