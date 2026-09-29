@@ -10,9 +10,12 @@
   and the `~/repo/weblua` checkout (private `SomeoneIsWorking/weblua`, via `gh`) before calling a
   browser unavailable. Run headless on a dedicated loopback port with a project `scratch/weblua/`
   as `WEBLUA_DIR`; never attach a personal profile. DOM success does not prove WebGPU or WASM.
-- **Godot discovery:** `GODOT_BIN`, then `~/dev/Godot_v4.6.2-stable_mono_linux_x86_64/`, then other
-  `~/dev/Godot*/` and `PATH`. This is a host hint, not a project prerequisite. If none exists on
-  Fedora, ask the user to run `sudo dnf install godot`.
+- **Godot is agent-provisioned, never a blocker.** Read the version the project pins
+  (`Godot.NET.Sdk/<v>` in the `.csproj`, else `config/features` in `project.godot`) and use
+  `GODOT_BIN` or a `~/dev/Godot_v<v>-stable[_mono]_*/` that matches it (mono for C#). If none
+  matches, download that exact official build from `godotengine/godot` releases with `gh`, verify
+  it against the release's `SHA512-SUMS.txt`, unpack it into `~/dev/`, and continue. This is not a
+  substituted toolchain; a mismatched installed version is never a reason to stop.
 - **Missing DNF packages:** stop and give the user the exact `sudo dnf install ...` command. Do not
   run it yourself unless asked, and do not download RPMs, substitute toolchains, or weaken the check.
 
