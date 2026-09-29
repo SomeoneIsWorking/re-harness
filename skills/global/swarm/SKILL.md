@@ -52,6 +52,11 @@ One JSON object per line:
   before launching) and pass only on a correct change: a focused test, an oracle diff, a byte-match,
   a type-check of the one module. Prefer the project's own verifier entry point through
   `uv run --frozen`. A worker that changes nothing is rejected as `empty-patch`.
+- **The gate also enforces code quality.** Chain the project's formatter check, linter/type-check
+  and structure verifier for the touched files after the correctness check, so a correct but messy
+  patch is rejected with the finding as feedback. When reviewing accepted patches, also reject
+  duplicated helpers, dumping-ground files, unclear names and dead code; fold repeated patterns
+  into one owner before applying more of them.
 - **Gate output is feedback.** With `--retries N` a rejected worker is re-prompted in the same
   worktree with the gate's last 60 lines, so make failures say what differed.
 - `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run,
