@@ -226,7 +226,7 @@ def _verdict_checks(check: Check, root: Path) -> int:
                     "files",
                     "attached",
                     gate_file_is("attached.txt", "ok"),
-                    files=("base.txt",),
+                    files=("base.txt", "created-by-the-job.txt"),
                 ),
             ],
             "env",
@@ -240,7 +240,7 @@ def _verdict_checks(check: Check, root: Path) -> int:
         and not (env_repo / "pwd.txt").exists(),
     )
     fails += check(
-        "swarm: attachments are absolute paths inside the worktree",
+        "swarm: attachments are absolute paths inside the worktree, and only files that exist",
         located["files"].verdict is Verdict.ACCEPTED,
         located["files"].gate_tail,
     )
