@@ -100,6 +100,12 @@
   scoped targets. No tombstones, no broad deletion.
 - **The operator lands.** Subagents do not stage, commit, stash, or push. Review, gate, and land
   each finished batch promptly. Tell an active agent when a shared contract it depends on changes.
+- **Space Bunny does the heavy work; Claude usage is budgeted.** A Claude session designs tasks
+  and gates, reviews, and lands. Implementation, bulk RE, decompilation and investigations go to
+  the free model: `swarm.py` for gated jobs, and `opencode run -m opencode/space-bunny-free` in a
+  worktree for an open-ended investigation whose report you then verify. Spawn a Claude subagent
+  only for work Space Bunny has demonstrably failed at, and say so in your report. Report to the
+  operator only at real milestones or blockers.
 - **Subagents are authorized without a count limit**, but only for bounded tasks with
   non-overlapping ownership. Serialize builds, tests, and runtimes that share state, ports, or
   devices; never run two game instances without explicit isolation.
