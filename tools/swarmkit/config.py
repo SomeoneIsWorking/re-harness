@@ -15,6 +15,11 @@ DEFAULT_MODEL = "opencode/space-bunny-free"
 DEFAULT_SLOTS = 24
 DEFAULT_WORKERS = 8
 DEFAULT_MEMORY_FLOOR_MIB = 3072
+# Concurrent heavy commands per kind on the shared 16-core / 15 GB workstation. A build
+# saturates cores (each is told to use a moderate -j); a run is one game, browser, Ghidra
+# or bot instance. Admission also waits for HEAVY_MEMORY_FLOOR_MIB of MemAvailable.
+HEAVY_SLOTS = {"build": 2, "run": 4}
+HEAVY_MEMORY_FLOOR_MIB = 2048
 LOCK_DIR_VARIABLE = "SWARM_LOCK_DIR"
 
 
@@ -30,9 +35,12 @@ class SwarmConfig:
     def slot_dir(self) -> Path:
         return self.lock_dir / "swarm-slots"
 
-    @property
-    def heavy_lock(self) -> Path:
-        return self.lock_dir / "heavy.lock"
+    def heavy_slot_dir(self, kind: str) -> Path:
+        if kind not in HEAVY_SLOTS:
+            raise ValueError(
+                f"unknown heavy kind {kind!r}; expected one of {sorted(HEAVY_SLOTS)}"
+            )
+        return self.lock_dir / f"heavy-{kind}"
 
 
 def default_lock_dir() -> Path:

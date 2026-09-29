@@ -6,9 +6,7 @@ verdict -- accepted, rejected, worker-failed, timeout -- is produced on demand.
 
 from __future__ import annotations
 
-import fcntl
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -25,6 +23,7 @@ from swarmkit.admission import MachineSlots, MemoryFloor
 from swarmkit.apply import ApplyRefused, apply_accepted
 from swarmkit.backends import BACKENDS
 from swarmkit.cleanup import CleanupRefused, remove_worktrees
+from swarmkit.config import HEAVY_SLOTS
 from swarmkit.jobs import Job, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
 from swarmkit.report import summarize
@@ -66,7 +65,7 @@ def settings(root: Path, slots: int = 8, retries: int = 0) -> RunSettings:
         backend=FakeBackend(),
         model="fake",
         retries=retries,
-        heavy_lock=root / "locks" / "heavy.lock",
+        heavy_lock_dir=root / "locks",
         slots=MachineSlots(root / "locks" / "slots", slots, poll_seconds=0.05),
         memory=MemoryFloor(0, reader=lambda: 1),
         lifetime=RunLifetime(),
@@ -115,6 +114,8 @@ def run_checks(check: Check, scratch: str) -> int:
         fails += _interrupt_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _input_checks(check, Path(tmp))
+    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
+        fails += _heavy_checks(check, Path(tmp))
     fails += _backend_checks(check)
     return fails
 
@@ -349,10 +350,8 @@ def _admission_checks(check: Check, root: Path) -> int:
         "swarm: memory floor waits until MemAvailable recovers", waits == [100, 200]
     )
 
-    lock = root / "locks" / "heavy.lock"
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    holder = os.open(lock, os.O_RDWR | os.O_CREAT)
-    fcntl.flock(holder, fcntl.LOCK_EX)
+    build_slots = MachineSlots(root / "locks" / "heavy-build", HEAVY_SLOTS["build"])
+    holders = [build_slots.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
     heavy = job(
         repo,
         "heavy",
@@ -365,12 +364,14 @@ def _admission_checks(check: Check, root: Path) -> int:
     held = {
         r.id: r for r in run_jobs([heavy, light], "heavy", settings(root), workers=2)
     }
-    os.close(holder)
+    for holder in holders:
+        assert holder is not None
+        holder.release()
     fails += check(
-        "swarm: a heavy gate waits on the shared flock",
+        "swarm: a heavy gate waits while every build slot is held",
         held["heavy"].verdict is Verdict.TIMEOUT
         and held["heavy"].reason is Reason.GATE
-        and held["heavy"].gate[:2] == ["flock", str(lock)],
+        and "heavy.py" in held["heavy"].gate[1],
     )
     fails += check(
         "swarm: a light gate ignores the heavy lock",
@@ -525,3 +526,67 @@ def _backend_checks(check: Check) -> int:
         ],
         str(pi),
     )
+
+
+HEAVY_CLI = HERE.parent / "tools" / "heavy.py"
+
+
+def _heavy(
+    locks: Path, *argv: str, timeout: float = 20.0
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [PY, str(HEAVY_CLI), "--lock-dir", str(locks), *argv],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _heavy_checks(check: Check, root: Path) -> int:
+    fails = 0
+    locks = root / "locks"
+    fails += check(
+        "heavy: the command's exit status is returned",
+        _heavy(locks, "--", PY, "-c", "raise SystemExit(7)").returncode == 7,
+    )
+    fails += check(
+        "heavy: NEGATIVE no command is refused",
+        _heavy(locks, "--kind", "run").returncode == 2,
+    )
+
+    build = MachineSlots(locks / "heavy-build", HEAVY_SLOTS["build"])
+    holders = [build.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
+    marker = root / "ran.txt"
+    blocked = False
+    try:
+        _heavy(locks, "--", PY, "-c", f"open({str(marker)!r}, 'w')", timeout=1.5)
+    except subprocess.TimeoutExpired:
+        blocked = True
+    fails += check(
+        "heavy: NEGATIVE a build waits while every build slot is held",
+        blocked and not marker.exists(),
+    )
+    fails += check(
+        "heavy: a run is admitted while the build slots are full",
+        _heavy(locks, "--kind", "run", "--", PY, "-c", "pass").returncode == 0,
+    )
+    for holder in holders:
+        assert holder is not None
+        holder.release()
+
+    daemon = (
+        "import subprocess, sys; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
+        "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)"
+    )
+    _heavy(locks, "--", PY, "-c", daemon)
+    leases = [build.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
+    fails += check(
+        "heavy: a daemon left by the command does not keep its slot",
+        all(lease is not None for lease in leases),
+    )
+    for lease in leases:
+        if lease is not None:
+            lease.release()
+    return fails
