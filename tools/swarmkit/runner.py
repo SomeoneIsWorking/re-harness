@@ -139,7 +139,10 @@ class JobRunner:
         self.settings.memory.wait(lifetime)
         emit(f"swarm: {job.id}: worker attempt {attempt}")
         # Attach from the worker's own checkout, by absolute path so no CLI guesses the base.
-        files = [str(tree.path / name) for name in job.files]
+        # Only files that exist now: a job may create a listed file, and a retry runs on the
+        # tree the last attempt left, where a listed file may be deleted. opencode refuses to
+        # start when asked to attach a missing file.
+        files = [str(tree.path / name) for name in job.files if (tree.path / name).is_file()]
         worker = run_bounded(
             self.settings.backend.command(prompt, files, self.settings.model),
             tree.path,
