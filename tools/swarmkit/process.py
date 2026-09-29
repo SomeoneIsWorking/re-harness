@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,11 +40,12 @@ def run_bounded(
     timeout: float,
     log_path: Path,
     lifetime: RunLifetime,
+    extra_env: Mapping[str, str] | None = None,
 ) -> ProcessOutcome:
     """Run ``argv`` in ``cwd`` with stdout+stderr in ``log_path``; kill its group on timeout."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     # Some CLIs (opencode) resolve paths from $PWD rather than getcwd(); keep them in agreement.
-    environment = dict(os.environ, PWD=str(cwd))
+    environment = dict(os.environ, **(extra_env or {}), PWD=str(cwd))
     with open(log_path, "wb") as log:
         try:
             child = subprocess.Popen(

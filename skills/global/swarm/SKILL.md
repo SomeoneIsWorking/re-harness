@@ -48,6 +48,11 @@ One JSON object per line:
   A job that needs the model to explore the codebase is too big.
 - **Put the evidence in the prompt or `files`**: the decompiled function, the oracle trace, the
   failing test's text, the neighbouring override to imitate. `files` are relative to the worktree.
+- **The worker sees only its worktree.** Gitignored trees (generated decompilation) and
+  uninitialised submodules are absent there; name them in `read_only` (paths relative to `repo`)
+  and cite them in the prompt by absolute path. The opencode backend lets the worker read, not
+  edit, those, and denies every other outside path; opencode's default `ask` aborts a
+  non-interactive run. Never point a worker at the gate script: the runner runs it.
 - **The gate tests the claim, not the effort.** It must fail on the unmodified tree (check that
   before launching) and pass only on a correct change: a focused test, an oracle diff, a byte-match,
   a type-check of the one module. Prefer the project's own verifier entry point through
