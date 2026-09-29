@@ -41,6 +41,9 @@ class FakeBackend:
     def command(self, prompt: str, files: Sequence[str], model: str) -> list[str]:
         return [PY, str(FAKE_WORKER), *files, prompt]
 
+    def environment(self, read_only: Sequence[Path]) -> dict[str, str]:
+        return {}
+
 
 def make_repo(root: Path, ignore_scratch: bool = True) -> Path:
     repo = root / "repo"
@@ -477,6 +480,20 @@ def _input_checks(check: Check, root: Path) -> int:
             refused = True
         fails += check(f"swarm: jobs file refuses {label}", refused)
 
+    (root / "generated").mkdir(exist_ok=True)
+    jobs_file.write_text(json.dumps(dict(good, read_only=["generated"])) + "\n")
+    fails += check(
+        "swarm: read_only resolves against the job's repo",
+        load_jobs(jobs_file)[0].read_only == ((root / "generated").resolve(),),
+    )
+    jobs_file.write_text(json.dumps(dict(good, read_only=["absent"])) + "\n")
+    try:
+        load_jobs(jobs_file)
+        refused = False
+    except JobFileError:
+        refused = True
+    fails += check("swarm: jobs file refuses a read_only directory that does not exist", refused)
+
     unignored = make_repo(root / "plain", ignore_scratch=False)
     try:
         run_jobs(
@@ -490,11 +507,20 @@ def _input_checks(check: Check, root: Path) -> int:
 
 
 def _backend_checks(check: Check) -> int:
+    config = json.loads(
+        BACKENDS["opencode"].environment([Path("/ref")])["OPENCODE_CONFIG_CONTENT"]
+    )["permission"]
+    confined = check(
+        "swarm: opencode denies outside paths (catch-all first) and reads, never edits, read_only",
+        list(config["external_directory"].items()) == [("*", "deny"), ("/ref/**", "allow")]
+        and list(config["edit"].items()) == [("*", "allow"), ("/ref/**", "deny")],
+        str(config),
+    )
     opencode = BACKENDS["opencode"].command(
         "do it", ["a.c"], "opencode/space-bunny-free"
     )
     pi = BACKENDS["pi"].command("do it", ["a.c"], "opencode/space-bunny-free")
-    return check(
+    return confined + check(
         "swarm: opencode argv is standalone JSON with attachments",
         opencode
         == [

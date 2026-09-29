@@ -146,6 +146,7 @@ class JobRunner:
             job.timeout,
             job_dir / f"worker-{attempt}.log",
             lifetime,
+            self.settings.backend.environment(job.read_only),
         )
         if worker.timed_out:
             return verdict(Verdict.TIMEOUT, Reason.WORKER, worker_tail=worker.tail())

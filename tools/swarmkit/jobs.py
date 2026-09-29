@@ -14,6 +14,7 @@ KNOWN_FIELDS = {
     "repo",
     "prompt",
     "files",
+    "read_only",
     "gate",
     "heavy_gate",
     "timeout",
@@ -35,6 +36,9 @@ class Job:
     gate: tuple[str, ...]
     timeout: float
     files: tuple[str, ...] = ()
+    # Absolute directories outside the worktree the worker may read but not edit, e.g.
+    # a gitignored generated tree or an uninitialised submodule of the main checkout.
+    read_only: tuple[Path, ...] = ()
     heavy_gate: bool = False
     gate_timeout: float = DEFAULT_GATE_TIMEOUT_SECONDS
 
@@ -85,17 +89,27 @@ def _parse(record: object, where: str, base: Path) -> Job:
     files = record.get("files", [])
     if not isinstance(files, list) or not all(isinstance(f, str) and f for f in files):
         raise JobFileError(f"{where}: files must be a list of paths")
+    read_only = record.get("read_only", [])
+    if not isinstance(read_only, list) or not all(
+        isinstance(r, str) and r for r in read_only
+    ):
+        raise JobFileError(f"{where}: read_only must be a list of paths")
     heavy = record.get("heavy_gate", False)
     if not isinstance(heavy, bool):
         raise JobFileError(f"{where}: heavy_gate must be true or false")
-    repo = Path(_required(record, "repo", str, where)).expanduser()
+    repo = (base / Path(_required(record, "repo", str, where)).expanduser()).resolve()
+    readable = tuple((repo / r).resolve() for r in read_only)
+    missing = [str(r) for r in readable if not r.is_dir()]
+    if missing:
+        raise JobFileError(f"{where}: read_only directories do not exist: {missing}")
     return Job(
         id=job_id,
-        repo=(base / repo).resolve(),
+        repo=repo,
         prompt=prompt,
         gate=tuple(gate),
         timeout=_seconds(record, "timeout", where, None),
         files=tuple(files),
+        read_only=readable,
         heavy_gate=heavy,
         gate_timeout=_seconds(
             record, "gate_timeout", where, DEFAULT_GATE_TIMEOUT_SECONDS
