@@ -16,8 +16,14 @@
   matches, download that exact official build from `godotengine/godot` releases with `gh`, verify
   it against the release's `SHA512-SUMS.txt`, unpack it into `~/dev/`, and continue. This is not a
   substituted toolchain; a mismatched installed version is never a reason to stop.
-- **Missing DNF packages:** stop and give the user the exact `sudo dnf install ...` command. Do not
-  run it yourself unless asked, and do not download RPMs, substitute toolchains, or weaken the check.
+- **Provision missing tools yourself, without root.** The user often works remotely and cannot
+  run `sudo`. In order: the project's own provisioning; an official release binary or archive
+  verified by its published checksum, unpacked under `~/dev/` or `~/.local/`; a user-level package
+  manager (`uv`, `cargo`, `npm`, Homebrew on Linux); then `podman` with the project's Dockerfile or
+  an official image. Only when none can supply the exact tool the project pins, give the user the
+  exact `sudo dnf install ...` command and keep working on everything else. Never weaken the check,
+  and never swap in a different toolchain unless the project's own byte/behavior check proves it
+  equivalent.
 
 ## Fix the cause, not the symptom
 
