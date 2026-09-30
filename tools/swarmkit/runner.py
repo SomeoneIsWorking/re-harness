@@ -58,7 +58,7 @@ class RunSettings:
     model: str
     retries: int
     slots: MachineSlots
-    gate_slots: MachineSlots
+    build_slots: MachineSlots
     run_slots: MachineSlots
     memory: ReservationLedger
     pressure: PressureWatcher
@@ -210,28 +210,24 @@ class JobRunner:
 
     @contextmanager
     def _gate_admission(self, job: Job, reservation: Reservation) -> Iterator[None]:
-        """Hold a build slot, a run slot if asked, and the gate's peak around a heavy gate.
+        """Hold one slot of the gate's kind, then the gate's peak, around a heavy gate.
 
-        Always build before run, then memory: one fixed order, so two runners each
-        holding one kind can never wait on each other.
+        A gate holds exactly one kind of slot, so a game run never occupies a build slot
+        and no runner holds one kind while waiting for the other.
         """
-        if not job.heavy_gate:
+        if job.heavy_gate is None:
             yield
             return
-        with self._slot(job, self.settings.gate_slots, "build"):
-            if not job.run_slot:
-                with self._gate_memory(job, reservation):
-                    yield
-                return
-            with self._slot(job, self.settings.run_slots, "run"):
-                with self._gate_memory(job, reservation):
-                    yield
+        slots = {"build": self.settings.build_slots, "run": self.settings.run_slots}
+        with self._slot(job, slots[job.heavy_gate], job.heavy_gate):
+            with self._gate_memory(job, reservation):
+                yield
 
     @contextmanager
     def _gate_memory(self, job: Job, reservation: Reservation) -> Iterator[None]:
         """Grow the job's reservation to its gate's peak; shrink it back afterwards."""
         worker_mib = reservation.reserve_mib
-        gate_mib = max(worker_mib, job.mem_mib or config.HEAVY_RESERVE_MIB["build"])
+        gate_mib = max(worker_mib, job.mem_mib or config.HEAVY_RESERVE_MIB[job.heavy_gate])
         memory = self.settings.memory
         memory.resize(self.settings.lifetime, reservation, gate_mib)
         try:
