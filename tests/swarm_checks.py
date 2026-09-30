@@ -35,7 +35,7 @@ from swarmkit.report import summarize
 from swarmkit.reservations import ReservationLedger
 from swarmkit.results import JobResult, Reason, Verdict
 from swarmkit.runner import RunSettings, run_jobs
-from swarmkit.worktree import WorktreeError, registered_worktrees
+from swarmkit.worktree import Worktree, WorktreeError, registered_worktrees
 
 Check = Callable[..., int]
 PY = sys.executable
@@ -136,6 +136,8 @@ def run_checks(check: Check, scratch: str) -> int:
         fails += _admission_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _interrupt_checks(check, Path(tmp))
+    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
+        fails += _resume_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _input_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
@@ -631,6 +633,54 @@ def _interrupt_checks(check: Check, root: Path) -> int:
     assert holder is not None
     holder.release()
     fails += check("swarm: a slot wait gives up when the run stops", len(waited) == 1)
+    return fails
+
+
+def _resume_checks(check: Check, root: Path) -> int:
+    """A resumed run keeps verdicts, continues unfinished jobs in place, starts new ones."""
+    fails = 0
+    repo = make_repo(root)
+    done = job(repo, "done", "write d.txt first", gate_file_is("d.txt", "first"))
+    (first,) = run_jobs([done], "resumable", settings(root), workers=1)
+    # An interrupted job: a worktree with the earlier attempt's partial work and its
+    # worker log, but no verdict. That is what a killed run leaves behind.
+    run_dir = repo / "scratch" / "swarm" / "resumable"
+    tree = Worktree.create(repo, run_dir / "cut" / "tree")
+    (tree.path / "c.txt").write_text("partial\n", encoding="utf-8")
+    (run_dir / "cut" / "worker-1.log").write_text("killed\n", encoding="utf-8")
+    cut = job(repo, "cut", "resume c.txt", gate_file_is("c.txt", "partial\nresumed"))
+    new = job(repo, "new", "resume n.txt", gate_file_is("n.txt", "fresh"))
+    changed = job(repo, "done", "write d.txt second", gate_file_is("d.txt", "second"))
+
+    try:
+        run_jobs([changed, cut], "resumable", settings(root), workers=2)
+        refused = False
+    except FileExistsError:
+        refused = True
+    fails += check("swarm: NEGATIVE an existing run name is refused without --resume", refused)
+
+    results = {
+        r.id: r
+        for r in run_jobs(
+            [changed, cut, new], "resumable", settings(root), workers=3, resume=True
+        )
+    }
+    fails += check(
+        "swarm: resume keeps a finished job's verdict without rerunning it",
+        first.verdict is Verdict.ACCEPTED
+        and results["done"].verdict is Verdict.ACCEPTED
+        and results["done"].gate_tail == first.gate_tail,
+    )
+    fails += check(
+        "swarm: resume continues an unfinished job in its worktree, told it was interrupted",
+        results["cut"].verdict is Verdict.ACCEPTED
+        and results["cut"].base == tree.base
+        and (run_dir / "cut" / "worker-2.log").exists(),
+    )
+    fails += check(
+        "swarm: NEGATIVE a job that never started runs fresh under resume",
+        results["new"].verdict is Verdict.ACCEPTED,
+    )
     return fails
 
 
@@ -1561,7 +1611,9 @@ def _heavy_checks(check: Check, root: Path) -> int:
     fails += check(
         "heavy: --mem-mib reserves for the command and is released when it ends",
         _heavy(locks, "--mem-mib", "512", "--", PY, "-c", "pass").returncode == 0
-        and not list((locks / "reservations").iterdir()),
+        # Entries and tickets, not directories: the ledger leaves its empty
+        # waiting/ directory behind whenever the real host made the command wait.
+        and not list((locks / "reservations").rglob("*.json")),
     )
 
     build = MachineSlots(locks / "heavy-build", HEAVY_SLOTS["build"])

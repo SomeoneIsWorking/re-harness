@@ -16,6 +16,7 @@ noop                         change nothing
 envpwd                       write pwd.txt under $PWD (must be the worktree)
 attached                     write attached.txt naming whether every attachment is absolute and in cwd
 ledger <dir> <out>           write the reserve_mib of every entry in <dir> to <out> as JSON, then h.txt
+resume <file>                append 'resumed' to <file> when the task says it was interrupted, else write 'fresh'
 say <anything>               copy the whole task file to task.txt, so its size can be checked
 """
 
@@ -89,6 +90,13 @@ elif action == "ledger":
     pathlib.Path(words[2]).write_text(json.dumps([row["reserve_mib"] for row in rows]))
     with open("h.txt", "w", encoding="utf-8") as out:
         out.write("x\n")
+elif action == "resume":
+    if "interrupted part-way" in prompt:
+        with open(words[1], "a", encoding="utf-8") as out:
+            out.write("resumed\n")
+    else:
+        with open(words[1], "w", encoding="utf-8") as out:
+            out.write("fresh\n")
 elif action == "say":
     with open("task.txt", "w", encoding="utf-8") as out:
         out.write(prompt)

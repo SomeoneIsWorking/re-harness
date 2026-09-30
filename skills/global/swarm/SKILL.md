@@ -18,6 +18,7 @@ the main tree is never touched until the operator runs `apply`.
 
 ```text
 swarm.py run jobs.jsonl [--backend opencode|pi] [--workers 8] [--retries N] [--name RUN]
+swarm.py run jobs.jsonl --name RUN --resume   # continue an interrupted run in place
 swarm.py report <repo>/scratch/swarm/<run>     # jobs, accepted, rejected by reason, failures, timeouts, wall
 swarm.py apply  <repo>/scratch/swarm/<run> <id> # accepted only; refuses on conflict
 swarm.py gc     <repo>/scratch/swarm/<run>     # git worktree remove, keeps results and logs
@@ -27,6 +28,14 @@ The repo must gitignore `scratch/` (the run refuses otherwise). Linux only: it r
 elsewhere. Worker and gate output are in
 `<id>/worker-<n>.log` and `<id>/gate-<n>.log`; the task handed to the worker is
 `<id>/prompt-<n>.md`; the verdict is `<id>/result.json`.
+
+**Never restart a batch from scratch.** To change workers or settings, or after the run was killed,
+stop it by PID and rerun the same jobs file with `--name <run> --resume`. Do not `gc` it first.
+A job with a verdict keeps it. An unfinished job continues in the worktree it left, and its worker
+is told to read `git diff` and carry on; that attempt does not count against `--retries`. A job
+that never started runs fresh. A restart that discards in-flight work repeats up to an hour of
+every worker's progress: 3 restarts of one psx batch on 2026-09-30 cost more than the batch produced.
+Prompt changes need a new jobs file only for jobs that have not started.
 
 ## When to use it
 
