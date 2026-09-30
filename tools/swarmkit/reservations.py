@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Self
 
 from .lifetime import RunLifetime
-from .procs import MIB, group_alive, process_alive, read_group_rss, read_mem_available
+from .procs import MIB, group_alive, process_running, read_group_rss, read_mem_available
 
 POLL_SECONDS = 2.0
 ENTRY_SUFFIX = ".json"
@@ -164,10 +164,11 @@ class ReservationLedger:
         return total * MIB
 
     def live_tickets(self) -> list[WaitingTicket]:
-        """Every waiting ticket whose owner is still alive, oldest first.
+        """Every waiting ticket whose owner is still running, oldest first.
 
         A ticket left behind by a crashed waiter is deleted here: nobody will
         ever come back for it, and left in place it would hold the whole queue.
+        An unreaped zombie counts as crashed; it still answers ``kill(pid, 0)``.
         """
         try:
             names = sorted(self.waiting_directory.iterdir())
@@ -178,7 +179,7 @@ class ReservationLedger:
             ticket = _read_ticket(path)
             if ticket is None:
                 continue
-            if process_alive(ticket.owner_pid):
+            if process_running(ticket.owner_pid):
                 tickets.append(ticket)
             else:
                 ticket.cancel()
@@ -330,7 +331,7 @@ class ReservationLedger:
 
 def _entry_alive(entry: Reservation) -> bool:
     """Before a group is attached the admitting process itself is the claim."""
-    return group_alive(entry.group) if entry.group else process_alive(entry.owner_pid)
+    return group_alive(entry.group) if entry.group else process_running(entry.owner_pid)
 
 
 def _read_entry(path: Path) -> Reservation | None:

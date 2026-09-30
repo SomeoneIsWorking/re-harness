@@ -150,6 +150,7 @@ def run_checks(check: Check, scratch: str) -> int:
         fails += _task_file_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _heavy_checks(check, Path(tmp))
+    fails += _reaper_adoption_checks(check)
     fails += _backend_checks(check)
     return fails
 
@@ -714,6 +715,30 @@ def _input_checks(check: Check, root: Path) -> int:
     return fails
 
 
+def _take_ticket_in_a_child_left_unreaped(root: Path) -> subprocess.Popen[bytes]:
+    """A waiter that takes its ticket and exits; the caller has not reaped it yet."""
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]);"
+        "from pathlib import Path;"
+        "from swarmkit.reservations import ReservationLedger;"
+        "ReservationLedger(Path(sys.argv[2]), 1024).take_ticket(3072, 'build')"
+    )
+    child = subprocess.Popen([PY, "-c", code, str(HERE.parent / "tools"), str(root / "locks")])
+    deadline = time.time() + 15.0
+    while _proc_state(child.pid) != "Z" and time.time() < deadline:
+        time.sleep(0.05)
+    return child
+
+
+def _proc_state(pid: int) -> str:
+    """The kernel's one-letter state for ``pid``; empty once it has left ``/proc``."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
+    except FileNotFoundError:
+        return ""
+    return stat.rsplit(")", 1)[-1].split()[0]
+
+
 def _live_group(seconds: float = 30.0) -> subprocess.Popen:
     """A real process in its own group, so liveness is the kernel's answer."""
     return subprocess.Popen(
@@ -949,6 +974,28 @@ def _fifo_checks(check: Check, root: Path) -> int:
     )
     if served is not None:
         served.release()
+
+    # A waiter that exited but was never reaped is a zombie, and a zombie still
+    # answers kill(pid, 0). Measured: one headed the machine's queue for 35 min.
+    zombie = _take_ticket_in_a_child_left_unreaped(root)
+    headed = _ledger(root, 5000)
+    zombie_tickets = sorted(headed.waiting_directory.iterdir())
+    fails += check(
+        "swarm: a zombie waiter's ticket is ignored and deleted when read",
+        _proc_state(zombie.pid) == "Z"
+        and len(zombie_tickets) == 1
+        and headed.live_tickets() == []
+        and not zombie_tickets[0].exists(),
+        f"state {_proc_state(zombie.pid)!r}, tickets {[p.name for p in zombie_tickets]}",
+    )
+    later = headed.try_acquire(512, "swarm")
+    fails += check(
+        "swarm: a later ticket is admitted past a zombie at the queue head",
+        later is not None,
+    )
+    if later is not None:
+        later.release()
+    zombie.wait()
 
     # A cancelled waiter leaves the queue as it entered it.
     blocking = _live_group()
@@ -1437,6 +1484,41 @@ def _orphan_checks(check: Check, locks: Path, root: Path) -> int:
         f"exit {finished.returncode}, daemon pid {daemon_pid}, {finished.stderr}",
     )
     return fails
+
+
+def _reaper_adoption_checks(check: Check) -> int:
+    """An orphan the reaper adopts is reaped while the reaper's own child still runs.
+
+    The measured bug: the reaper waited only for its child, so a heavy.py whose
+    parent exited stayed a zombie for the rest of the worker's run.
+    """
+    # The subshell starts a short sleep and exits at once, so the sleep is
+    # orphaned onto the reaper and ends while the long sleep still runs.
+    reaper = subprocess.Popen(
+        [
+            PY,
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv.pop(1));"
+            "from swarmkit.reaper import main; sys.exit(main(sys.argv[1:]))",
+            str(HERE.parent / "tools"),
+            str(os.getpid()),
+            "--",
+            "sh",
+            "-c",
+            "(sleep 0.2 &); sleep 3",
+        ]
+    )
+    # The short sleep has ended by now and the long one has not.
+    time.sleep(1.0)
+    below = descendants(reaper.pid)
+    zombies = [pid for pid in below if _proc_state(pid) == "Z"]
+    running = reaper.poll() is None
+    reaper.wait(timeout=15)
+    return check(
+        "reaper: an adopted orphan is reaped while the child still runs",
+        running and bool(below) and not zombies and reaper.returncode == 0,
+        f"below {below}, zombies {zombies}, still running {running}, exit {reaper.returncode}",
+    )
 
 
 def _heavy_checks(check: Check, root: Path) -> int:

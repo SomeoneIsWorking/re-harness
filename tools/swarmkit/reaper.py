@@ -137,11 +137,26 @@ def main(argv: Sequence[str]) -> int:
         return LAUNCH_FAILURE_EXIT
     previous = _forward_signals(child.pid)
     try:
-        status = child.wait()
+        status = _wait_reaping_adopted(child)
     finally:
         _restore_signals(previous)
     reap_descendants(os.getpid())
     return exit_status(status)
+
+
+def _wait_reaping_adopted(child: subprocess.Popen[bytes]) -> int:
+    """Wait for ``child`` while reaping every orphan this subreaper adopts meanwhile.
+
+    A subreaper that waits only for its own child leaves each adopted orphan a
+    zombie until that child ends, and a zombie still answers ``kill(pid, 0)``:
+    one left holding a heavy.py ticket headed the machine's admission queue
+    for as long as its worker ran.
+    """
+    while True:
+        reaped, status = os.waitpid(-1, 0)
+        if reaped == child.pid:
+            child.returncode = os.waitstatus_to_exitcode(status)
+            return child.returncode
 
 
 def _signal_tree(pid: int, signum: int) -> None:
