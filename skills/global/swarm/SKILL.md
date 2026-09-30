@@ -85,6 +85,12 @@ One JSON object per line:
 
 ## Memory: nothing queues, the guard pauses
 
+- **Launch a long swarm as a systemd user unit, not a session's background shell:**
+  `systemd-run --user --unit swarm-<name> --working-directory <repo> swarm.py run ... --name <name>`
+  (follow it with `journalctl --user -u swarm-<name> -f`; stop it with `systemctl --user stop
+  swarm-<name>`, then `--resume`). Claude Code's low-memory reaper kills a session's background
+  shells, and on 2026-09-30 it took two launchers with it; a unit belongs to no session.
+
 - **Nothing is admitted ahead of time.** A job starts as soon as one of this invocation's
   `--workers` (default 8) is free, and `heavy.py` starts its command at once. There are no
   machine-wide slots, no predicted memory reservations and no `-j` cap. Per-kind slots and
@@ -95,9 +101,10 @@ One JSON object per line:
   `<lock-dir>/units/` (default `~/repo/scratch/locks`, or `$SWARM_LOCK_DIR`, or `--lock-dir`) and
   removes the entry when it ends; an entry whose group is gone is pruned.
 - **The pressure guard is the one memory countermeasure.** `pressure_guard.py` runs as the systemd
-  user service `pressure-guard` and polls `MemAvailable` every 0.5 s. Below 1024 MiB it SIGSTOPs
+  user service `pressure-guard` and polls `MemAvailable` every 0.5 s. Below 2048 MiB (before
+  Claude Code's own low-memory reaper kills background shells) it SIGSTOPs
   the newest running unit (its pages can go to swap while older units finish), one per poll, and
-  never the last running one; above 2560 MiB it SIGCONTs every unit it stopped. A paused swarm unit
+  never the last running one; above 3584 MiB it SIGCONTs every unit it stopped. A paused swarm unit
   is not working, so its deadline is extended by the time it spent stopped. On start the guard
   resumes every registered unit (a guard that died cannot remember what it stopped), and on exit
   it resumes what it stopped. Check it with `systemctl --user status pressure-guard`; the watchdog

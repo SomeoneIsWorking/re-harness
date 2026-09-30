@@ -16,9 +16,12 @@ DEFAULT_WORKERS = 8
 UNIT_KINDS = ("build", "run", "swarm")
 # Below PRESSURE_PAUSE_MIB the guard pauses the newest running unit; above
 # PRESSURE_RESUME_MIB the paused ones are resumed. The gap is the hysteresis that
-# stops a host hovering at the threshold from pausing and resuming forever.
-PRESSURE_PAUSE_MIB = 1024
-PRESSURE_RESUME_MIB = 2560
+# stops a host hovering at the threshold from pausing and resuming forever. The
+# guard must act before Claude Code's own low-memory reaper, which on 2026-09-30
+# killed two swarm launchers outright at about 1 GiB available, in the same
+# seconds that the guard, then pausing at 1024 MiB, paused its first two units.
+PRESSURE_PAUSE_MIB = 2048
+PRESSURE_RESUME_MIB = 3584
 LOCK_DIR_VARIABLE = "SWARM_LOCK_DIR"
 
 
