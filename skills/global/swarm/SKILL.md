@@ -91,7 +91,11 @@ One JSON object per line:
   `MemAvailable - outstanding - reserve >= --mem-floor-mib` (default 3072), where an entry's
   outstanding part is its reserve minus what its process group already has resident, read from
   `/proc` once per check. Check and write happen under one flock on `<lock-dir>/reservations.lock`,
-  so two swarm invocations cannot both spend the same headroom. A unit that does not fit waits and
+  so two swarm invocations cannot both spend the same headroom. Admission is
+  first come first served: a unit that does not fit leaves a ticket in
+  `<lock-dir>/reservations/waiting/` and is refused while any older live ticket
+  is still queued, so a large build is not starved by a stream of small workers.
+  A unit that does not fit waits and
   says so, and gives up when the run is stopped.
 - **Reserve what, by default.** A worker reserves 512 MiB (`--mem-reserve-mib`), a `build` 3072 MiB
   and a `run` 1536 MiB. `heavy.py --mem-mib N` overrides one command, and a job's `mem_mib` field

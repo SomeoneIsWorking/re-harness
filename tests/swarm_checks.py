@@ -136,6 +136,8 @@ def run_checks(check: Check, scratch: str) -> int:
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _reservation_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
+        fails += _fifo_checks(check, Path(tmp))
+    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _pressure_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _deadline_checks(check, Path(tmp))
@@ -564,7 +566,7 @@ def _ledger(
     available_mib: int,
     rss_mib: dict[int, int] | None = None,
     floor_mib: int = 1024,
-    on_wait: Callable[[int, int], None] | None = None,
+    on_wait: Callable[[int, int, int], None] | None = None,
 ) -> ReservationLedger:
     """A ledger over fixed answers, so the headroom arithmetic is the only variable."""
     used = rss_mib if rss_mib is not None else {}
@@ -682,7 +684,7 @@ def _reservation_checks(check: Check, root: Path) -> int:
         reservation.attach(holder.pid)
         waits: list[tuple[int, int]] = []
         waiting = _ledger(
-            root, 4000, on_wait=lambda free, held: waits.append((free, held))
+            root, 4000, on_wait=lambda free, held, ahead: waits.append((free, held))
         )
         lifetime = RunLifetime()
         gave_up: list[BaseException] = []
@@ -714,6 +716,138 @@ def _reservation_checks(check: Check, root: Path) -> int:
         refused = True
     fails += check("swarm: a zero reservation is refused", refused)
     return fails
+
+
+def _fifo_checks(check: Check, root: Path) -> int:
+    """Admission order: a large unit queued must not be starved by small ones.
+
+    The measured bug: 5000 MiB free over a 1024 MiB floor, a live 3 GiB build
+    already admitted, a second 3 GiB build queued, and eight 512 MiB workers
+    each replacing the last. Every worker fit, so every worker was admitted, and
+    the build's headroom was spent before it ever saw a free moment.
+    """
+    fails = 0
+    holder = _live_group()
+    busy = _ledger(root, 5000)
+    with busy.try_acquire(3072, "build") as reservation:
+        assert reservation is not None
+        reservation.attach(holder.pid)
+        small = _ledger(root, 5000)
+
+        # The negative control first: with nothing queued, the small unit fits.
+        admitted = small.try_acquire(512, "swarm")
+        fails += check(
+            "swarm: NEGATIVE with no waiting ticket the small unit is admitted",
+            admitted is not None,
+        )
+        if admitted is not None:
+            admitted.release()
+
+        ticket = busy.take_ticket(3072, "build")
+        fails += check(
+            "swarm: a waiting large unit blocks a newer small unit that would fit",
+            small.try_acquire(512, "swarm") is None
+            and len(list(small.directory.glob("*.json"))) == 1,
+            f"{[p.name for p in small.directory.iterdir()]}",
+        )
+
+        # The headroom the build waits for appears: it is admitted first, and
+        # the small unit that queued behind it follows.
+        reservation.release()
+        build = busy.try_acquire(3072, "build", ticket)
+        fails += check(
+            "swarm: the queued large unit is admitted once headroom appears",
+            build is not None and not ticket.path.exists(),
+        )
+        if build is not None:
+            after = small.try_acquire(512, "swarm")
+            fails += check(
+                "swarm: the small unit is admitted once the large one is",
+                after is not None,
+            )
+            if after is not None:
+                after.release()
+            build.release()
+    holder.kill()
+    holder.wait()
+
+    # A waiter that crashed leaves its ticket; the queue must not wait on a ghost.
+    _take_ticket_in_a_child_that_dies(root)
+    ghost = _ledger(root, 5000)
+    left_behind = sorted(ghost.waiting_directory.iterdir())
+    fails += check(
+        "swarm: a crashed waiter's ticket is ignored and deleted when read",
+        len(left_behind) == 1
+        and ghost.live_tickets() == []
+        and not left_behind[0].exists(),
+        f"{[p.name for p in left_behind]}",
+    )
+    served = ghost.try_acquire(512, "swarm")
+    fails += check(
+        "swarm: a crashed waiter does not block an admission",
+        served is not None,
+    )
+    if served is not None:
+        served.release()
+
+    # A cancelled waiter leaves the queue as it entered it.
+    blocking = _live_group()
+    ahead_seen: list[int] = []
+    waiting = _ledger(
+        root,
+        5000,
+        on_wait=lambda _free, _held, ahead: ahead_seen.append(ahead),
+    )
+    lifetime = RunLifetime()
+    gave_up: list[BaseException] = []
+    with waiting.try_acquire(3072, "build") as held:
+        assert held is not None
+        held.attach(blocking.pid)
+        # Queued only once the headroom is gone: a ticket is a claim on room
+        # that does not exist yet, which is the case FIFO exists for.
+        queued = waiting.take_ticket(3072, "build")
+
+        def waiter() -> None:
+            try:
+                waiting.acquire(lifetime, 512, "swarm")
+            except RunInterrupted as error:
+                gave_up.append(error)
+
+        thread = threading.Thread(target=waiter)
+        thread.start()
+        time.sleep(0.2)
+        waiting_files = sorted(p.name for p in waiting.waiting_directory.iterdir())
+        lifetime.stop()
+        thread.join(timeout=5)
+    blocking.kill()
+    blocking.wait()
+    fails += check(
+        "swarm: a waiting unit reports how many earlier requests it is behind",
+        bool(ahead_seen) and all(ahead == 1 for ahead in ahead_seen)
+        and len(waiting_files) == 2,
+        f"ahead {ahead_seen[:2]}, tickets {waiting_files}",
+    )
+    fails += check(
+        "swarm: a cancelled waiter removes its own ticket and leaves the others",
+        len(gave_up) == 1
+        and [p.name for p in waiting.waiting_directory.iterdir()] == [queued.path.name]
+        and queued.path.exists(),
+    )
+    queued.cancel()
+    return fails
+
+
+def _take_ticket_in_a_child_that_dies(root: Path) -> None:
+    """A real waiter that takes its ticket and then exits, leaving the ticket behind."""
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]);"
+        "from pathlib import Path;"
+        "from swarmkit.reservations import ReservationLedger;"
+        "ReservationLedger(Path(sys.argv[2]), 1024).take_ticket(3072, 'build')"
+    )
+    subprocess.run(
+        [PY, "-c", code, str(HERE.parent / "tools"), str(root / "locks")], check=True
+    )
 
 
 def _pressure_checks(check: Check, root: Path) -> int:

@@ -61,9 +61,9 @@ def main(argv: list[str]) -> int:
     memory = ReservationLedger(
         settings.lock_dir,
         floor_mib,
-        on_wait=lambda free, held: emit(
-            f"heavy: waiting, MemAvailable {free // MIB} MiB - reserved {held} MiB "
-            f"< {floor_mib} MiB"
+        on_wait=lambda free, held, ahead: emit(
+            f"heavy: waiting behind {ahead} earlier request(s), MemAvailable "
+            f"{free // MIB} MiB - reserved {held} MiB < {floor_mib} MiB"
         ),
     )
     pressure = PressureWatcher(
