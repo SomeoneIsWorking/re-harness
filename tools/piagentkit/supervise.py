@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from swarmkit.backends.pi import PI_WORKER_FLAGS
+
 from . import meta as meta_module
 from .config import POLL_SECONDS, RPC_TIMEOUT_SECONDS, TERMINATE_GRACE_SECONDS
 from .framing import encode_record, iter_records
@@ -88,7 +90,7 @@ class SupervisorSettings:
         ``pi_binary`` may carry fixed leading arguments (``--pi-binary
         '/path/to/fake pi --slow 1'``), split the way a shell would.
         """
-        argv = shlex.split(self.pi_binary) + ["--mode", "rpc"]
+        argv = shlex.split(self.pi_binary) + ["--mode", "rpc", *PI_WORKER_FLAGS]
         if self.model:
             argv += ["--model", self.model]
         if self.thinking_level:
