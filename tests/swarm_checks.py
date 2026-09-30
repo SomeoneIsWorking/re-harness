@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from signal import SIGCONT, SIGSTOP
+from signal import SIGCONT, SIGKILL, SIGSTOP
 
 HERE = Path(__file__).resolve().parent
 FAKE_WORKER = HERE / "swarm_fake_worker.py"
@@ -979,6 +979,13 @@ def _backend_checks(check: Check) -> int:
 
 
 HEAVY_CLI = HERE.parent / "tools" / "heavy.py"
+# A command that names its own pid and then outlives any reasonable test: the
+# pid is how a kill is proven to have reached it.
+SLEEPER = (
+    "import os, sys, time; "
+    "open(sys.argv[1], 'w').write(str(os.getpid())); "
+    "sys.stdout.flush(); time.sleep(60)"
+)
 
 
 def _heavy(
@@ -991,6 +998,43 @@ def _heavy(
         timeout=timeout,
         check=False,
     )
+
+
+def _heavy_wrapper(locks: Path, marker: Path) -> subprocess.Popen[str]:
+    """Start ``heavy.py`` in a fresh session, running a sleeper that reports its pid."""
+    return subprocess.Popen(
+        [
+            PY,
+            str(HEAVY_CLI),
+            "--lock-dir",
+            str(locks),
+            "--mem-mib",
+            "1",
+            "--",
+            PY,
+            "-c",
+            SLEEPER,
+            str(marker),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+
+
+def _command_pid(marker: Path, wrapper: subprocess.Popen[str], seconds: float = 10.0) -> int:
+    """The pid the admitted command reported, or -1 if it never started."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        try:
+            return int(marker.read_text())
+        except (FileNotFoundError, ValueError):
+            pass
+        if wrapper.poll() is not None:
+            break
+        time.sleep(0.05)
+    return -1
 
 
 def _heavy_checks(check: Check, root: Path) -> int:
@@ -1048,6 +1092,60 @@ def _heavy_checks(check: Check, root: Path) -> int:
     for lease in leases:
         if lease is not None:
             lease.release()
+
+    # The measured orphan: a timed-out worker's whole process group is SIGKILLed, and
+    # the gate the worker started must not survive inside a session of its own.
+    group_marker = root / "group.pid"
+    group_wrapper = _heavy_wrapper(locks, group_marker)
+    group_pid = _command_pid(group_marker, group_wrapper)
+    wrapper_group = os.getpgid(group_wrapper.pid) if group_pid > 0 else -1
+    command_group = (
+        os.getpgid(group_pid) if group_pid > 0 else -1
+    )  # -1: the command never started
+    reserved = [
+        json.loads(entry.read_text(encoding="utf-8"))
+        for entry in sorted((locks / "reservations").glob("*.json"))
+    ]
+    if group_pid > 0:
+        try:
+            os.killpg(group_wrapper.pid, SIGKILL)
+        except ProcessLookupError:
+            pass
+    group_wrapper.wait(timeout=10)
+    fails += check(
+        "heavy: the command runs in the wrapper's own process group",
+        group_pid > 0 and command_group == wrapper_group,
+        f"command pid {group_pid} in group {command_group}, wrapper group {wrapper_group}",
+    )
+    fails += check(
+        "heavy: the reservation is attached to that live group, not a dead one",
+        any(
+            entry.get("pgid") == wrapper_group and entry.get("kind") == "build"
+            for entry in reserved
+        ),
+        f"wrapper group {wrapper_group}, entries {reserved}",
+    )
+    fails += check(
+        "heavy: killing the caller's process group kills the command too",
+        group_pid > 0 and process_gone(group_pid, 5.0),
+        f"command pid {group_pid}, wrapper exit {group_wrapper.returncode}",
+    )
+
+    # The other half: the wrapper killed on its own takes the command with it.
+    death_marker = root / "death.pid"
+    death_wrapper = _heavy_wrapper(locks, death_marker)
+    death_pid = _command_pid(death_marker, death_wrapper)
+    if death_pid > 0:
+        try:
+            death_wrapper.kill()
+        except ProcessLookupError:
+            pass
+    death_wrapper.wait(timeout=10)
+    fails += check(
+        "heavy: killing the wrapper alone kills its command (parent-death signal)",
+        death_pid > 0 and process_gone(death_pid, 5.0),
+        f"command pid {death_pid}, wrapper exit {death_wrapper.returncode}",
+    )
     return fails
 
 
