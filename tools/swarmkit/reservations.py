@@ -249,6 +249,52 @@ class ReservationLedger:
                 ticket.cancel()
             raise
 
+    def try_resize(
+        self, entry: Reservation, reserve_mib: int, ticket: WaitingTicket | None = None
+    ) -> bool:
+        """Change a held reservation's peak if the FIFO headroom rule allows it.
+
+        Shrinking always succeeds. Growing needs headroom only for the increase:
+        the entry's current reserve is already counted as outstanding, so a unit
+        never waits on its own reservation.
+        """
+        if reserve_mib < 1:
+            raise ValueError("reservation must be at least 1 MiB")
+        with self._locked():
+            increase = reserve_mib - entry.reserve_mib
+            if increase > 0:
+                if self._queue_ahead(ticket):
+                    return False
+                available = self._reader() - self.outstanding_bytes()
+                if available - increase * MIB < self.floor_bytes:
+                    return False
+            entry.reserve_mib = reserve_mib
+            entry.write()
+            if ticket is not None:
+                ticket.cancel()
+            return True
+
+    def resize(
+        self, lifetime: RunLifetime, entry: Reservation, reserve_mib: int
+    ) -> None:
+        """Block until ``entry`` may hold ``reserve_mib``; queue like a new admission."""
+        ticket: WaitingTicket | None = None
+        try:
+            while not self.try_resize(entry, reserve_mib, ticket):
+                if ticket is None:
+                    ticket = self.take_ticket(reserve_mib - entry.reserve_mib, entry.kind)
+                if self.on_wait is not None:
+                    self.on_wait(
+                        self._reader(),
+                        self.outstanding_bytes() // MIB,
+                        self.queue_ahead(ticket),
+                    )
+                lifetime.pause(self.poll_seconds)
+        except BaseException:
+            if ticket is not None:
+                ticket.cancel()
+            raise
+
     @contextmanager
     def _locked(self) -> Iterator[None]:
         """The one flock that makes a check and the write it justifies atomic."""

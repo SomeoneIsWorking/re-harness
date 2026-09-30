@@ -118,9 +118,10 @@ One JSON object per line:
   `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. The wrapper
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
   job with `heavy_gate: true` runs its gate as a `build`, admitted by the swarm runner itself: it
-  takes one of the same build slots but no second reservation. The job's one reservation is sized
-  for the larger of its worker's and its gate's peak (`max(--mem-reserve-mib, mem_mib)`), because a
-  separate gate reservation was refused by the job's own idle worker entry. The gate still runs
+  takes one of the same build slots and grows the job's one reservation from the worker's reserve to
+  the gate's peak (`mem_mib`) for the gate's duration, then shrinks it back. Growing needs headroom
+  only for the increase, so the job never waits on its own entry, and the long worker phase does not
+  hold the gate's peak. The gate still runs
   under the reaper. Do not run heavy work outside it; the old
   single `heavy.lock` is retired.
 - **Every unit's whole subtree dies with the run that started it** -- a `heavy.py` command, and
