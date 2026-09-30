@@ -86,7 +86,8 @@ One JSON object per line:
 ## Memory: nothing queues, the guard pauses
 
 - **Launch a long swarm as a systemd user unit, not a session's background shell:**
-  `systemd-run --user --unit swarm-<name> --working-directory <repo> swarm.py run ... --name <name>`
+  `systemd-run --user --collect --unit swarm-<name> --working-directory <repo> --setenv=PATH="$PATH" swarm.py run ... --name <name>`
+  (the unit does not inherit your shell's PATH; without it workers fail with no `opencode`)
   (follow it with `journalctl --user -u swarm-<name> -f`; stop it with `systemctl --user stop
   swarm-<name>`, then `--resume`). Claude Code's low-memory reaper kills a session's background
   shells, and on 2026-09-30 it took two launchers with it; a unit belongs to no session.
