@@ -5,7 +5,7 @@
 
 Prints one line per alert and appends them, timestamped, to
 ``<lock-dir>/watchdog/alerts.log``. With ``--kill`` a runaway process (large,
-still growing, not a registered unit, not a Claude or desktop process)
+still growing, not a Claude or desktop process)
 is stopped by PID. ``--repo`` names a repo whose origin/main should keep
 landing; ``--shared`` a checkout that must stay clean with its submodules at
 their recorded commits. See skills/global/swarm/SKILL.md, "Watchdog".
@@ -32,9 +32,13 @@ KILL_GRACE_SECONDS = 5.0
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="watchdog.py", description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        prog="watchdog.py", description=__doc__.splitlines()[0]
+    )
     parser.add_argument("--lock-dir", type=Path, default=None)
-    parser.add_argument("--kill", action="store_true", help="stop runaway processes by PID")
+    parser.add_argument(
+        "--kill", action="store_true", help="stop runaway processes by PID"
+    )
     parser.add_argument("--repo", type=Path, action="append", default=[])
     parser.add_argument("--shared", type=Path, action="append", default=[])
     args = parser.parse_args(argv)
@@ -42,7 +46,7 @@ def main(argv: list[str]) -> int:
     home = lock_dir / "watchdog"
     state_path = home / "state.json"
     state = WatchState.load(state_path)
-    alerts = run_checks(take_snapshot(lock_dir, args.repo, args.shared), state)
+    alerts = run_checks(take_snapshot(args.repo, args.shared), state)
     state.save(state_path)
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     lines = []

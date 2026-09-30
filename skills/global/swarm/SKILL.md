@@ -75,46 +75,28 @@ One JSON object per line:
 - **Gate output is feedback.** With `--retries N` a rejected worker is re-prompted in the same
   worktree with the gate's last 60 lines, so make failures say what differed.
 - `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run.
-  Neither counts time a unit spent paused by the pressure guard.
-- Do not call `heavy.py` from inside a swarm gate: the runner already registers the gate's group
-  as a unit and runs it under the reaper.
+- Do not call `heavy.py` from inside a swarm gate: the runner already runs the gate under the
+  reaper.
 - **A prompt is a file, not an argument.** The runner writes it to `<id>/prompt-<n>.md` and the
   backend attaches it (`-f` for opencode, `@` for pi), because Linux caps one argv string at
   128 KiB and a long task plus gate feedback exceeds that. Retries reuse the same path with the
   feedback appended.
 
-## Memory: nothing queues, the guard pauses
+## Running: nothing queues, nothing is paused
 
 - **Launch a long swarm as a systemd user unit, not a session's background shell:**
   `systemd-run --user --collect --unit swarm-<name> --working-directory <repo> --setenv=PATH="$PATH" swarm.py run ... --name <name>`
-  (the unit does not inherit your shell's PATH; without it workers fail with no `opencode`)
-  (follow it with `journalctl --user -u swarm-<name> -f`; stop it with `systemctl --user stop
-  swarm-<name>`, then `--resume`). Claude Code's low-memory reaper kills a session's background
+  (the unit does not inherit your shell's PATH; without it workers fail with no `opencode`).
+  Follow it with `journalctl --user -u swarm-<name> -f`; stop it with `systemctl --user stop
+  swarm-<name>`, then `--resume`. Claude Code's low-memory reaper kills a session's background
   shells, and on 2026-09-30 it took two launchers with it; a unit belongs to no session.
-
-- **Nothing is admitted ahead of time.** A job starts as soon as one of this invocation's
-  `--workers` (default 8) is free, and `heavy.py` starts its command at once. There are no
-  machine-wide slots, no predicted memory reservations and no `-j` cap. Per-kind slots and
-  reserved peaks (3 GiB per build, against measured compiles of ~400 MiB) queued builds for up to
-  50 minutes on 2026-09-30 while the host had 7 GiB free and half its cores idle; they were
-  removed.
-- **Units.** Every running worker, gate and `heavy.py` command registers its process group in
-  `<lock-dir>/units/` (default `~/repo/scratch/locks`, or `$SWARM_LOCK_DIR`, or `--lock-dir`) and
-  removes the entry when it ends; an entry whose group is gone is pruned.
-- **The pressure guard is the one memory countermeasure.** `pressure_guard.py` runs as the systemd
-  user service `pressure-guard` and polls `MemAvailable` every 0.5 s. Below 2048 MiB (before
-  Claude Code's own low-memory reaper kills background shells) it SIGSTOPs the newest running
-  unit, never the last. A stop only halts growth, it frees nothing, so after a pause it waits 5 s
-  and pauses again only if memory has kept falling past that pause's reading; below the 1400 MiB
-  critical floor it pauses every poll. Above 3584 MiB it resumes one unit, the oldest stopped, per 5 s. (Pausing every
-  poll kept ~19 units stopped at once on 2026-09-30.) A paused swarm unit
-  is not working, so its deadline is extended by the time it spent stopped. On start the guard
-  resumes every registered unit (a guard that died cannot remember what it stopped), and on exit
-  it resumes what it stopped. Check it with `systemctl --user status pressure-guard`; the watchdog
-  alerts when its heartbeat (`<lock-dir>/guard/heartbeat`) is older than 60 s.
-- **Heavy commands** go through `heavy.py [--kind build|run] -- <command...>` (on PATH) so they
-  are guarded units and die with their caller. `build` is a compiler or verifier; `run` is one
-  game, browser, Ghidra or bot instance. The kind is a label for reports.
+- **Nothing is admitted, reserved or paused.** A job starts as soon as one of this invocation's
+  `--workers` (default 8) is free, and `heavy.py` starts its command at once. The user removed
+  every limit on 2026-09-30: machine-wide slots, memory reservations, `-j` caps, and the pressure
+  guard that paused units under low memory. Do not add any back.
+- **Heavy commands** go through `heavy.py -- <command...>` (on PATH) so they die with their
+  caller and share ccache across worktrees. `--kind`, `--lock-dir` and `--mem-mib` are removed
+  and refused by name.
 - **Every unit's whole subtree dies with the run that started it** -- a `heavy.py` command, and
   under `swarm.py` every worker and every gate. The wrapper's direct child is a reaper
   (`swarmkit.reaper`, started by `command_argv(argv, parent)`), not the command. It runs the
@@ -150,10 +132,8 @@ Then `gc` the run and delete its directory with `tools/scratch_gc.py`.
 modes that stalled agent work, prints one line per alert, and appends them to
 `<lock-dir>/watchdog/alerts.log`. Run it from a systemd user timer every few minutes, and have the
 operator session act on the log. It alerts on:
-- a runaway process: 4 GiB or more, grown 256 MiB since the last check, not a registered unit
-  (the guard pauses those instead), and not a Claude or desktop process. With `--kill` it is
-  stopped by PID.
-- the pressure guard not running (heartbeat older than 60 s);
+- a runaway process: 4 GiB or more, grown 256 MiB since the last check, and not a Claude or
+  desktop process. With `--kill` it is stopped by PID.
 - a swarm with no new verdict for 90 min;
 - a pinest agent idle for 15 min, meaning finished and unreviewed;
 - a `--repo` whose origin/main landed nothing for 90 min;

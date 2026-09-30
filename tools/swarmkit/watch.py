@@ -6,11 +6,8 @@ here exists because its failure cost hours on 2026-09-30:
 
 - ``runaway_memory``: a music render outside heavy.py grew to 10 GiB, and the
   low-memory reaper killed two swarm launchers. The watchdog kills such a
-  process by PID (never by name) once it is large, still growing, is not a
-  registered unit (those the pressure guard pauses instead), and is not a
-  Claude process.
-- ``guard_down``: the pressure guard is the one memory countermeasure; without
-  it nothing pauses the newest unit before the host thrashes.
+  process by PID (never by name) once it is large, still growing, and is not
+  a Claude process.
 - ``swarm_stall``: a batch ran 85 minutes without one verdict.
 - ``idle_agent``: finished agents sat for an hour with nobody reviewing them.
 - ``quiet_repo``: an active repo landed nothing for hours.
@@ -28,7 +25,6 @@ from pathlib import Path
 
 RUNAWAY_MIB = 4096
 RUNAWAY_GROWTH_MIB = 256
-GUARD_STALE_SECONDS = 60
 SWARM_STALL_SECONDS = 90 * 60
 AGENT_IDLE_SECONDS = 15 * 60
 QUIET_REPO_SECONDS = 90 * 60
@@ -74,9 +70,6 @@ class Checkout:
 class Snapshot:
     now: float
     processes: tuple[Process, ...] = ()
-    unit_groups: frozenset[int] = frozenset()
-    # Seconds since the pressure guard's last poll; None when it never ran.
-    guard_age_seconds: float | None = 0.0
     swarms: tuple[SwarmRun, ...] = ()
     agents: tuple[Agent, ...] = ()
     last_commit: dict[str, float] = field(default_factory=dict)
@@ -126,7 +119,7 @@ def runaway_memory(snapshot: Snapshot, state: WatchState) -> list[Alert]:
     seen = {}
     for process in snapshot.processes:
         seen[str(process.pid)] = process.rss_mib
-        if process.rss_mib < RUNAWAY_MIB or process.group in snapshot.unit_groups:
+        if process.rss_mib < RUNAWAY_MIB:
             continue
         if any(word in process.command for word in PROTECTED_WORDS):
             continue
@@ -137,27 +130,13 @@ def runaway_memory(snapshot: Snapshot, state: WatchState) -> list[Alert]:
             Alert(
                 "runaway_memory",
                 f"pid {process.pid}",
-                f"{before} -> {process.rss_mib} MiB outside any registered unit: "
+                f"{before} -> {process.rss_mib} MiB: "
                 f"{process.command[:120]} (cwd {process.cwd})",
                 kill_pid=process.pid,
             )
         )
     state.rss_mib = seen
     return alerts
-
-
-def guard_down(snapshot: Snapshot, state: WatchState) -> list[Alert]:
-    age = snapshot.guard_age_seconds
-    if age is not None and age <= GUARD_STALE_SECONDS:
-        return []
-    since = "never polled" if age is None else f"last polled {age:.0f} s ago"
-    return [
-        Alert(
-            "guard_down",
-            "pressure-guard",
-            f"{since}; start it: systemctl --user start pressure-guard",
-        )
-    ]
 
 
 def swarm_stall(snapshot: Snapshot, state: WatchState) -> list[Alert]:
@@ -238,7 +217,6 @@ def detached_process(snapshot: Snapshot, state: WatchState) -> list[Alert]:
 
 CHECKS: Sequence[Check] = (
     runaway_memory,
-    guard_down,
     swarm_stall,
     idle_agent,
     quiet_repo,

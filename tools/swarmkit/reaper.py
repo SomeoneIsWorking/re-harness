@@ -75,7 +75,15 @@ _LIBC.prctl.restype = ctypes.c_int
 
 def command_argv(argv: Sequence[str], parent: int) -> list[str]:
     """The wrapper's direct child: the reaper, owned by ``parent``, running ``argv``."""
-    return [sys.executable, "-c", BOOTSTRAP, str(PACKAGE_ROOT), str(parent), "--", *argv]
+    return [
+        sys.executable,
+        "-c",
+        BOOTSTRAP,
+        str(PACKAGE_ROOT),
+        str(parent),
+        "--",
+        *argv,
+    ]
 
 
 def die_with_parent(parent: int, signum: int = signal.SIGTERM) -> Callable[[], None]:

@@ -15,7 +15,6 @@ overlap <eventfile> <sec>    append start/end stamps around a sleep, then write 
 noop                         change nothing
 envpwd                       write pwd.txt under $PWD (must be the worktree) and ccache.txt with CCACHE_BASEDIR
 attached                     write attached.txt naming whether every attachment is absolute and in cwd
-units <dir> <out>            write the unit entries in <dir> to <out> as JSON, then h.txt
 resume <file>                append 'resumed' to <file> when the task says it was interrupted, else write 'fresh'
 say <anything>               copy the whole task file to task.txt, so its size can be checked
 """
@@ -78,7 +77,10 @@ elif action == "envpwd":
         out.write("pwd\n")
     with open("ccache.txt", "w", encoding="utf-8") as out:
         same = os.environ.get("CCACHE_BASEDIR") == os.getcwd()
-        out.write(("ok" if same and os.environ.get("CCACHE_NOHASHDIR") == "1" else "bad") + "\n")
+        out.write(
+            ("ok" if same and os.environ.get("CCACHE_NOHASHDIR") == "1" else "bad")
+            + "\n"
+        )
 elif action == "attached":
     attached = attachments
     here = os.getcwd()
@@ -88,14 +90,6 @@ elif action == "attached":
     )
     with open("attached.txt", "w", encoding="utf-8") as out:
         out.write(("ok" if fine else "bad " + " ".join(attached)) + "\n")
-elif action == "units":
-    import json
-    import pathlib
-
-    rows = [json.loads(p.read_text()) for p in pathlib.Path(words[1]).glob("*.json")]
-    pathlib.Path(words[2]).write_text(json.dumps(rows))
-    with open("h.txt", "w", encoding="utf-8") as out:
-        out.write("x\n")
 elif action == "resume":
     if "interrupted part-way" in prompt:
         with open(words[1], "a", encoding="utf-8") as out:
