@@ -114,14 +114,21 @@ One JSON object per line:
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
   job with `heavy_gate: true` runs its gate as a `build`. Do not run heavy work outside it; the old
   single `heavy.lock` is retired.
-- **A heavy command dies with the run that started it.** It is launched in the wrapper's own
-  process group, never a new session, so the group kill a timeout sends reaches the command and
-  not only the wrapper; and it carries `PR_SET_PDEATHSIG`, so a wrapper killed on its own takes
-  the command with it. Both matter: a gate put in its own session once survived the kill of the
-  worker that started it and kept 7 GB on the machine. The reservation, the pressure watcher and
-  the run lifetime therefore track the wrapper's group, which is where the command lives (under
-  `swarm.py` that group is the worker's, so the caller's own resident size is read as part of the
-  unit's).
+- **A heavy command's whole subtree dies with the run that started it.** The wrapper's direct
+  child is a reaper (`python3 -m swarmkit.reaper -- <command>`), not the command. It runs the
+  command in the caller's own process group, never a new session, so the group kill a timeout
+  sends reaches the command and not only the wrapper; and it carries `PR_SET_PDEATHSIG` (SIGTERM,
+  catchable, not SIGKILL), so a wrapper killed on its own hands the subtree over to it. The reaper
+  calls `prctl(PR_SET_CHILD_SUBREAPER)`, so a descendant orphaned when its own parent dies is
+  reparented to the reaper instead of init, and it then SIGTERMs every remaining descendant,
+  waits 5 s, SIGKILLs the survivors and exits with the command's status. Descendants are found
+  through the `/proc` parent graph (`procs.descendants`), not by process group, so a daemon that
+  left the group with `setsid` -- a Gradle or MSBuild node -- is still taken down. This matters:
+  `PR_SET_PDEATHSIG` reaches exactly the one process it is set on, so a gate whose direct child
+  was `cmake` once left `ninja` and the rest of the build compiling after the worker that started
+  it was gone. The reservation, the pressure watcher and the run lifetime therefore track the
+  wrapper's group, which is where the command lives (under `swarm.py` that group is the worker's,
+  so the caller's own resident size is read as part of the unit's).
 - Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
   `--standalone` so its model server is inside that group; through the shared `opencode serve`
   service a timed-out session would keep editing the worktree.
