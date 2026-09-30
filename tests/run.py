@@ -693,6 +693,8 @@ def main():
         sys.path.insert(0, HERE)
         import swarm_checks
         fails += swarm_checks.run_checks(check, SCRATCH)
+        import watch_checks
+        fails += watch_checks.run_checks_suite(check)
     else:
         rc, out = run([os.path.join(TOOLS, "swarm.py"), "report", SCRATCH], ROOT)
         fails += check("swarm: refuses by name off Linux", rc == 1 and "Linux-only" in out, out)
