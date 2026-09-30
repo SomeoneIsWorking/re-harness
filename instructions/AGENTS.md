@@ -42,9 +42,12 @@
   minimum duration with the same cancellation route (Tomba! 2's area transition: five seconds).
 - **Widescreen is a deterministic projection change.** Feed the same vertex stream with topology,
   UVs, depth, and colors preserved; widen the horizontal projection/viewport and override the
-  title's draw area/scissor and any proven horizontal culling owner. Never sample adjacent frames,
-  infer geometry from pixels, or stretch the final image. Interpolation is a separate opt-in feature
-  over matching source geometry only.
+  title's draw area/scissor and every horizontal culling or screen-rect limit it owns (world,
+  actors, particles, shadows), so the margins show what the view would; keep state gameplay reads
+  at native width. Anchor the UI: edge HUD elements move to the widened edges or safe area,
+  centred ones stay centred, nothing stretches. Never sample adjacent frames, infer geometry from
+  pixels, or stretch the final image. Interpolation is a separate opt-in feature over matching
+  source geometry only.
 
 ## Work over process
 
