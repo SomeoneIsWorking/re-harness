@@ -11,6 +11,7 @@ merely looked at the main checkout died with nothing to show. The permission con
 passed in ``OPENCODE_CONFIG_CONTENT`` denies such paths instead, which the worker sees
 as an ordinary tool error, and allows reading (not editing) the job's ``read_only``
 directories. opencode applies the last matching rule, so the catch-all comes first.
+The task file the runner wrote is one of those readable directories.
 """
 
 from __future__ import annotations
@@ -19,15 +20,17 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from .base import PROMPT_ATTACHED
+
 
 class OpencodeBackend:
     name = "opencode"
 
-    def command(self, prompt: str, files: Sequence[str], model: str) -> list[str]:
+    def command(self, task_file: Path, files: Sequence[str], model: str) -> list[str]:
         argv = ["opencode", "run", "--standalone", "-m", model, "--format", "json"]
-        for attached in files:
+        for attached in [str(task_file), *files]:
             argv += ["-f", attached]
-        return argv + ["--", prompt]
+        return argv + ["--", PROMPT_ATTACHED]
 
     def environment(self, read_only: Sequence[Path]) -> Mapping[str, str]:
         outside = {"*": "deny"} | {f"{path}/**": "allow" for path in read_only}

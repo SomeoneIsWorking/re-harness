@@ -17,6 +17,7 @@ KNOWN_FIELDS = {
     "read_only",
     "gate",
     "heavy_gate",
+    "mem_mib",
     "timeout",
     "gate_timeout",
 }
@@ -40,6 +41,9 @@ class Job:
     # a gitignored generated tree or an uninitialised submodule of the main checkout.
     read_only: tuple[Path, ...] = ()
     heavy_gate: bool = False
+    # Peak this job's heavy gate may grow into, overriding the build default. A gate
+    # that is not heavy has no admission of its own, so it would mean nothing there.
+    mem_mib: int | None = None
     gate_timeout: float = DEFAULT_GATE_TIMEOUT_SECONDS
 
 
@@ -97,6 +101,12 @@ def _parse(record: object, where: str, base: Path) -> Job:
     heavy = record.get("heavy_gate", False)
     if not isinstance(heavy, bool):
         raise JobFileError(f"{where}: heavy_gate must be true or false")
+    mem_mib = _positive_int(record, "mem_mib", where)
+    if mem_mib is not None and not heavy:
+        raise JobFileError(
+            f"{where}: mem_mib reserves memory for a heavy gate; "
+            "set heavy_gate true or drop it"
+        )
     repo = (base / Path(_required(record, "repo", str, where)).expanduser()).resolve()
     readable = tuple((repo / r).resolve() for r in read_only)
     missing = [str(r) for r in readable if not r.is_dir()]
@@ -111,6 +121,7 @@ def _parse(record: object, where: str, base: Path) -> Job:
         files=tuple(files),
         read_only=readable,
         heavy_gate=heavy,
+        mem_mib=mem_mib,
         gate_timeout=_seconds(
             record, "gate_timeout", where, DEFAULT_GATE_TIMEOUT_SECONDS
         ),
@@ -129,3 +140,13 @@ def _seconds(record: dict, name: str, where: str, default: float | None) -> floa
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         raise JobFileError(f"{where}: {name!r} must be a positive number of seconds")
     return float(value)
+
+
+def _positive_int(record: dict, name: str, where: str) -> int | None:
+    """An optional whole number of MiB; anything else is a malformed jobs file."""
+    if name not in record:
+        return None
+    value = record[name]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise JobFileError(f"{where}: {name!r} must be a positive whole number of MiB")
+    return value

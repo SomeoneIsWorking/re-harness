@@ -1,24 +1,22 @@
-"""Machine-wide admission control shared by every concurrent swarm invocation.
+"""Machine-wide slot ownership shared by every concurrent swarm invocation.
 
 Slots are ``count`` lock files in one shared directory; holding an exclusive
 ``flock`` on any one of them is holding a slot. The kernel drops the lock when
 the holder exits, however it exits, so a crashed swarm never leaks a slot.
-Independently, no worker starts while ``MemAvailable`` is below the floor.
+Slots cap how many units run, not how much memory they take; the memory rule
+lives with its data in ``reservations``.
 """
 
 from __future__ import annotations
 
 import fcntl
 import os
-from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
 from .lifetime import RunLifetime
 
 POLL_SECONDS = 2.0
-MIB = 1024 * 1024
 
 
 class SlotLease:
@@ -70,29 +68,4 @@ class MachineSlots:
             lease = self.try_acquire()
             if lease is not None:
                 return lease
-            lifetime.pause(self.poll_seconds)
-
-
-def read_mem_available() -> int:
-    """``MemAvailable`` from ``/proc/meminfo`` in bytes."""
-    with open("/proc/meminfo", encoding="ascii") as meminfo:
-        for line in meminfo:
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) * 1024
-    raise RuntimeError("/proc/meminfo has no MemAvailable line")
-
-
-@dataclass
-class MemoryFloor:
-    """Blocks a new worker until at least ``floor_bytes`` of memory is available."""
-
-    floor_bytes: int
-    reader: Callable[[], int] = read_mem_available
-    poll_seconds: float = POLL_SECONDS
-    on_wait: Callable[[int], None] | None = None
-
-    def wait(self, lifetime: RunLifetime) -> None:
-        while (available := self.reader()) < self.floor_bytes:
-            if self.on_wait is not None:
-                self.on_wait(available)
             lifetime.pause(self.poll_seconds)

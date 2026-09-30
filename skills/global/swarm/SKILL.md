@@ -25,7 +25,8 @@ swarm.py gc     <repo>/scratch/swarm/<run>     # git worktree remove, keeps resu
 
 The repo must gitignore `scratch/` (the run refuses otherwise). Linux only: it refuses by name
 elsewhere. Worker and gate output are in
-`<id>/worker-<n>.log` and `<id>/gate-<n>.log`; the verdict is `<id>/result.json`.
+`<id>/worker-<n>.log` and `<id>/gate-<n>.log`; the task handed to the worker is
+`<id>/prompt-<n>.md`; the verdict is `<id>/result.json`.
 
 ## When to use it
 
@@ -65,7 +66,14 @@ One JSON object per line:
 - **Gate output is feedback.** With `--retries N` a rejected worker is re-prompted in the same
   worktree with the gate's last 60 lines, so make failures say what differed.
 - `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run,
-  including time spent waiting for a heavy slot.
+  including time spent waiting for a heavy slot. Neither counts time a unit spent paused for
+  memory pressure.
+- **`mem_mib`** (optional, whole MiB, `heavy_gate` only) overrides the peak reserved for this
+  job's gate.
+- **A prompt is a file, not an argument.** The runner writes it to `<id>/prompt-<n>.md` and the
+  backend attaches it (`-f` for opencode, `@` for pi), because Linux caps one argv string at
+  128 KiB and a long task plus gate feedback exceeds that. Retries reuse the same path with the
+  feedback appended.
 
 ## Slots, heavy gates, and memory
 
@@ -74,13 +82,33 @@ One JSON object per line:
   per running job. Several projects' swarms together never exceed the slot count. Keep `--slots`
   at the default unless every concurrent user agrees; the cap is only as strong as the smallest
   value in use. `--workers` (default 8) is this invocation's own ceiling.
-- **Heavy commands** go through `heavy.py [--kind build|run] -- <command...>` (on PATH). `build`
-  (compilers, verifiers; 2 at once, each with a moderate `-j`) and `run` (one game, browser,
-  Ghidra or bot instance; 4 at once) are separate flock slot sets under `<lock-dir>/heavy-<kind>/`,
-  and admission also waits for 2048 MiB of `MemAvailable`. The wrapper holds the slot, so a daemon
-  the command leaves behind never keeps it. A job with `heavy_gate: true` runs its gate as a
-  `build`. Do not run heavy work outside it; the old single `heavy.lock` is retired.
-- **Memory floor.** No worker starts while `MemAvailable` is below `--mem-floor-mib` (default 3072).
+- **Reservations.** Slots cap how many units run, not how big they get, and a free-model worker
+  plus a gate build both grow after they start. Every admitted unit therefore reserves the memory
+  it may still grow into: one file `<lock-dir>/reservations/<pid>.<n>.json` holding its process
+  group, `reserve_mib` and kind, deleted when the unit is released and ignored once its group is
+  gone (a crashed swarm leaks nothing). A new unit starts only when
+  `MemAvailable - outstanding - reserve >= --mem-floor-mib` (default 3072), where an entry's
+  outstanding part is its reserve minus what its process group already has resident, read from
+  `/proc` once per check. Check and write happen under one flock on `<lock-dir>/reservations.lock`,
+  so two swarm invocations cannot both spend the same headroom. A unit that does not fit waits and
+  says so, and gives up when the run is stopped.
+- **Reserve what, by default.** A worker reserves 512 MiB (`--mem-reserve-mib`), a `build` 3072 MiB
+  and a `run` 1536 MiB. `heavy.py --mem-mib N` overrides one command, and a job's `mem_mib` field
+  overrides its heavy gate. Raise these when a real job outgrew its default; do not lower them
+  without measuring the peak.
+- **Pressure pause.** While a unit is admitted, a watcher in the admitting process polls
+  `MemAvailable` every 2 s. Below 1024 MiB it SIGSTOPs one of its own units, the most recently
+  admitted first and the oldest last, and never leaves less than one unit running; above 2560 MiB
+  it SIGCONTs the stopped groups oldest first. A paused unit is not working, so its deadline is
+  extended by the time it spent stopped. This is the machine getting tight, not a failure: the
+  run continues.
+- **Heavy commands** go through `heavy.py [--kind build|run] [--mem-mib N] -- <command...>` (on
+  PATH). `build` (compilers, verifiers; 2 at once, each with a moderate `-j`) and `run` (one game,
+  browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
+  `<lock-dir>/heavy-<kind>/`, and admission also waits for 2048 MiB of `MemAvailable`. The wrapper
+  holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
+  job with `heavy_gate: true` runs its gate as a `build`. Do not run heavy work outside it; the old
+  single `heavy.lock` is retired.
 - Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
   `--standalone` so its model server is inside that group; through the shared `opencode serve`
   service a timed-out session would keep editing the worktree.
