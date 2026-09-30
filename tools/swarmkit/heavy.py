@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
 
-from .admission import MachineSlots
+from .admission import MachineSlots, SlotLease
 from .lifetime import RunLifetime
 from .peaks import PeakSampler
 from .pressure import PressureWatcher
@@ -65,17 +65,18 @@ def run_admitted(
     on_wait: Callable[[], None],
     on_peak: Callable[[int], None] | None = None,
 ) -> int:
-    """Run ``argv`` while holding one heavy slot and its memory reservation.
+    """Run ``argv`` while holding its memory reservation and one heavy slot.
+
+    Memory is admitted first and the slot second, the one order every heavy admission
+    uses. A command waiting in the memory queue therefore holds no slot: taking the
+    slot first let two memory waiters hold both build slots for 50 minutes behind a
+    queue head that did not fit.
 
     ``on_peak`` receives the command's measured peak in MiB once it exits.
     """
-    lease = admission.slots.try_acquire()
-    if lease is None:
-        on_wait()
-        lease = admission.slots.acquire(lifetime)
-    with lease, admission.memory.acquire(
+    with admission.memory.acquire(
         lifetime, admission.reserve_mib, admission.kind
-    ) as reservation:
+    ) as reservation, _slot_lease(admission.slots, lifetime, on_wait):
         # The unit is this group: the wrapper and the command it is about to start.
         # Adopted before the spawn, so a run that has already stopped starts nothing.
         group = os.getpgrp()
@@ -97,6 +98,16 @@ def run_admitted(
         finally:
             _restore_signals(previous)
             lifetime.release(group)
+
+
+def _slot_lease(
+    slots: MachineSlots, lifetime: RunLifetime, on_wait: Callable[[], None]
+) -> SlotLease:
+    lease = slots.try_acquire()
+    if lease is None:
+        on_wait()
+        lease = slots.acquire(lifetime)
+    return lease
 
 
 def _command_environment() -> dict[str, str]:

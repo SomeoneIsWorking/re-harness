@@ -239,17 +239,18 @@ class JobRunner:
 
     @contextmanager
     def _gate_admission(self, job: Job, reservation: Reservation) -> Iterator[None]:
-        """Hold one slot of the gate's kind, then the gate's peak, around a heavy gate.
+        """Hold the gate's peak memory, then one slot of the gate's kind, around a heavy gate.
 
-        A gate holds exactly one kind of slot, so a game run never occupies a build slot
-        and no runner holds one kind while waiting for the other.
+        Memory comes first, as in heavy.py, so a gate waiting in the memory queue holds
+        no slot. A gate holds exactly one kind of slot, so a game run never occupies a
+        build slot and no runner holds one kind while waiting for the other.
         """
         if job.heavy_gate is None:
             yield
             return
         slots = {"build": self.settings.build_slots, "run": self.settings.run_slots}
-        with self._slot(job, slots[job.heavy_gate], job.heavy_gate):
-            with self._gate_memory(job, reservation):
+        with self._gate_memory(job, reservation):
+            with self._slot(job, slots[job.heavy_gate], job.heavy_gate):
                 yield
 
     @contextmanager

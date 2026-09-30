@@ -1686,6 +1686,39 @@ def _peak_checks(check: Check, root: Path) -> int:
     return fails
 
 
+def _memory_waiter_check(check: Check, locks: Path, build: MachineSlots) -> int:
+    """A command queued for memory holds no build slot.
+
+    The measured stall: heavy.py took its slot before memory admission, so two
+    commands queued behind an unfittable 3 GiB queue head held both build slots
+    for 50 minutes while nothing built.
+    """
+    waiter = subprocess.Popen(
+        [PY, str(HEAVY_CLI), "--lock-dir", str(locks), "--mem-mib", str(1 << 30)]
+        + ["--", PY, "-c", "pass"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    waiting = locks / "reservations" / "waiting"
+    deadline = time.monotonic() + 10
+    while not list(waiting.glob("*.json")) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    queued = bool(list(waiting.glob("*.json")))
+    leases = [build.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
+    free = sum(lease is not None for lease in leases)
+    for lease in leases:
+        if lease is not None:
+            lease.release()
+    os.killpg(waiter.pid, SIGKILL)
+    waiter.wait(timeout=10)
+    return check(
+        "heavy: NEGATIVE a command waiting for memory holds no build slot",
+        queued and free == HEAVY_SLOTS["build"],
+        f"queued {queued}, {free}/{HEAVY_SLOTS['build']} build slots free",
+    )
+
+
 def _heavy_checks(check: Check, root: Path) -> int:
     fails = 0
     locks = root / "locks"
@@ -1755,6 +1788,8 @@ def _heavy_checks(check: Check, root: Path) -> int:
     for holder in holders:
         assert holder is not None
         holder.release()
+
+    fails += _memory_waiter_check(check, locks, build)
 
     daemon = (
         "import subprocess, sys; "
