@@ -158,6 +158,8 @@ def _verdict_checks(check: Check, root: Path) -> int:
     fails = 0
     repo = make_repo(root)
     pidfile = root / "orphan.pid"
+    detached_file = root / "detached.pid"
+    detached_hung_file = root / "detached-hung.pid"
     jobs = [
         job(repo, "accept", "write hello.txt hi", gate_file_is("hello.txt", "hi")),
         job(repo, "reject", "write hello.txt wrong", gate_file_is("hello.txt", "hi")),
@@ -170,8 +172,21 @@ def _verdict_checks(check: Check, root: Path) -> int:
         job(repo, "timeout", f"orphan {pidfile}", gate_file_is("x", "x"), timeout=1.0),
         job(repo, "worker-fail", "fail 5", gate_file_is("x", "x")),
         job(repo, "empty", "noop", (PY, "-c", "pass")),
+        job(
+            repo,
+            "detach",
+            f"detach {detached_file}",
+            gate_file_is("detach.txt", "detached"),
+        ),
+        job(
+            repo,
+            "detach-timeout",
+            f"detach {detached_hung_file} hang",
+            gate_file_is("x", "x"),
+            timeout=1.0,
+        ),
     ]
-    results = {r.id: r for r in run_jobs(jobs, "verdicts", settings(root), workers=6)}
+    results = {r.id: r for r in run_jobs(jobs, "verdicts", settings(root), workers=8)}
     run_dir = repo / "scratch" / "swarm" / "verdicts"
 
     accepted = results["accept"]
@@ -224,6 +239,22 @@ def _verdict_checks(check: Check, root: Path) -> int:
         orphan > 0 and process_gone(orphan),
         f"orphan pid {orphan}",
     )
+    detached = int(detached_file.read_text()) if detached_file.exists() else -1
+    fails += check(
+        "swarm: a setsid daemon a worker leaves behind dies with the worker",
+        results["detach"].verdict is Verdict.ACCEPTED
+        and detached > 0
+        and process_gone(detached, 10.0),
+        f"daemon pid {detached}",
+    )
+    hung = int(detached_hung_file.read_text()) if detached_hung_file.exists() else -1
+    fails += check(
+        "swarm: a setsid daemon of a timed-out worker dies with it",
+        results["detach-timeout"].verdict is Verdict.TIMEOUT
+        and hung > 0
+        and process_gone(hung, 10.0),
+        f"daemon pid {hung}",
+    )
     failed = results["worker-fail"]
     fails += check(
         "swarm: nonzero worker exit is worker-failed without a gate",
@@ -241,8 +272,8 @@ def _verdict_checks(check: Check, root: Path) -> int:
     report = "\n".join(summarize(run_dir))
     fails += check(
         "swarm: report prints denominators",
-        "jobs 6  accepted 1  rejected 3 (empty-patch 1, gate-failed 2)  "
-        "worker-failed 1 (worker-exit 1)  timeout 1 (worker 1)  unfinished 0" in report,
+        "jobs 8  accepted 2  rejected 3 (empty-patch 1, gate-failed 2)  "
+        "worker-failed 1 (worker-exit 1)  timeout 2 (worker 2)  unfinished 0" in report,
         report,
     )
 
@@ -326,8 +357,8 @@ def _verdict_checks(check: Check, root: Path) -> int:
     after = registered_worktrees(repo)
     fails += check(
         "swarm: gc removes exactly the run's worktrees",
-        removed == 6
-        and len(before) - len(after) == 6
+        removed == 8
+        and len(before) - len(after) == 8
         and (run_dir / "accept" / "result.json").exists()
         and not (run_dir / "accept" / "tree").exists(),
         f"removed {removed}",

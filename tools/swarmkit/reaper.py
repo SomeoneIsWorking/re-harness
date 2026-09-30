@@ -1,6 +1,6 @@
 """Run one command as the direct child of a wrapper, and leave nothing behind.
 
-    python3 -m swarmkit.reaper -- <command> [args...]
+    command_argv(<command>, parent=<wrapper pid>)   # how a wrapper starts it
 
 ``PR_SET_PDEATHSIG`` reaches exactly the process it was set on. A wrapper whose
 direct child is ``cmake`` therefore lost ``ninja``, ``cc1plus`` and everything
@@ -11,9 +11,12 @@ wrapper's direct child instead, and it is the owner of the whole subtree:
 * it makes itself a child subreaper before starting the command, so a
   descendant whose own parent died is reparented to it rather than to init and
   cannot escape the wrapper's death;
-* it carries the wrapper's ``PR_SET_PDEATHSIG`` (SIGTERM, catchable, unlike the
-  SIGKILL a bare child used to get) and refuses to start the command if the
-  wrapper died between the fork and the prctl;
+* it arms ``PR_SET_PDEATHSIG`` (SIGTERM, catchable) on itself as its first act
+  and refuses to start the command if the wrapper named on its command line is
+  no longer its parent, so a wrapper killed before or after the arming takes it
+  down either way. Arming itself, rather than through a ``preexec_fn`` hook,
+  keeps the fork of a multithreaded wrapper (the swarm runner) free of Python
+  code between fork and exec;
 * it runs the command in the caller's own process group, exactly where the
   command used to be, so a group kill aimed at the caller still reaches it.
 
@@ -50,9 +53,15 @@ PRCTL_FAILURE_EXIT = 126
 # holding memory and CPU when the next run starts.
 TERM_GRACE_SECONDS = 5.0
 POLL_SECONDS = 0.05
-# The directory that holds the ``swarmkit`` package, so the wrapper's child can
-# run this module with ``-m`` no matter what the wrapper's own sys.path was.
+# The directory that holds the ``swarmkit`` package. The bootstrap puts it on the
+# reaper's own sys.path only, so the command inherits the caller's environment
+# unchanged: a PYTHONPATH naming the harness tools could shadow a project's modules.
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+BOOTSTRAP = (
+    "import sys; sys.path.insert(0, sys.argv.pop(1)); "
+    "from swarmkit.reaper import main; sys.exit(main(sys.argv[1:]))"
+)
+LAUNCH_FAILURE_EXIT = 127
 _LIBC = ctypes.CDLL("libc.so.6", use_errno=True)
 _LIBC.prctl.argtypes = [
     ctypes.c_int,
@@ -64,21 +73,9 @@ _LIBC.prctl.argtypes = [
 _LIBC.prctl.restype = ctypes.c_int
 
 
-def command_argv(argv: Sequence[str]) -> list[str]:
-    """The wrapper's direct child: this module, running ``argv``."""
-    return [sys.executable, "-m", __name__, "--", *argv]
-
-
-def command_environment() -> dict[str, str]:
-    """The child's environment, with this package importable by ``-m``."""
-    return dict(os.environ, **command_environment_overrides())
-
-
-def command_environment_overrides() -> dict[str, str]:
-    """The variables ``command_argv`` needs on top of the caller's environment."""
-    root = str(PACKAGE_ROOT)
-    inherited = os.environ.get("PYTHONPATH")
-    return {"PYTHONPATH": f"{root}{os.pathsep}{inherited}" if inherited else root}
+def command_argv(argv: Sequence[str], parent: int) -> list[str]:
+    """The wrapper's direct child: the reaper, owned by ``parent``, running ``argv``."""
+    return [sys.executable, "-c", BOOTSTRAP, str(PACKAGE_ROOT), str(parent), "--", *argv]
 
 
 def die_with_parent(parent: int, signum: int = signal.SIGTERM) -> Callable[[], None]:
@@ -112,9 +109,16 @@ def exit_status(status: int) -> int:
 
 
 def main(argv: Sequence[str]) -> int:
-    command = list(argv[1:] if argv[:1] == ["--"] else argv)
-    if not command:
-        sys.exit("reaper: no command given (use: -m swarmkit.reaper -- <command> ...)")
+    """``argv`` is ``<parent pid> -- <command> [args...]``, as ``command_argv`` builds it."""
+    if len(argv) < 3 or argv[1] != "--" or not argv[0].isdigit():
+        sys.exit("reaper: usage: <parent pid> -- <command> [args...]")
+    parent, command = int(argv[0]), list(argv[2:])
+    if _LIBC.prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0) != 0:
+        return PRCTL_FAILURE_EXIT
+    # A wrapper that died before the prctl above sends no signal; its child is
+    # already reparented, so it refuses to start the command at all.
+    if os.getppid() != parent:
+        return 1
     if _LIBC.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         reason = os.strerror(ctypes.get_errno())
         sys.exit(f"reaper: prctl(PR_SET_CHILD_SUBREAPER) failed: {reason}")
@@ -122,11 +126,15 @@ def main(argv: Sequence[str]) -> int:
     # PR_SET_PDEATHSIG between the fork and the exec. It runs in the
     # single-threaded child and does nothing but prctl, getppid and _exit -- no
     # import, no allocation, no lock a killed thread could hold.
-    child = subprocess.Popen(
-        command,
-        close_fds=True,
-        preexec_fn=die_with_parent(os.getpid()),  # noqa: PLW1509
-    )
+    try:
+        child = subprocess.Popen(
+            command,
+            close_fds=True,
+            preexec_fn=die_with_parent(os.getpid()),  # noqa: PLW1509
+        )
+    except OSError as error:
+        print(f"reaper: could not launch {command[0]!r}: {error}", file=sys.stderr)
+        return LAUNCH_FAILURE_EXIT
     previous = _forward_signals(child.pid)
     try:
         status = child.wait()

@@ -8,6 +8,8 @@ write <file> <text>          create <file> in the cwd
 retry <file>                 write "bad" first; "good" once the task carries gate feedback
 sleep <seconds>              sleep, then write nothing
 orphan <pidfile>             spawn a long-lived child, record its PID, then hang
+detach <pidfile> [hang]      start a setsid daemon (a session of its own), record its PID,
+                             write detach.txt, then exit, or hang if asked
 fail <code>                  exit with <code>
 overlap <eventfile> <sec>    append start/end stamps around a sleep, then write a file
 noop                         change nothing
@@ -42,6 +44,20 @@ elif action == "orphan":
     with open(words[1], "w", encoding="utf-8") as out:
         out.write(str(child.pid))
     time.sleep(120)
+elif action == "detach":
+    daemon = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(120)"],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    with open(words[1], "w", encoding="utf-8") as out:
+        out.write(str(daemon.pid))
+    with open("detach.txt", "w", encoding="utf-8") as out:
+        out.write("detached\n")
+    if words[2:] == ["hang"]:
+        time.sleep(120)
 elif action == "fail":
     sys.exit(int(words[1]))
 elif action == "overlap":

@@ -9,9 +9,10 @@ refused by the job's own idle worker entry, and the job waited on itself.
 
 A heavy gate is admitted here, in the runner, through the machine's build slots
 (and a run slot too when it starts a game instance), and its ``gate_timeout``
-starts only once it holds them. Run through ``heavy.py``
-the admission wait sat inside the gate's deadline, so a gate queued behind other
-builds timed out without ever running.
+starts only once it holds them. Run through ``heavy.py`` the admission wait sat
+inside the gate's deadline, so a gate queued behind other builds timed out
+without ever running. Every unit, worker and gate alike, runs under the reaper
+(``process.run_bounded``), so nothing it starts outlives the job.
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ from .jobs import Job
 from .lifetime import RunLifetime
 from .pressure import PressureWatcher
 from .process import run_bounded
-from .reaper import command_argv, command_environment_overrides
 from .reservations import Reservation, ReservationLedger
 from .results import PATCH_FILE, RUN_FILE, JobResult, Reason, Verdict
 from .worktree import Worktree, WorktreeError, run_directory
@@ -189,14 +189,12 @@ class JobRunner:
         if not changed:
             return verdict(Verdict.REJECTED, Reason.EMPTY_PATCH, worker_returncode=0)
         with self._gate_admission(job):
-            argv, environment = self._gate_command(job)
             gate = run_bounded(
-                argv,
+                job.gate,
                 tree.path,
                 job.gate_timeout,
                 job_dir / f"gate-{attempt}.log",
                 lifetime,
-                environment,
                 on_spawn=self._unit_started(reservation),
             )
         common = {
@@ -238,13 +236,6 @@ class JobRunner:
             emit(f"swarm: {job.id}: all {slots.count} {kind} slots busy; gate waiting")
             lease = slots.acquire(self.settings.lifetime)
         return lease
-
-    @staticmethod
-    def _gate_command(job: Job) -> tuple[list[str], dict[str, str] | None]:
-        """A heavy gate runs under the reaper, so its whole subtree dies with it."""
-        if not job.heavy_gate:
-            return list(job.gate), None
-        return command_argv(job.gate), command_environment_overrides()
 
     def _unit_started(self, reservation: Reservation) -> Callable[[int], None]:
         """Name a job's new process group for the ledger and the pressure watcher."""
