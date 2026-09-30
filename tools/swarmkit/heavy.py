@@ -38,6 +38,7 @@ from types import FrameType
 
 from .admission import MachineSlots
 from .lifetime import RunLifetime
+from .peaks import PeakSampler
 from .pressure import PressureWatcher
 from .reaper import command_argv
 from .reservations import ReservationLedger
@@ -62,8 +63,12 @@ def run_admitted(
     argv: Sequence[str],
     lifetime: RunLifetime,
     on_wait: Callable[[], None],
+    on_peak: Callable[[int], None] | None = None,
 ) -> int:
-    """Run ``argv`` while holding one heavy slot and its memory reservation."""
+    """Run ``argv`` while holding one heavy slot and its memory reservation.
+
+    ``on_peak`` receives the command's measured peak in MiB once it exits.
+    """
     lease = admission.slots.try_acquire()
     if lease is None:
         on_wait()
@@ -84,7 +89,11 @@ def run_admitted(
         )
         previous = _forward_signals(child.pid)
         try:
-            return child.wait()
+            with PeakSampler(child.pid) as sampler:
+                code = child.wait()
+            if on_peak is not None:
+                on_peak(sampler.peak_mib)
+            return code
         finally:
             _restore_signals(previous)
             lifetime.release(group)

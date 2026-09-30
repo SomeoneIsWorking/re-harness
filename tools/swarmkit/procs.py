@@ -45,6 +45,11 @@ def read_group_rss(groups: Iterable[int]) -> dict[int, int]:
     return total
 
 
+def read_tree_rss(pids: Iterable[int]) -> int:
+    """Resident bytes summed over ``pids``; a process that has exited counts 0."""
+    return sum(_resident_bytes(str(pid)) for pid in pids)
+
+
 def descendants(pid: int) -> list[int]:
     """Every process whose parent chain reaches ``pid``, from one pass over ``/proc``.
 

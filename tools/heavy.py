@@ -22,9 +22,11 @@ from swarmkit.admission import MachineSlots
 from swarmkit.console import emit
 from swarmkit.heavy import HeavyAdmission, run_admitted
 from swarmkit.lifetime import RunLifetime
+from swarmkit.peaks import PeakHistory, command_key
 from swarmkit.pressure import PressureWatcher
 from swarmkit.procs import MIB
 from swarmkit.reservations import ReservationLedger
+from swarmkit.worktree import WorktreeError, main_checkout
 
 
 def parse(argv: list[str]) -> argparse.Namespace:
@@ -37,7 +39,8 @@ def parse(argv: list[str]) -> argparse.Namespace:
         "--mem-mib",
         type=int,
         default=None,
-        help="peak this command may grow into (default: the kind's reservation)",
+        help="peak this command may grow into (default: its measured peak with "
+        "headroom, or the kind's reservation until it has been measured)",
     )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
@@ -57,7 +60,9 @@ def main(argv: list[str]) -> int:
     )
     count = config.HEAVY_SLOTS[args.kind]
     floor_mib = config.HEAVY_MEMORY_FLOOR_MIB
-    reserve_mib = args.mem_mib or config.HEAVY_RESERVE_MIB[args.kind]
+    peaks = PeakHistory(settings.lock_dir)
+    key = command_key(args.kind, _checkout(), args.command)
+    reserve_mib = args.mem_mib or peaks.reservation(key, config.HEAVY_RESERVE_MIB[args.kind])
     memory = ReservationLedger(
         settings.lock_dir,
         floor_mib,
@@ -85,9 +90,18 @@ def main(argv: list[str]) -> int:
             args.command,
             RunLifetime(),
             on_wait=lambda: emit(f"heavy: all {count} {args.kind} slots busy; waiting"),
+            on_peak=lambda peak_mib: peaks.record(key, peak_mib),
         )
     finally:
         pressure.stop()
+
+
+def _checkout() -> Path:
+    """The cwd's main checkout: one command run from any worktree or subdirectory is one command."""
+    try:
+        return main_checkout(Path.cwd())
+    except WorktreeError:
+        return Path.cwd().resolve()
 
 
 if __name__ == "__main__":

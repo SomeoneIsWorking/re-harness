@@ -27,6 +27,12 @@ def repo_root(repo: Path) -> Path:
     return Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve()
 
 
+def main_checkout(path: Path) -> Path:
+    """The main working tree of the repository ``path`` is in, from any of its worktrees."""
+    common = Path(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+    return common.parent.resolve()
+
+
 def run_directory(repo: Path, run_name: str) -> Path:
     """``<repo>/scratch/swarm/<run>``, refused unless git ignores it."""
     root = repo_root(repo)
