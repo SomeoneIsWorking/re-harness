@@ -160,8 +160,10 @@ def command_run(args: argparse.Namespace) -> int:
         backend=BACKENDS[args.backend],
         model=args.model,
         retries=args.retries,
-        heavy_lock_dir=settings_config.lock_dir,
         slots=MachineSlots(settings_config.slot_dir, settings_config.slots),
+        gate_slots=MachineSlots(
+            settings_config.heavy_slot_dir("build"), config.HEAVY_SLOTS["build"]
+        ),
         memory=memory,
         pressure=pressure,
         reserve_mib=args.mem_reserve_mib,
