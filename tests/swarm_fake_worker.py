@@ -10,7 +10,7 @@ sleep <seconds>              sleep, then write nothing
 orphan <pidfile>             spawn a long-lived child, record its PID, then hang
 detach <pidfile> [hang]      start a setsid daemon (a session of its own), record its PID,
                              write detach.txt, then exit, or hang if asked
-fail <code>                  exit with <code>
+fail <code> [<file> <text>]  optionally create <file>, then exit with <code>
 overlap <eventfile> <sec>    append start/end stamps around a sleep, then write a file
 noop                         change nothing
 envpwd                       write pwd.txt under $PWD (must be the worktree) and ccache.txt with CCACHE_BASEDIR
@@ -61,6 +61,9 @@ elif action == "detach":
     if words[2:] == ["hang"]:
         time.sleep(120)
 elif action == "fail":
+    if len(words) == 4:
+        with open(words[2], "w", encoding="utf-8") as out:
+            out.write(words[3] + "\n")
     sys.exit(int(words[1]))
 elif action == "overlap":
     with open(words[1], "a", encoding="utf-8") as events:

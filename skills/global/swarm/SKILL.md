@@ -31,7 +31,7 @@ elsewhere. Worker and gate output are in
 
 **Never restart a batch from scratch.** To change workers or settings, or after the run was killed,
 stop it by PID and rerun the same jobs file with `--name <run> --resume`. Do not `gc` it first.
-A job with a verdict keeps it. An unfinished job continues in the worktree it left, and its worker
+A job the gate judged keeps its verdict. An unfinished or worker-failed job continues in the worktree it left, and its worker
 is told to read `git diff` and carry on; that attempt does not count against `--retries`. A job
 that never started runs fresh. A restart that discards in-flight work repeats up to an hour of
 every worker's progress: 3 restarts of one psx batch on 2026-09-30 cost more than the batch produced.

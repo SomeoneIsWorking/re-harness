@@ -83,9 +83,12 @@ class JobRunner:
     def run(self, job: Job) -> JobResult:
         job_dir = self.job_dir(job)
         if self.resume and (job_dir / RESULT_FILE).is_file():
+            # A worker failure was never judged by the gate, so it continues like an
+            # unfinished job; every judged verdict stands.
             result = JobResult.read(job_dir)
-            emit(f"swarm: {job.id}: kept {result.verdict.value} from the interrupted run")
-            return result
+            if result.verdict is not Verdict.WORKER_FAILED:
+                emit(f"swarm: {job.id}: kept {result.verdict.value} from the interrupted run")
+                return result
         job_dir.mkdir(parents=True, exist_ok=self.resume)
         started = time.monotonic()
         with (
@@ -192,16 +195,20 @@ class JobRunner:
         )
         if worker.timed_out:
             return verdict(Verdict.TIMEOUT, Reason.WORKER, worker_tail=worker.tail())
-        if worker.returncode != 0:
+        # Snapshot before the gate so build products the gate writes never enter the patch.
+        patch, changed = tree.capture_patch()
+        (job_dir / PATCH_FILE).write_text(patch, encoding="utf-8")
+        # A worker's exit status does not judge its work; the gate does. opencode exits 1
+        # after recovering from a transient provider error mid-session, and treating that
+        # as failure discarded half of one psx batch's finished overrides ungated. Only a
+        # worker that also changed nothing has failed.
+        if worker.returncode != 0 and not changed:
             return verdict(
                 Verdict.WORKER_FAILED,
                 Reason.WORKER_EXIT,
                 worker_returncode=worker.returncode,
                 worker_tail=worker.tail(),
             )
-        # Snapshot before the gate so build products the gate writes never enter the patch.
-        patch, changed = tree.capture_patch()
-        (job_dir / PATCH_FILE).write_text(patch, encoding="utf-8")
         if not changed:
             return verdict(Verdict.REJECTED, Reason.EMPTY_PATCH, worker_returncode=0)
         with self._gate_admission(job, reservation):
@@ -215,7 +222,7 @@ class JobRunner:
                 on_spawn=self._unit_started(reservation),
             )
         common = {
-            "worker_returncode": 0,
+            "worker_returncode": worker.returncode,
             "changed_files": changed,
             "gate_tail": gate.tail(),
         }
@@ -283,9 +290,9 @@ def run_jobs(
 ) -> list[JobResult]:
     """Run every job with at most ``workers`` in flight; write ``run.json`` per repository.
 
-    With ``resume`` the run continues an interrupted one of the same name: a job with a
-    verdict keeps it, an unfinished job continues in the worktree it left, and a job
-    that never started starts fresh. Without it an existing job directory is refused.
+    With ``resume`` the run continues an interrupted one of the same name: a job the gate
+    judged keeps its verdict, an unfinished or worker-failed job continues in the worktree
+    it left, and a job that never started starts fresh. Without it an existing job directory is refused.
     """
     runner = JobRunner(run_name, settings, resume)
     run_dirs: dict[Path, list[str]] = {}
