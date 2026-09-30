@@ -27,9 +27,11 @@ DEFAULT_MEMORY_FLOOR_MIB = 1024
 SWARM_RESERVE_MIB = 256
 HEAVY_RESERVE_MIB = {"build": 3072, "run": 1536}
 # Concurrent heavy commands per kind on the shared 16-core / 15 GB workstation. A build
-# saturates cores (each is told to use a moderate -j); a run is one game, browser, Ghidra
-# or bot instance. Admission also waits for HEAVY_MEMORY_FLOOR_MIB of MemAvailable.
-HEAVY_SLOTS = {"build": 2, "run": 4}
+# uses at most -j 4, so four fill the cores; a run is one game, browser, Ghidra or bot
+# instance. Memory is admitted separately (reservations and HEAVY_MEMORY_FLOOR_MIB), so
+# the slots bound CPU only. Two build slots left 15 builds queued behind two hour-long
+# verifiers at load 4 of 16 on 2026-09-30.
+HEAVY_SLOTS = {"build": 4, "run": 4}
 HEAVY_MEMORY_FLOOR_MIB = DEFAULT_MEMORY_FLOOR_MIB
 # Below PRESSURE_PAUSE_MIB the watcher pauses the newest unit it owns; above
 # PRESSURE_RESUME_MIB the paused ones are resumed. The gap is the hysteresis that

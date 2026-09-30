@@ -125,7 +125,7 @@ One JSON object per line:
   extended by the time it spent stopped. This is the machine getting tight, not a failure: the
   run continues.
 - **Heavy commands** go through `heavy.py [--kind build|run] [--mem-mib N] -- <command...>` (on
-  PATH). `build` (compilers, verifiers; 2 at once, each with a moderate `-j`) and `run` (one game,
+  PATH). `build` (compilers, verifiers; 4 at once, each with at most `-j 4`) and `run` (one game,
   browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
   `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. Without `--mem-mib` the
   reservation is learned: the first run of a command (kind, main checkout, argv) reserves the kind's
