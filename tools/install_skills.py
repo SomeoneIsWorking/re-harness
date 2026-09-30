@@ -26,6 +26,7 @@ TOOL_NAMES = (
     "go_public.py",
     "heavy.py",
     "info.py",
+    "piagent.py",
     "project_state.py",
     "re_frontier.py",
     "safekill",

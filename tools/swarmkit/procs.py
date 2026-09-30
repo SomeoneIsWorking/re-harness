@@ -58,6 +58,11 @@ def process_alive(pid: int) -> bool:
     return _alive(os.kill, pid)
 
 
+def process_running(pid: int) -> bool:
+    """True when ``pid`` is alive and not a zombie waiting to be reaped."""
+    return process_alive(pid) and _state(pid) != "Z"
+
+
 def _alive(sender: Callable[[int, int], None], target: int) -> bool:
     try:
         sender(target, 0)
