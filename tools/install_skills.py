@@ -33,7 +33,14 @@ TOOL_NAMES = (
     "scratch_gc.py",
     "swarm.py",
 )
-TOOL_DESTINATIONS = (Path(".agents/bin"), Path(".codex/bin"), Path(".claude/bin"))
+TOOL_DESTINATIONS = (
+    Path(".agents/bin"),
+    Path(".codex/bin"),
+    Path(".claude/bin"),
+    # On PATH, so a swarm worker or a pi/opencode session can run heavy.py and
+    # its own gate without knowing where the harness is installed.
+    Path(".local/bin"),
+)
 
 
 def skill_name(skill_file):
