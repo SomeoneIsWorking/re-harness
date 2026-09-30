@@ -77,6 +77,16 @@ class Worktree:
             raise WorktreeError(f"{base_file} is missing; the worktree's base is unknown")
         return cls(repo, path, base_file.read_text(encoding="utf-8").strip())
 
+    def cache_environment(self) -> dict[str, str]:
+        """Point ccache at this worktree, so a compile hits entries another worktree made.
+
+        Every job builds the same sources in its own worktree, and CMake passes them by
+        absolute path. Without a base directory ccache keys each worktree's compiles on
+        its own path: a fresh job's first build compiled every unit cold and filled the
+        cache with entries no other job could use.
+        """
+        return {"CCACHE_BASEDIR": str(self.path), "CCACHE_NOHASHDIR": "1"}
+
     def capture_patch(self) -> tuple[str, list[str]]:
         """Everything the worker changed since ``base`` (commits, edits, untracked) as a patch.
 

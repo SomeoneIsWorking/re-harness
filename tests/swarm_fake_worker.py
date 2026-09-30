@@ -13,7 +13,7 @@ detach <pidfile> [hang]      start a setsid daemon (a session of its own), recor
 fail <code>                  exit with <code>
 overlap <eventfile> <sec>    append start/end stamps around a sleep, then write a file
 noop                         change nothing
-envpwd                       write pwd.txt under $PWD (must be the worktree)
+envpwd                       write pwd.txt under $PWD (must be the worktree) and ccache.txt with CCACHE_BASEDIR
 attached                     write attached.txt naming whether every attachment is absolute and in cwd
 ledger <dir> <out>           write the reserve_mib of every entry in <dir> to <out> as JSON, then h.txt
 resume <file>                append 'resumed' to <file> when the task says it was interrupted, else write 'fresh'
@@ -73,6 +73,9 @@ elif action == "overlap":
 elif action == "envpwd":
     with open(os.path.join(os.environ["PWD"], "pwd.txt"), "w", encoding="utf-8") as out:
         out.write("pwd\n")
+    with open("ccache.txt", "w", encoding="utf-8") as out:
+        same = os.environ.get("CCACHE_BASEDIR") == os.getcwd()
+        out.write(("ok" if same and os.environ.get("CCACHE_NOHASHDIR") == "1" else "bad") + "\n")
 elif action == "attached":
     attached = attachments
     here = os.getcwd()
