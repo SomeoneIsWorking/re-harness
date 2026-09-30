@@ -30,14 +30,17 @@ if not SUPPORTED:
     )
 
 from swarmkit import config
-from swarmkit.admission import MIB, MachineSlots, MemoryFloor
+from swarmkit.admission import MachineSlots
 from swarmkit.apply import ApplyRefused, apply_accepted
 from swarmkit.backends import BACKENDS, DEFAULT_BACKEND
 from swarmkit.cleanup import CleanupRefused, remove_worktrees
 from swarmkit.console import emit
 from swarmkit.jobs import JOB_ID, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
+from swarmkit.pressure import PressureWatcher
+from swarmkit.procs import MIB
 from swarmkit.report import summarize
+from swarmkit.reservations import ReservationLedger
 from swarmkit.results import Verdict
 from swarmkit.runner import RunSettings, run_jobs
 from swarmkit.worktree import WorktreeError
@@ -95,7 +98,13 @@ def parser() -> argparse.ArgumentParser:
         "--mem-floor-mib",
         type=int,
         default=config.DEFAULT_MEMORY_FLOOR_MIB,
-        help="do not start a worker while MemAvailable is below this",
+        help="keep this much MemAvailable free after every outstanding reservation",
+    )
+    run.add_argument(
+        "--mem-reserve-mib",
+        type=positive,
+        default=config.SWARM_RESERVE_MIB,
+        help="peak one worker may grow into, reserved when it is admitted",
     )
     run.set_defaults(handler=command_run)
 
@@ -133,12 +142,19 @@ def command_run(args: argparse.Namespace) -> int:
         slots=args.slots,
         memory_floor_mib=args.mem_floor_mib,
     )
-    memory = MemoryFloor(
-        settings_config.memory_floor_mib * MIB,
-        on_wait=lambda free: emit(
-            f"swarm: waiting, MemAvailable {free // MIB} MiB "
-            f"< floor {settings_config.memory_floor_mib} MiB"
+    floor_mib = settings_config.memory_floor_mib
+    memory = ReservationLedger(
+        settings_config.lock_dir,
+        floor_mib,
+        on_wait=lambda free, held: emit(
+            f"swarm: waiting, MemAvailable {free // MIB} MiB - reserved {held} MiB "
+            f"< floor {floor_mib} MiB"
         ),
+    )
+    pressure = PressureWatcher(
+        config.PRESSURE_PAUSE_MIB,
+        config.PRESSURE_RESUME_MIB,
+        on_event=emit,
     )
     settings = RunSettings(
         backend=BACKENDS[args.backend],
@@ -147,10 +163,16 @@ def command_run(args: argparse.Namespace) -> int:
         heavy_lock_dir=settings_config.lock_dir,
         slots=MachineSlots(settings_config.slot_dir, settings_config.slots),
         memory=memory,
+        pressure=pressure,
+        reserve_mib=args.mem_reserve_mib,
         lifetime=RunLifetime(),
     )
     signal.signal(signal.SIGTERM, interrupt)
-    results = run_jobs(jobs, name, settings, args.workers)
+    pressure.start()
+    try:
+        results = run_jobs(jobs, name, settings, args.workers)
+    finally:
+        pressure.stop()
     accepted = sum(result.verdict is Verdict.ACCEPTED for result in results)
     emit(f"swarm: {accepted}/{len(results)} accepted")
     return 0

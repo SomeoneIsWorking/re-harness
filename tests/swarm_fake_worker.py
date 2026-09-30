@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Stand-in for an LLM worker: the prompt's first line is a script for what to do.
+"""Stand-in for an LLM worker: the task file's first line is a script for what to do.
+
+The runner writes the prompt to a file and passes its path in argv, so a task
+larger than the 128 KiB argv limit reaches the worker whole.
 
 write <file> <text>          create <file> in the cwd
-retry <file>                 write "bad" first; "good" once the prompt carries gate feedback
+retry <file>                 write "bad" first; "good" once the task carries gate feedback
 sleep <seconds>              sleep, then write nothing
 orphan <pidfile>             spawn a long-lived child, record its PID, then hang
 fail <code>                  exit with <code>
@@ -10,6 +13,7 @@ overlap <eventfile> <sec>    append start/end stamps around a sleep, then write 
 noop                         change nothing
 envpwd                       write pwd.txt under $PWD (must be the worktree)
 attached                     write attached.txt naming whether every attachment is absolute and in cwd
+say <anything>               copy the whole task file to task.txt, so its size can be checked
 """
 
 import os
@@ -17,7 +21,11 @@ import subprocess
 import sys
 import time
 
-prompt = sys.argv[-1]
+# The runner attaches the task file first, then the job's files; a real worker
+# reads its task from that file, never from argv.
+task_file, *attachments = sys.argv[1:]
+with open(task_file, encoding="utf-8") as task:
+    prompt = task.read()
 words = prompt.splitlines()[0].split()
 action = words[0]
 if action == "write":
@@ -48,14 +56,17 @@ elif action == "envpwd":
     with open(os.path.join(os.environ["PWD"], "pwd.txt"), "w", encoding="utf-8") as out:
         out.write("pwd\n")
 elif action == "attached":
-    attached = sys.argv[1:-1]
+    attached = attachments
     here = os.getcwd()
-    fine = attached and all(
+    fine = bool(attachments) and all(
         os.path.isabs(a) and a.startswith(here + os.sep) and os.path.isfile(a)
         for a in attached
     )
     with open("attached.txt", "w", encoding="utf-8") as out:
         out.write(("ok" if fine else "bad " + " ".join(attached)) + "\n")
+elif action == "say":
+    with open("task.txt", "w", encoding="utf-8") as out:
+        out.write(prompt)
 elif action == "noop":
     pass
 else:

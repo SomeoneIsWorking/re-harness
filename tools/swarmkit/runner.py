@@ -1,25 +1,34 @@
-"""Run jobs: worktree, worker, gate, optional feedback retries, verdict on disk."""
+"""Run jobs: worktree, worker, gate, optional feedback retries, verdict on disk.
+
+Each job runs under two machine-wide claims: a slot (how many) and a memory
+reservation (how much it may still grow into). The reservation is taken once for
+the job and attached to every process group the job starts, so the headroom the
+ledger keeps free covers the worker's peak and the gate's alike.
+"""
 
 from __future__ import annotations
 
 import json
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from .admission import MachineSlots, MemoryFloor
+from .admission import MachineSlots
 from .backends import Backend
 from .console import emit
 from .jobs import Job
 from .lifetime import RunLifetime
+from .pressure import PressureWatcher
 from .process import run_bounded
+from .reservations import Reservation, ReservationLedger
 from .results import PATCH_FILE, RUN_FILE, JobResult, Reason, Verdict
 from .worktree import Worktree, WorktreeError, run_directory
 
 TREE_DIR = "tree"
+TASK_FILE = "prompt-{attempt}.md"
 FEEDBACK = (
     "\n\n---\nYour previous attempt was rejected by the gate `{gate}` (exit {code}). "
     "Its output ends with:\n```\n{tail}\n```\nFix the cause and try again. "
@@ -41,7 +50,9 @@ class RunSettings:
     retries: int
     heavy_lock_dir: Path
     slots: MachineSlots
-    memory: MemoryFloor
+    memory: ReservationLedger
+    pressure: PressureWatcher
+    reserve_mib: int
     lifetime: RunLifetime
 
 
@@ -57,8 +68,13 @@ class JobRunner:
         job_dir = self.job_dir(job)
         job_dir.mkdir(parents=True, exist_ok=False)
         started = time.monotonic()
-        with self.settings.slots.acquire(self.settings.lifetime):
-            result = self._run_in_slot(job, job_dir)
+        with (
+            self.settings.slots.acquire(self.settings.lifetime),
+            self.settings.memory.acquire(
+                self.settings.lifetime, self.settings.reserve_mib, "swarm"
+            ) as reservation,
+        ):
+            result = self._run_in_slot(job, job_dir, reservation)
         result.seconds = round(time.monotonic() - started, 3)
         result.write(job_dir)
         emit(
@@ -67,7 +83,9 @@ class JobRunner:
         )
         return result
 
-    def _run_in_slot(self, job: Job, job_dir: Path) -> JobResult:
+    def _run_in_slot(
+        self, job: Job, job_dir: Path, reservation: Reservation
+    ) -> JobResult:
         try:
             tree = Worktree.create(job.repo, job_dir / TREE_DIR)
         except WorktreeError as error:
@@ -86,7 +104,9 @@ class JobRunner:
         prompt = job.prompt
         result: JobResult | None = None
         for attempt in range(1, self.settings.retries + 2):
-            result = self._attempt(job, job_dir, tree, gate_argv, prompt, attempt)
+            result = self._attempt(
+                job, job_dir, tree, gate_argv, prompt, attempt, reservation
+            )
             if result.verdict is not Verdict.REJECTED:
                 return result
             if result.reason is Reason.EMPTY_PATCH:
@@ -103,16 +123,17 @@ class JobRunner:
     def _gate_argv(self, job: Job) -> list[str]:
         if not job.heavy_gate:
             return list(job.gate)
-        return [
+        argv = [
             sys.executable,
             str(HEAVY_CLI),
             "--kind",
             "build",
             "--lock-dir",
             str(self.settings.heavy_lock_dir),
-            "--",
-            *job.gate,
         ]
+        if job.mem_mib is not None:
+            argv += ["--mem-mib", str(job.mem_mib)]
+        return argv + ["--", *job.gate]
 
     def _attempt(
         self,
@@ -122,6 +143,7 @@ class JobRunner:
         gate_argv: Sequence[str],
         prompt: str,
         attempt: int,
+        reservation: Reservation,
     ) -> JobResult:
         def verdict(value: Verdict, reason: Reason | None, **fields) -> JobResult:
             return JobResult(
@@ -136,20 +158,23 @@ class JobRunner:
             )
 
         lifetime = self.settings.lifetime
-        self.settings.memory.wait(lifetime)
+        task_file = job_dir / TASK_FILE.format(attempt=attempt)
+        task_file.write_text(prompt, encoding="utf-8")
         emit(f"swarm: {job.id}: worker attempt {attempt}")
         # Attach from the worker's own checkout, by absolute path so no CLI guesses the base.
         # Only files that exist now: a job may create a listed file, and a retry runs on the
         # tree the last attempt left, where a listed file may be deleted. opencode refuses to
-        # start when asked to attach a missing file.
+        # start when asked to attach a missing file. The task file lives outside the worktree,
+        # so the job's own directory joins read_only and the worker may read it, not edit it.
         files = [str(tree.path / name) for name in job.files if (tree.path / name).is_file()]
         worker = run_bounded(
-            self.settings.backend.command(prompt, files, self.settings.model),
+            self.settings.backend.command(task_file, files, self.settings.model),
             tree.path,
             job.timeout,
             job_dir / f"worker-{attempt}.log",
             lifetime,
-            self.settings.backend.environment(job.read_only),
+            self.settings.backend.environment([*job.read_only, job_dir]),
+            on_spawn=self._unit_started(reservation),
         )
         if worker.timed_out:
             return verdict(Verdict.TIMEOUT, Reason.WORKER, worker_tail=worker.tail())
@@ -171,6 +196,7 @@ class JobRunner:
             job.gate_timeout,
             job_dir / f"gate-{attempt}.log",
             lifetime,
+            on_spawn=self._unit_started(reservation),
         )
         common = {
             "worker_returncode": 0,
@@ -187,6 +213,15 @@ class JobRunner:
             gate_returncode=gate.returncode,
             **common,
         )
+
+    def _unit_started(self, reservation: Reservation) -> Callable[[int], None]:
+        """Name a job's new process group for the ledger and the pressure watcher."""
+
+        def started(group: int) -> None:
+            reservation.attach(group)
+            self.settings.pressure.adopt(group)
+
+        return started
 
 
 def run_jobs(

@@ -3,12 +3,12 @@
 A single exclusive lock serialized every heavy job on the machine, so a one-hour
 verify held back a dozen jobs that would have fit beside it. Heavy work is now
 admitted through a small counting semaphore per kind (``MachineSlots``) plus a
-``MemAvailable`` floor, reusing the swarm runner's admission owner.
+memory reservation, reusing the swarm runner's two admission owners.
 
-The wrapper, not the command, holds the slot: the slot descriptor is not
-inherited, so a daemon the command leaves behind (an MSBuild node, a Gradle
-daemon) cannot keep a slot after the command returns. Termination signals are
-forwarded to the command's process group.
+The wrapper, not the command, holds the slot and the reservation: those
+descriptors are not inherited, so a daemon the command leaves behind (an
+MSBuild node, a Gradle daemon) cannot keep either after the command returns.
+Termination signals are forwarded to the command's process group.
 """
 
 from __future__ import annotations
@@ -19,31 +19,23 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from types import FrameType
 
-from .admission import MachineSlots, MemoryFloor, SlotLease
+from .admission import MachineSlots
 from .lifetime import RunLifetime, signal_group
+from .pressure import PressureWatcher
+from .reservations import ReservationLedger
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
 
 @dataclass(frozen=True)
 class HeavyAdmission:
-    """The slots and memory floor one heavy kind is admitted through."""
+    """The slots, the memory reservation, and the watcher one heavy kind is admitted through."""
 
     slots: MachineSlots
-    floor: MemoryFloor
-
-    def admit(self, lifetime: RunLifetime, on_wait: Callable[[], None]) -> SlotLease:
-        """Block until a slot is free and memory is above the floor; return the held slot."""
-        lease = self.slots.try_acquire()
-        if lease is None:
-            on_wait()
-            lease = self.slots.acquire(lifetime)
-        try:
-            self.floor.wait(lifetime)
-        except BaseException:
-            lease.release()
-            raise
-        return lease
+    memory: ReservationLedger
+    reserve_mib: int
+    kind: str
+    pressure: PressureWatcher
 
 
 def run_admitted(
@@ -52,9 +44,17 @@ def run_admitted(
     lifetime: RunLifetime,
     on_wait: Callable[[], None],
 ) -> int:
-    """Run ``argv`` while holding one heavy slot; return its exit status."""
-    with admission.admit(lifetime, on_wait):
+    """Run ``argv`` while holding one heavy slot and its memory reservation."""
+    lease = admission.slots.try_acquire()
+    if lease is None:
+        on_wait()
+        lease = admission.slots.acquire(lifetime)
+    with lease, admission.memory.acquire(
+        lifetime, admission.reserve_mib, admission.kind
+    ) as reservation:
         child = subprocess.Popen(list(argv), start_new_session=True)
+        reservation.attach(child.pid)
+        admission.pressure.adopt(child.pid)
         lifetime.adopt(child.pid)
         previous = _forward_signals(child.pid)
         try:

@@ -15,11 +15,22 @@ DEFAULT_MODEL = "opencode/space-bunny-free"
 DEFAULT_SLOTS = 24
 DEFAULT_WORKERS = 8
 DEFAULT_MEMORY_FLOOR_MIB = 3072
+# Peak a unit may still grow into, reserved with the machine at admission time. A
+# free-model worker runs a private model server and edits a build tree; a gate
+# build compiles the whole project; a game, browser or bot instance holds a
+# window, a scene graph and a decoder.
+SWARM_RESERVE_MIB = 512
+HEAVY_RESERVE_MIB = {"build": 3072, "run": 1536}
 # Concurrent heavy commands per kind on the shared 16-core / 15 GB workstation. A build
 # saturates cores (each is told to use a moderate -j); a run is one game, browser, Ghidra
 # or bot instance. Admission also waits for HEAVY_MEMORY_FLOOR_MIB of MemAvailable.
 HEAVY_SLOTS = {"build": 2, "run": 4}
 HEAVY_MEMORY_FLOOR_MIB = 2048
+# Below PRESSURE_PAUSE_MIB the watcher pauses the newest unit it owns; above
+# PRESSURE_RESUME_MIB the paused ones are resumed. The gap is the hysteresis that
+# stops a host hovering at the threshold from pausing and resuming forever.
+PRESSURE_PAUSE_MIB = 1024
+PRESSURE_RESUME_MIB = 2560
 LOCK_DIR_VARIABLE = "SWARM_LOCK_DIR"
 
 

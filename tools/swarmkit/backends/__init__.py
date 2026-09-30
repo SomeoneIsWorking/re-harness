@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import Backend
+from .base import PROMPT_ATTACHED, Backend
 from .opencode import OpencodeBackend
 from .pi import PiBackend
 
@@ -12,4 +12,4 @@ BACKENDS: dict[str, Backend] = {
 }
 DEFAULT_BACKEND = OpencodeBackend.name
 
-__all__ = ["BACKENDS", "DEFAULT_BACKEND", "Backend"]
+__all__ = ["BACKENDS", "DEFAULT_BACKEND", "PROMPT_ATTACHED", "Backend"]
