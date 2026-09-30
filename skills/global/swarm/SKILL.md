@@ -85,8 +85,9 @@ One JSON object per line:
 - **Reservations.** Slots cap how many units run, not how big they get, and a free-model worker
   plus a gate build both grow after they start. Every admitted unit therefore reserves the memory
   it may still grow into: one file `<lock-dir>/reservations/<pid>.<n>.json` holding its process
-  group, `reserve_mib` and kind, deleted when the unit is released and ignored once its group is
-  gone (a crashed swarm leaks nothing). A new unit starts only when
+  group (the group the unit's processes are in — for a heavy command, the wrapper's), `reserve_mib`
+  and kind, deleted when the unit is released and ignored once its group is gone (a crashed swarm
+  leaks nothing). A new unit starts only when
   `MemAvailable - outstanding - reserve >= --mem-floor-mib` (default 3072), where an entry's
   outstanding part is its reserve minus what its process group already has resident, read from
   `/proc` once per check. Check and write happen under one flock on `<lock-dir>/reservations.lock`,
@@ -109,6 +110,14 @@ One JSON object per line:
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
   job with `heavy_gate: true` runs its gate as a `build`. Do not run heavy work outside it; the old
   single `heavy.lock` is retired.
+- **A heavy command dies with the run that started it.** It is launched in the wrapper's own
+  process group, never a new session, so the group kill a timeout sends reaches the command and
+  not only the wrapper; and it carries `PR_SET_PDEATHSIG`, so a wrapper killed on its own takes
+  the command with it. Both matter: a gate put in its own session once survived the kill of the
+  worker that started it and kept 7 GB on the machine. The reservation, the pressure watcher and
+  the run lifetime therefore track the wrapper's group, which is where the command lives (under
+  `swarm.py` that group is the worker's, so the caller's own resident size is read as part of the
+  unit's).
 - Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
   `--standalone` so its model server is inside that group; through the shared `opencode serve`
   service a timed-out session would keep editing the worktree.
