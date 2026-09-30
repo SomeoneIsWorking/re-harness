@@ -1095,12 +1095,15 @@ def _backend_checks(check: Check) -> int:
         ],
         str(opencode),
     ) + check(
-        "swarm: pi argv is print-mode, sessionless, with the task attached first",
+        "swarm: pi argv is print-mode, sessionless, lean, with the task attached first",
         pi
         == [
             "pi",
             "-p",
             "--no-session",
+            "--no-extensions",
+            "--no-prompt-templates",
+            "--no-themes",
             "--model",
             "opencode/space-bunny-free",
             "--",
