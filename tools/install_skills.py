@@ -32,6 +32,7 @@ TOOL_NAMES = (
     "safekill",
     "scratch_gc.py",
     "swarm.py",
+    "watchdog.py",
 )
 TOOL_DESTINATIONS = (
     Path(".agents/bin"),
