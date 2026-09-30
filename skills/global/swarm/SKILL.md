@@ -92,7 +92,8 @@ One JSON object per line:
   group (the group the unit's processes are in — for a heavy command, the wrapper's), `reserve_mib`
   and kind, deleted when the unit is released and ignored once its group is gone (a crashed swarm
   leaks nothing). A new unit starts only when
-  `MemAvailable - outstanding - reserve >= --mem-floor-mib` (default 3072), where an entry's
+  `MemAvailable - outstanding - reserve >= --mem-floor-mib` (default 1024, the pressure watcher's
+  pause threshold), where an entry's
   outstanding part is its reserve minus what its process group already has resident, read from
   `/proc` once per check. Check and write happen under one flock on `<lock-dir>/reservations.lock`,
   so two swarm invocations cannot both spend the same headroom. Admission is
@@ -101,7 +102,7 @@ One JSON object per line:
   is still queued, so a large build is not starved by a stream of small workers.
   A unit that does not fit waits and
   says so, and gives up when the run is stopped.
-- **Reserve what, by default.** A worker reserves 512 MiB (`--mem-reserve-mib`), a `build` 3072 MiB
+- **Reserve what, by default.** A worker reserves 256 MiB (`--mem-reserve-mib`; opencode workers measure ~85 MiB), a `build` 3072 MiB
   and a `run` 1536 MiB. `heavy.py --mem-mib N` overrides one command, and a job's `mem_mib` field
   overrides its heavy gate. Raise these when a real job outgrew its default; do not lower them
   without measuring the peak.
@@ -114,7 +115,7 @@ One JSON object per line:
 - **Heavy commands** go through `heavy.py [--kind build|run] [--mem-mib N] -- <command...>` (on
   PATH). `build` (compilers, verifiers; 2 at once, each with a moderate `-j`) and `run` (one game,
   browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
-  `<lock-dir>/heavy-<kind>/`, and admission also waits for 2048 MiB of `MemAvailable`. The wrapper
+  `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. The wrapper
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
   job with `heavy_gate: true` runs its gate as a `build`, admitted by the swarm runner itself: it
   takes one of the same build slots but no second reservation. The job's one reservation is sized

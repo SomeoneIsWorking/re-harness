@@ -14,18 +14,23 @@ from pathlib import Path
 DEFAULT_MODEL = "opencode/space-bunny-free"
 DEFAULT_SLOTS = 24
 DEFAULT_WORKERS = 8
-DEFAULT_MEMORY_FLOOR_MIB = 3072
+# The floor is headroom kept on top of every outstanding reservation. It need not
+# exceed the pressure watcher's pause threshold, which is the backstop if the
+# reservations were too small: at 2-3 GiB the host sat idle (load 2.5 on 16
+# cores, 7.8 GiB available) while two build slots waited on memory for 28 min.
+DEFAULT_MEMORY_FLOOR_MIB = 1024
 # Peak a unit may still grow into, reserved with the machine at admission time. A
 # free-model worker runs a private model server and edits a build tree; a gate
 # build compiles the whole project; a game, browser or bot instance holds a
 # window, a scene graph and a decoder.
-SWARM_RESERVE_MIB = 512
+# Measured 2026-09-30: nine live opencode worker groups held 81-88 MiB each.
+SWARM_RESERVE_MIB = 256
 HEAVY_RESERVE_MIB = {"build": 3072, "run": 1536}
 # Concurrent heavy commands per kind on the shared 16-core / 15 GB workstation. A build
 # saturates cores (each is told to use a moderate -j); a run is one game, browser, Ghidra
 # or bot instance. Admission also waits for HEAVY_MEMORY_FLOOR_MIB of MemAvailable.
 HEAVY_SLOTS = {"build": 2, "run": 4}
-HEAVY_MEMORY_FLOOR_MIB = 2048
+HEAVY_MEMORY_FLOOR_MIB = DEFAULT_MEMORY_FLOOR_MIB
 # Below PRESSURE_PAUSE_MIB the watcher pauses the newest unit it owns; above
 # PRESSURE_RESUME_MIB the paused ones are resumed. The gap is the hysteresis that
 # stops a host hovering at the threshold from pausing and resuming forever.
