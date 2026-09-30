@@ -18,6 +18,7 @@ KNOWN_FIELDS = {
     "gate",
     "heavy_gate",
     "mem_mib",
+    "run_slot",
     "timeout",
     "gate_timeout",
 }
@@ -44,6 +45,9 @@ class Job:
     # Peak this job's heavy gate may grow into, overriding the build default. A gate
     # that is not heavy has no admission of its own, so it would mean nothing there.
     mem_mib: int | None = None
+    # The heavy gate runs one game, browser or bot instance, so it also holds one
+    # machine-wide run slot beside its build slot.
+    run_slot: bool = False
     gate_timeout: float = DEFAULT_GATE_TIMEOUT_SECONDS
 
 
@@ -107,6 +111,14 @@ def _parse(record: object, where: str, base: Path) -> Job:
             f"{where}: mem_mib reserves memory for a heavy gate; "
             "set heavy_gate true or drop it"
         )
+    run_slot = record.get("run_slot", False)
+    if not isinstance(run_slot, bool):
+        raise JobFileError(f"{where}: run_slot must be true or false")
+    if run_slot and not heavy:
+        raise JobFileError(
+            f"{where}: run_slot is taken by the runner's heavy-gate admission; "
+            "set heavy_gate true or drop it"
+        )
     repo = (base / Path(_required(record, "repo", str, where)).expanduser()).resolve()
     readable = tuple((repo / r).resolve() for r in read_only)
     missing = [str(r) for r in readable if not r.is_dir()]
@@ -122,6 +134,7 @@ def _parse(record: object, where: str, base: Path) -> Job:
         read_only=readable,
         heavy_gate=heavy,
         mem_mib=mem_mib,
+        run_slot=run_slot,
         gate_timeout=_seconds(
             record, "gate_timeout", where, DEFAULT_GATE_TIMEOUT_SECONDS
         ),

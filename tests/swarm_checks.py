@@ -80,6 +80,9 @@ def settings(root: Path, slots: int = 8, retries: int = 0) -> RunSettings:
         gate_slots=MachineSlots(
             root / "locks" / "heavy-build", HEAVY_SLOTS["build"], poll_seconds=0.05
         ),
+        run_slots=MachineSlots(
+            root / "locks" / "heavy-run", HEAVY_SLOTS["run"], poll_seconds=0.05
+        ),
         memory=ReservationLedger(
             root / "locks",
             0,
@@ -425,6 +428,54 @@ def _admission_checks(check: Check, root: Path) -> int:
         slow_result.verdict is Verdict.TIMEOUT and slow_result.reason is Reason.GATE,
     )
 
+    run_slots = MachineSlots(root / "locks" / "heavy-run", HEAVY_SLOTS["run"])
+    run_holders = [run_slots.try_acquire() for _ in range(HEAVY_SLOTS["run"])]
+    game_ran = root / "game-ran.txt"
+    game = job(
+        repo,
+        "heavy-game",
+        "write h.txt x",
+        (PY, "-c", f"open({str(game_ran)!r}, 'w')"),
+        heavy_gate=True,
+        mem_mib=8,
+        run_slot=True,
+        gate_timeout=1.0,
+    )
+    build_only = job(
+        repo,
+        "heavy-build-only",
+        "write h.txt x",
+        (PY, "-c", "pass"),
+        heavy_gate=True,
+        mem_mib=8,
+        gate_timeout=1.0,
+    )
+
+    def release_run_holders() -> None:
+        time.sleep(2.0)
+        for holder in run_holders:
+            assert holder is not None
+            holder.release()
+
+    releaser = threading.Thread(target=release_run_holders)
+    releaser.start()
+    gated = {
+        r.id: r
+        for r in run_jobs([game, build_only], "heavy-run", settings(root), workers=2)
+    }
+    releaser.join()
+    fails += check(
+        "swarm: a run_slot gate waits for a run slot, then runs with its full deadline",
+        gated["heavy-game"].verdict is Verdict.ACCEPTED
+        and game_ran.exists()
+        and gated["heavy-game"].seconds > 2.0,
+    )
+    fails += check(
+        "swarm: NEGATIVE a heavy gate without run_slot ignores the run slots",
+        gated["heavy-build-only"].verdict is Verdict.ACCEPTED
+        and gated["heavy-build-only"].seconds < 2.0,
+    )
+
     # 64 MiB free, floor 0: a job whose gate needs 40 MiB fits once, never twice.
     # Its gate must run inside the job's own reservation, not wait behind it.
     entries = root / "gate-saw.json"
@@ -595,6 +646,21 @@ def _input_checks(check: Check, root: Path) -> int:
     fails += check(
         "swarm: jobs file refuses mem_mib on a gate with no heavy admission", refused
     )
+    jobs_file.write_text(json.dumps(dict(good, heavy_gate=True, run_slot=True)) + "\n")
+    fails += check(
+        "swarm: run_slot reaches a heavy gate", load_jobs(jobs_file)[0].run_slot
+    )
+    for label, record in {
+        "run_slot on a gate with no heavy admission": dict(good, run_slot=True),
+        "a non-boolean run_slot": dict(good, heavy_gate=True, run_slot="yes"),
+    }.items():
+        jobs_file.write_text(json.dumps(record) + "\n")
+        try:
+            load_jobs(jobs_file)
+            refused = False
+        except JobFileError:
+            refused = True
+        fails += check(f"swarm: jobs file refuses {label}", refused)
 
     unignored = make_repo(root / "plain", ignore_scratch=False)
     try:
