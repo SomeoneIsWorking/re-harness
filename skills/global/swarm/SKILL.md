@@ -70,6 +70,10 @@ One JSON object per line:
   count. Neither counts time a unit spent paused for memory pressure.
 - **`mem_mib`** (optional, whole MiB, `heavy_gate` only) is the peak this job's gate may grow
   into (default: a `build`'s 3072 MiB).
+- **`run_slot`** (optional, `heavy_gate` only): the gate starts one game, browser or bot instance,
+  so the runner also holds one of the machine's `run` slots while it runs (build slot first, then
+  run). Do not call `heavy.py` from inside a swarm gate: the job's one reservation already covers the
+  gate's whole group, and a nested request queues behind requests that may be waiting on it.
 - **A prompt is a file, not an argument.** The runner writes it to `<id>/prompt-<n>.md` and the
   backend attaches it (`-f` for opencode, `@` for pi), because Linux caps one argv string at
   128 KiB and a long task plus gate feedback exceeds that. Retries reuse the same path with the

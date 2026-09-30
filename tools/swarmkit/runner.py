@@ -7,8 +7,9 @@ every process group the job starts, so the headroom the ledger keeps free covers
 both. A heavy gate therefore takes no reservation of its own: a second one was
 refused by the job's own idle worker entry, and the job waited on itself.
 
-A heavy gate is admitted here, in the runner, through the machine's build slots,
-and its ``gate_timeout`` starts only once it holds one. Run through ``heavy.py``
+A heavy gate is admitted here, in the runner, through the machine's build slots
+(and a run slot too when it starts a game instance), and its ``gate_timeout``
+starts only once it holds them. Run through ``heavy.py``
 the admission wait sat inside the gate's deadline, so a gate queued behind other
 builds timed out without ever running.
 """
@@ -56,6 +57,7 @@ class RunSettings:
     retries: int
     slots: MachineSlots
     gate_slots: MachineSlots
+    run_slots: MachineSlots
     memory: ReservationLedger
     pressure: PressureWatcher
     reserve_mib: int
@@ -215,17 +217,27 @@ class JobRunner:
 
     @contextmanager
     def _gate_admission(self, job: Job) -> Iterator[None]:
-        """Hold one build slot around a heavy gate; a light gate needs none."""
+        """Hold a build slot, and a run slot if asked, around a heavy gate.
+
+        Always build before run: one fixed order, so two runners each holding one
+        kind can never wait on each other.
+        """
         if not job.heavy_gate:
             yield
             return
-        slots = self.settings.gate_slots
-        lease: SlotLease | None = slots.try_acquire()
+        with self._slot(job, self.settings.gate_slots, "build"):
+            if not job.run_slot:
+                yield
+                return
+            with self._slot(job, self.settings.run_slots, "run"):
+                yield
+
+    def _slot(self, job: Job, slots: MachineSlots, kind: str) -> SlotLease:
+        lease = slots.try_acquire()
         if lease is None:
-            emit(f"swarm: {job.id}: all {slots.count} build slots busy; gate waiting")
+            emit(f"swarm: {job.id}: all {slots.count} {kind} slots busy; gate waiting")
             lease = slots.acquire(self.settings.lifetime)
-        with lease:
-            yield
+        return lease
 
     @staticmethod
     def _gate_command(job: Job) -> tuple[list[str], dict[str, str] | None]:

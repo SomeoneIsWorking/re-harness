@@ -164,6 +164,9 @@ def command_run(args: argparse.Namespace) -> int:
         gate_slots=MachineSlots(
             settings_config.heavy_slot_dir("build"), config.HEAVY_SLOTS["build"]
         ),
+        run_slots=MachineSlots(
+            settings_config.heavy_slot_dir("run"), config.HEAVY_SLOTS["run"]
+        ),
         memory=memory,
         pressure=pressure,
         reserve_mib=args.mem_reserve_mib,
