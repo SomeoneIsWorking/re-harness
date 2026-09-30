@@ -28,6 +28,7 @@ from swarmkit.cleanup import CleanupRefused, remove_worktrees
 from swarmkit.config import HEAVY_SLOTS
 from swarmkit.jobs import Job, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
+from swarmkit.peaks import PeakHistory
 from swarmkit.pressure import PressureWatcher
 from swarmkit.process import ProcessOutcome, run_bounded
 from swarmkit.procs import MIB, descendants
@@ -152,6 +153,8 @@ def run_checks(check: Check, scratch: str) -> int:
         fails += _task_file_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _heavy_checks(check, Path(tmp))
+    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
+        fails += _peak_checks(check, Path(tmp))
     fails += _reaper_adoption_checks(check)
     fails += _backend_checks(check)
     return fails
@@ -1613,6 +1616,55 @@ def _reaper_adoption_checks(check: Check) -> int:
         running and bool(below) and not zombies and reaper.returncode == 0,
         f"below {below}, zombies {zombies}, still running {running}, exit {reaper.returncode}",
     )
+
+
+def _peak_checks(check: Check, root: Path) -> int:
+    """heavy.py reserves a command's measured peak once it has run, not the kind's guess."""
+    fails = 0
+    history = PeakHistory(root / "history")
+    history.record("k", 1000)
+    history.record("k", 400)
+    fails += check(
+        "peaks: an unmeasured command gets the kind's default",
+        history.reservation("unknown", 3072) == 3072,
+    )
+    fails += check(
+        "peaks: NEGATIVE a lower later peak never lowers the reservation",
+        history.reservation("k", 3072) == 1250,
+    )
+    history.record("small", 10)
+    fails += check(
+        "peaks: a tiny peak still reserves the minimum",
+        history.reservation("small", 3072) == 256,
+    )
+    locks = root / "locks"
+    repo = make_repo(root / "peaks")
+    # Prints the reservation it runs under, then holds about 120 MiB for a few samples.
+    probe = (
+        "import glob, json, time; "
+        f"print('RESERVED', [json.load(open(f))['reserve_mib'] for f in glob.glob({str(locks / 'reservations' / '*.json')!r})]); "
+        "block = bytearray(120 * 1024 * 1024); block[::4096] = b'x' * len(block[::4096]); "
+        "time.sleep(1.5)"
+    )
+    first = _heavy(locks, "--kind", "run", "--", PY, "-c", probe, cwd=repo)
+    second = _heavy(locks, "--kind", "run", "--", PY, "-c", probe, cwd=repo / ".")
+    fails += check(
+        "peaks: a command's first run reserves the kind's default",
+        "RESERVED [1536]" in first.stdout,
+        first.stdout + first.stderr,
+    )
+    learned = [
+        int(word.strip("[],"))
+        for line in second.stdout.splitlines()
+        if line.startswith("RESERVED")
+        for word in line.split()[1:]
+    ]
+    fails += check(
+        "peaks: its next run reserves the measured peak with headroom",
+        len(learned) == 1 and 150 <= learned[0] < 400,
+        second.stdout + second.stderr,
+    )
+    return fails
 
 
 def _heavy_checks(check: Check, root: Path) -> int:

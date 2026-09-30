@@ -127,7 +127,10 @@ One JSON object per line:
 - **Heavy commands** go through `heavy.py [--kind build|run] [--mem-mib N] -- <command...>` (on
   PATH). `build` (compilers, verifiers; 2 at once, each with a moderate `-j`) and `run` (one game,
   browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
-  `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. The wrapper
+  `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. Without `--mem-mib` the
+  reservation is learned: the first run of a command (kind, main checkout, argv) reserves the kind's
+  default, heavy.py samples the command tree's peak RSS, and later runs reserve the highest peak seen
+  ×1.25 (at least 256 MiB), kept in `<lock-dir>/heavy-peaks.json`. The wrapper
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
   job with `heavy_gate` runs its gate under that kind, admitted by the swarm runner itself: it
   takes one of the same slots and grows the job's one reservation from the worker's reserve to
