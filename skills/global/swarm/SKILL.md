@@ -42,7 +42,7 @@ One JSON object per line:
 ```json
 {"id": "ovr-8003a1c4", "repo": "../psxport", "prompt": "...", "files": ["src/ovr/room.cpp"],
  "gate": ["uv", "run", "--frozen", "python", "tools/check_override.py", "0x8003a1c4"],
- "heavy_gate": true, "timeout": 900, "gate_timeout": 1800}
+ "heavy_gate": "run", "timeout": 900, "gate_timeout": 1800}
 ```
 
 - **One change per job.** Name the exact file and function to edit and say what must not change.
@@ -68,12 +68,15 @@ One JSON object per line:
 - `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run
   from the moment it is admitted: time a heavy gate spends waiting for a build slot does not
   count. Neither counts time a unit spent paused for memory pressure.
+- **`heavy_gate`** (optional: `"build"` or `"run"`) names the one kind of machine-wide slot the
+  runner admits the gate on. Choose the kind that dominates the gate's time: `"build"` for
+  compiling and verifiers, `"run"` for a game, browser or bot instance, even when a short ccache
+  rebuild precedes it. A gate holds one kind only, so game runs never occupy build slots. Do not
+  call `heavy.py` from inside a swarm gate, or from a worker checking its own patch against the
+  gate: the job's one reservation already covers the gate's whole group, and a nested request
+  queues behind requests that may be waiting on it.
 - **`mem_mib`** (optional, whole MiB, `heavy_gate` only) is the peak this job's gate may grow
-  into (default: a `build`'s 3072 MiB).
-- **`run_slot`** (optional, `heavy_gate` only): the gate starts one game, browser or bot instance,
-  so the runner also holds one of the machine's `run` slots while it runs (build slot first, then
-  run). Do not call `heavy.py` from inside a swarm gate: the job's one reservation already covers the
-  gate's whole group, and a nested request queues behind requests that may be waiting on it.
+  into (default: its kind's reserve, 3072 MiB for `build`, 1536 MiB for `run`).
 - **A prompt is a file, not an argument.** The runner writes it to `<id>/prompt-<n>.md` and the
   backend attaches it (`-f` for opencode, `@` for pi), because Linux caps one argv string at
   128 KiB and a long task plus gate feedback exceeds that. Retries reuse the same path with the
@@ -117,8 +120,8 @@ One JSON object per line:
   browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
   `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. The wrapper
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
-  job with `heavy_gate: true` runs its gate as a `build`, admitted by the swarm runner itself: it
-  takes one of the same build slots and grows the job's one reservation from the worker's reserve to
+  job with `heavy_gate` runs its gate under that kind, admitted by the swarm runner itself: it
+  takes one of the same slots and grows the job's one reservation from the worker's reserve to
   the gate's peak (`mem_mib`) for the gate's duration, then shrinks it back. Growing needs headroom
   only for the increase, so the job never waits on its own entry, and the long worker phase does not
   hold the gate's peak. The gate still runs

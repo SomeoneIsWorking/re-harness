@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import HEAVY_SLOTS
+
 JOB_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 DEFAULT_GATE_TIMEOUT_SECONDS = 3600.0
 KNOWN_FIELDS = {
@@ -18,7 +20,6 @@ KNOWN_FIELDS = {
     "gate",
     "heavy_gate",
     "mem_mib",
-    "run_slot",
     "timeout",
     "gate_timeout",
 }
@@ -41,13 +42,13 @@ class Job:
     # Absolute directories outside the worktree the worker may read but not edit, e.g.
     # a gitignored generated tree or an uninitialised submodule of the main checkout.
     read_only: tuple[Path, ...] = ()
-    heavy_gate: bool = False
-    # Peak this job's heavy gate may grow into, overriding the build default. A gate
+    # The machine-wide slot kind the runner admits this job's gate on: "build" for a
+    # gate dominated by compiling, "run" for one dominated by a game, browser or bot
+    # instance. None is a light gate with no admission of its own.
+    heavy_gate: str | None = None
+    # Peak this job's heavy gate may grow into, overriding its kind's default. A gate
     # that is not heavy has no admission of its own, so it would mean nothing there.
     mem_mib: int | None = None
-    # The heavy gate runs one game, browser or bot instance, so it also holds one
-    # machine-wide run slot beside its build slot.
-    run_slot: bool = False
     gate_timeout: float = DEFAULT_GATE_TIMEOUT_SECONDS
 
 
@@ -102,22 +103,16 @@ def _parse(record: object, where: str, base: Path) -> Job:
         isinstance(r, str) and r for r in read_only
     ):
         raise JobFileError(f"{where}: read_only must be a list of paths")
-    heavy = record.get("heavy_gate", False)
-    if not isinstance(heavy, bool):
-        raise JobFileError(f"{where}: heavy_gate must be true or false")
+    heavy = record.get("heavy_gate")
+    if heavy is not None and heavy not in HEAVY_SLOTS:
+        raise JobFileError(
+            f"{where}: heavy_gate must be one of {sorted(HEAVY_SLOTS)}, got {heavy!r}"
+        )
     mem_mib = _positive_int(record, "mem_mib", where)
-    if mem_mib is not None and not heavy:
+    if mem_mib is not None and heavy is None:
         raise JobFileError(
             f"{where}: mem_mib reserves memory for a heavy gate; "
-            "set heavy_gate true or drop it"
-        )
-    run_slot = record.get("run_slot", False)
-    if not isinstance(run_slot, bool):
-        raise JobFileError(f"{where}: run_slot must be true or false")
-    if run_slot and not heavy:
-        raise JobFileError(
-            f"{where}: run_slot is taken by the runner's heavy-gate admission; "
-            "set heavy_gate true or drop it"
+            "set heavy_gate to 'build' or 'run', or drop it"
         )
     repo = (base / Path(_required(record, "repo", str, where)).expanduser()).resolve()
     readable = tuple((repo / r).resolve() for r in read_only)
@@ -134,7 +129,6 @@ def _parse(record: object, where: str, base: Path) -> Job:
         read_only=readable,
         heavy_gate=heavy,
         mem_mib=mem_mib,
-        run_slot=run_slot,
         gate_timeout=_seconds(
             record, "gate_timeout", where, DEFAULT_GATE_TIMEOUT_SECONDS
         ),

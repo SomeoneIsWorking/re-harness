@@ -77,7 +77,7 @@ def settings(root: Path, slots: int = 8, retries: int = 0) -> RunSettings:
         model="fake",
         retries=retries,
         slots=MachineSlots(root / "locks" / "slots", slots, poll_seconds=0.05),
-        gate_slots=MachineSlots(
+        build_slots=MachineSlots(
             root / "locks" / "heavy-build", HEAVY_SLOTS["build"], poll_seconds=0.05
         ),
         run_slots=MachineSlots(
@@ -415,7 +415,7 @@ def _admission_checks(check: Check, root: Path) -> int:
         "heavy",
         "write h.txt x",
         (PY, "-c", f"open({str(ran)!r}, 'w')"),
-        heavy_gate=True,
+        heavy_gate="build",
         mem_mib=8,
         gate_timeout=1.0,
     )
@@ -450,7 +450,7 @@ def _admission_checks(check: Check, root: Path) -> int:
         "heavy-slow",
         "write h.txt x",
         (PY, "-c", "import time; time.sleep(30)"),
-        heavy_gate=True,
+        heavy_gate="build",
         mem_mib=8,
         gate_timeout=0.5,
     )
@@ -460,7 +460,12 @@ def _admission_checks(check: Check, root: Path) -> int:
         slow_result.verdict is Verdict.TIMEOUT and slow_result.reason is Reason.GATE,
     )
 
+    # Every build slot and every run slot is held. A run gate must wait only for a
+    # run slot, and a build gate only for a build slot: neither may queue behind the
+    # other kind, which is how two game runs used to starve every build.
+    build_slots = MachineSlots(root / "locks" / "heavy-build", HEAVY_SLOTS["build"])
     run_slots = MachineSlots(root / "locks" / "heavy-run", HEAVY_SLOTS["run"])
+    build_holders = [build_slots.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
     run_holders = [run_slots.try_acquire() for _ in range(HEAVY_SLOTS["run"])]
     game_ran = root / "game-ran.txt"
     game = job(
@@ -468,44 +473,54 @@ def _admission_checks(check: Check, root: Path) -> int:
         "heavy-game",
         "write h.txt x",
         (PY, "-c", f"open({str(game_ran)!r}, 'w')"),
-        heavy_gate=True,
+        heavy_gate="run",
         mem_mib=8,
-        run_slot=True,
         gate_timeout=1.0,
     )
-    build_only = job(
+    compile_ran = root / "compile-ran.txt"
+    compile_job = job(
         repo,
-        "heavy-build-only",
+        "heavy-compile",
         "write h.txt x",
-        (PY, "-c", "pass"),
-        heavy_gate=True,
+        (PY, "-c", f"open({str(compile_ran)!r}, 'w')"),
+        heavy_gate="build",
         mem_mib=8,
         gate_timeout=1.0,
     )
 
-    def release_run_holders() -> None:
-        time.sleep(2.0)
-        for holder in run_holders:
+    def release(holders: list, after: float) -> None:
+        time.sleep(after)
+        for holder in holders:
             assert holder is not None
             holder.release()
 
-    releaser = threading.Thread(target=release_run_holders)
-    releaser.start()
+    releasers = [
+        threading.Thread(target=release, args=(run_holders, 2.0)),
+        threading.Thread(target=release, args=(build_holders, 4.0)),
+    ]
+    for releaser in releasers:
+        releaser.start()
     gated = {
         r.id: r
-        for r in run_jobs([game, build_only], "heavy-run", settings(root), workers=2)
+        for r in run_jobs([game, compile_job], "heavy-kinds", settings(root), workers=2)
     }
-    releaser.join()
+    for releaser in releasers:
+        releaser.join()
     fails += check(
-        "swarm: a run_slot gate waits for a run slot, then runs with its full deadline",
+        "swarm: a run gate waits for a run slot, then runs with its full deadline",
         gated["heavy-game"].verdict is Verdict.ACCEPTED
         and game_ran.exists()
-        and gated["heavy-game"].seconds > 2.0,
+        and 2.0 < gated["heavy-game"].seconds < 4.0,
     )
     fails += check(
-        "swarm: NEGATIVE a heavy gate without run_slot ignores the run slots",
-        gated["heavy-build-only"].verdict is Verdict.ACCEPTED
-        and gated["heavy-build-only"].seconds < 2.0,
+        "swarm: NEGATIVE a run gate does not wait for a build slot",
+        gated["heavy-game"].seconds < 4.0,
+    )
+    fails += check(
+        "swarm: a build gate waits for a build slot, not a run slot",
+        gated["heavy-compile"].verdict is Verdict.ACCEPTED
+        and compile_ran.exists()
+        and gated["heavy-compile"].seconds > 4.0,
     )
 
     # 64 MiB free, floor 0: a job whose gate needs 40 MiB fits once, never twice.
@@ -524,7 +539,7 @@ def _admission_checks(check: Check, root: Path) -> int:
         "heavy-sized",
         f"ledger {root / 'locks' / 'reservations'} {worker_saw}",
         (PY, "-c", census),
-        heavy_gate=True,
+        heavy_gate="build",
         mem_mib=40,
         timeout=5.0,
         gate_timeout=5.0,
@@ -657,7 +672,7 @@ def _input_checks(check: Check, root: Path) -> int:
         refused = True
     fails += check("swarm: jobs file refuses a read_only directory that does not exist", refused)
 
-    jobs_file.write_text(json.dumps(dict(good, heavy_gate=True, mem_mib=4096)) + "\n")
+    jobs_file.write_text(json.dumps(dict(good, heavy_gate="build", mem_mib=4096)) + "\n")
     fails += check(
         "swarm: mem_mib is a whole number of MiB that reaches the heavy gate",
         load_jobs(jobs_file)[0].mem_mib == 4096,
@@ -670,7 +685,7 @@ def _input_checks(check: Check, root: Path) -> int:
     }
     for label, value in mem_cases.items():
         jobs_file.write_text(
-            json.dumps(dict(good, heavy_gate=True, mem_mib=value)) + "\n"
+            json.dumps(dict(good, heavy_gate="build", mem_mib=value)) + "\n"
         )
         try:
             load_jobs(jobs_file)
@@ -687,13 +702,20 @@ def _input_checks(check: Check, root: Path) -> int:
     fails += check(
         "swarm: jobs file refuses mem_mib on a gate with no heavy admission", refused
     )
-    jobs_file.write_text(json.dumps(dict(good, heavy_gate=True, run_slot=True)) + "\n")
+    for kind in ("build", "run"):
+        jobs_file.write_text(json.dumps(dict(good, heavy_gate=kind)) + "\n")
+        fails += check(
+            f"swarm: heavy_gate {kind!r} reaches the job",
+            load_jobs(jobs_file)[0].heavy_gate == kind,
+        )
+    jobs_file.write_text(json.dumps(good) + "\n")
     fails += check(
-        "swarm: run_slot reaches a heavy gate", load_jobs(jobs_file)[0].run_slot
+        "swarm: a gate without heavy_gate is light", load_jobs(jobs_file)[0].heavy_gate is None
     )
     for label, record in {
-        "run_slot on a gate with no heavy admission": dict(good, run_slot=True),
-        "a non-boolean run_slot": dict(good, heavy_gate=True, run_slot="yes"),
+        "a boolean heavy_gate": dict(good, heavy_gate=True),
+        "an unknown heavy_gate kind": dict(good, heavy_gate="game"),
+        "the retired run_slot field": dict(good, heavy_gate="run", run_slot=True),
     }.items():
         jobs_file.write_text(json.dumps(record) + "\n")
         try:

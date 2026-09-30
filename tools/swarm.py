@@ -161,7 +161,7 @@ def command_run(args: argparse.Namespace) -> int:
         model=args.model,
         retries=args.retries,
         slots=MachineSlots(settings_config.slot_dir, settings_config.slots),
-        gate_slots=MachineSlots(
+        build_slots=MachineSlots(
             settings_config.heavy_slot_dir("build"), config.HEAVY_SLOTS["build"]
         ),
         run_slots=MachineSlots(
