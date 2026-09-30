@@ -508,8 +508,10 @@ def _admission_checks(check: Check, root: Path) -> int:
     )
 
     # 64 MiB free, floor 0: a job whose gate needs 40 MiB fits once, never twice.
-    # Its gate must run inside the job's own reservation, not wait behind it.
+    # Its gate must run inside the job's own reservation, not wait behind it, and the
+    # worker phase must hold only the worker's reserve (1 MiB in these settings).
     entries = root / "gate-saw.json"
+    worker_saw = root / "worker-saw.json"
     census = (
         "import json, pathlib, sys; "
         f"d = pathlib.Path({str(root / 'locks' / 'reservations')!r}); "
@@ -519,7 +521,7 @@ def _admission_checks(check: Check, root: Path) -> int:
     sized = job(
         repo,
         "heavy-sized",
-        "write h.txt x",
+        f"ledger {root / 'locks' / 'reservations'} {worker_saw}",
         (PY, "-c", census),
         heavy_gate=True,
         mem_mib=40,
@@ -528,10 +530,17 @@ def _admission_checks(check: Check, root: Path) -> int:
     )
     (sized_result,) = run_jobs([sized], "heavy-sized", settings(root), workers=1)
     rows = json.loads(entries.read_text()) if entries.exists() else []
+    worker_rows = json.loads(worker_saw.read_text()) if worker_saw.exists() else []
     fails += check(
-        "swarm: a heavy gate runs inside its job's one reservation, sized for the larger peak",
+        "swarm: a heavy gate grows its job's one reservation to the gate's peak",
         sized_result.verdict is Verdict.ACCEPTED
         and [row["reserve_mib"] for row in rows] == [40],
+        f"gate saw {rows}",
+    )
+    fails += check(
+        "swarm: NEGATIVE the worker phase does not hold the gate's peak",
+        worker_rows == [1],
+        f"worker saw {worker_rows}",
     )
     return fails
 

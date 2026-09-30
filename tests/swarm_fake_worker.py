@@ -15,6 +15,7 @@ overlap <eventfile> <sec>    append start/end stamps around a sleep, then write 
 noop                         change nothing
 envpwd                       write pwd.txt under $PWD (must be the worktree)
 attached                     write attached.txt naming whether every attachment is absolute and in cwd
+ledger <dir> <out>           write the reserve_mib of every entry in <dir> to <out> as JSON, then h.txt
 say <anything>               copy the whole task file to task.txt, so its size can be checked
 """
 
@@ -80,6 +81,14 @@ elif action == "attached":
     )
     with open("attached.txt", "w", encoding="utf-8") as out:
         out.write(("ok" if fine else "bad " + " ".join(attached)) + "\n")
+elif action == "ledger":
+    import json
+    import pathlib
+
+    rows = [json.loads(p.read_text()) for p in pathlib.Path(words[1]).glob("*.json")]
+    pathlib.Path(words[2]).write_text(json.dumps([row["reserve_mib"] for row in rows]))
+    with open("h.txt", "w", encoding="utf-8") as out:
+        out.write("x\n")
 elif action == "say":
     with open("task.txt", "w", encoding="utf-8") as out:
         out.write(prompt)

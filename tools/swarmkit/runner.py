@@ -2,10 +2,12 @@
 
 Each job runs under two machine-wide claims: a slot (how many) and a memory
 reservation (how much it may still grow into). The reservation is taken once for
-the job, sized for the larger of the worker's and the gate's peak, and attached to
-every process group the job starts, so the headroom the ledger keeps free covers
-both. A heavy gate therefore takes no reservation of its own: a second one was
-refused by the job's own idle worker entry, and the job waited on itself.
+the job at the worker's peak and attached to every process group the job starts.
+A heavy gate grows that same reservation to its own peak when it is admitted and
+shrinks it back afterwards. Holding the gate's peak for the whole job left 7 GiB
+reserved by workers using 40 MiB each and the host idle; a second, separate gate
+reservation was refused by the job's own worker entry, so the job waited on
+itself. Growing needs headroom only for the increase, so neither can recur.
 
 A heavy gate is admitted here, in the runner, through the machine's build slots
 (and a run slot too when it starts a game instance), and its ``gate_timeout``
@@ -79,7 +81,7 @@ class JobRunner:
         with (
             self.settings.slots.acquire(self.settings.lifetime),
             self.settings.memory.acquire(
-                self.settings.lifetime, self._reserve_mib(job), "swarm"
+                self.settings.lifetime, self.settings.reserve_mib, "swarm"
             ) as reservation,
         ):
             result = self._run_in_slot(job, job_dir, reservation)
@@ -90,13 +92,6 @@ class JobRunner:
             + (f" ({result.reason.value})" if result.reason else "")
         )
         return result
-
-    def _reserve_mib(self, job: Job) -> int:
-        """The job's one reservation: its worker's peak or its heavy gate's, whichever is larger."""
-        if not job.heavy_gate:
-            return self.settings.reserve_mib
-        gate_mib = job.mem_mib or config.HEAVY_RESERVE_MIB["build"]
-        return max(self.settings.reserve_mib, gate_mib)
 
     def _run_in_slot(
         self, job: Job, job_dir: Path, reservation: Reservation
@@ -188,7 +183,7 @@ class JobRunner:
         (job_dir / PATCH_FILE).write_text(patch, encoding="utf-8")
         if not changed:
             return verdict(Verdict.REJECTED, Reason.EMPTY_PATCH, worker_returncode=0)
-        with self._gate_admission(job):
+        with self._gate_admission(job, reservation):
             gate = run_bounded(
                 job.gate,
                 tree.path,
@@ -214,21 +209,35 @@ class JobRunner:
         )
 
     @contextmanager
-    def _gate_admission(self, job: Job) -> Iterator[None]:
-        """Hold a build slot, and a run slot if asked, around a heavy gate.
+    def _gate_admission(self, job: Job, reservation: Reservation) -> Iterator[None]:
+        """Hold a build slot, a run slot if asked, and the gate's peak around a heavy gate.
 
-        Always build before run: one fixed order, so two runners each holding one
-        kind can never wait on each other.
+        Always build before run, then memory: one fixed order, so two runners each
+        holding one kind can never wait on each other.
         """
         if not job.heavy_gate:
             yield
             return
         with self._slot(job, self.settings.gate_slots, "build"):
             if not job.run_slot:
-                yield
+                with self._gate_memory(job, reservation):
+                    yield
                 return
             with self._slot(job, self.settings.run_slots, "run"):
-                yield
+                with self._gate_memory(job, reservation):
+                    yield
+
+    @contextmanager
+    def _gate_memory(self, job: Job, reservation: Reservation) -> Iterator[None]:
+        """Grow the job's reservation to its gate's peak; shrink it back afterwards."""
+        worker_mib = reservation.reserve_mib
+        gate_mib = max(worker_mib, job.mem_mib or config.HEAVY_RESERVE_MIB["build"])
+        memory = self.settings.memory
+        memory.resize(self.settings.lifetime, reservation, gate_mib)
+        try:
+            yield
+        finally:
+            memory.try_resize(reservation, worker_mib)
 
     def _slot(self, job: Job, slots: MachineSlots, kind: str) -> SlotLease:
         lease = slots.try_acquire()
