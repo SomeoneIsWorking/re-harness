@@ -43,6 +43,17 @@ def run_directory(repo: Path, run_name: str) -> Path:
     return root / relative
 
 
+def ccache_environment(root: Path) -> dict[str, str]:
+    """Point ccache at ``root``, so a compile hits entries another checkout made.
+
+    Every job and agent builds the same sources in its own worktree, and CMake passes
+    them by absolute path. Without a base directory ccache keys each worktree's
+    compiles on its own path: a fresh worktree's first build compiled every unit cold
+    and filled the cache with entries no other worktree could use.
+    """
+    return {"CCACHE_BASEDIR": str(root), "CCACHE_NOHASHDIR": "1"}
+
+
 def registered_worktrees(repo: Path) -> set[Path]:
     listing = git(repo, "worktree", "list", "--porcelain")
     return {
@@ -78,14 +89,7 @@ class Worktree:
         return cls(repo, path, base_file.read_text(encoding="utf-8").strip())
 
     def cache_environment(self) -> dict[str, str]:
-        """Point ccache at this worktree, so a compile hits entries another worktree made.
-
-        Every job builds the same sources in its own worktree, and CMake passes them by
-        absolute path. Without a base directory ccache keys each worktree's compiles on
-        its own path: a fresh job's first build compiled every unit cold and filled the
-        cache with entries no other job could use.
-        """
-        return {"CCACHE_BASEDIR": str(self.path), "CCACHE_NOHASHDIR": "1"}
+        return ccache_environment(self.path)
 
     def capture_patch(self) -> tuple[str, list[str]]:
         """Everything the worker changed since ``base`` (commits, edits, untracked) as a patch.

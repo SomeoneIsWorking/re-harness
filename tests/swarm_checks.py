@@ -1421,7 +1421,11 @@ SLEEPER = (
 
 
 def _heavy(
-    locks: Path, *argv: str, timeout: float = 20.0
+    locks: Path,
+    *argv: str,
+    timeout: float = 20.0,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [PY, str(HEAVY_CLI), "--lock-dir", str(locks), *argv],
@@ -1429,6 +1433,8 @@ def _heavy(
         text=True,
         timeout=timeout,
         check=False,
+        cwd=cwd,
+        env=env,
     )
 
 
@@ -1623,6 +1629,33 @@ def _heavy_checks(check: Check, root: Path) -> int:
     fails += check(
         "heavy: NEGATIVE a --mem-mib of zero is refused",
         _heavy(locks, "--mem-mib", "0", "--", PY, "-c", "pass").returncode == 2,
+    )
+    repo = make_repo(root / "ccache")
+    nested = repo / "sub"
+    nested.mkdir()
+    show = (PY, "-c", "import os; print('BASEDIR=' + os.environ.get('CCACHE_BASEDIR', ''))")
+    inside = _heavy(locks, "--kind", "run", "--", *show, cwd=nested)
+    # The scratch root itself sits inside a checkout; stop git's search above it.
+    bare = root / "no-repo"
+    bare.mkdir()
+    outside = _heavy(
+        locks,
+        "--kind",
+        "run",
+        "--",
+        *show,
+        cwd=bare,
+        env=dict(os.environ, GIT_CEILING_DIRECTORIES=str(root)),
+    )
+    fails += check(
+        "heavy: a command in a git checkout shares ccache from the checkout's root",
+        f"BASEDIR={repo.resolve()}" in inside.stdout,
+        inside.stdout + inside.stderr,
+    )
+    fails += check(
+        "heavy: NEGATIVE outside a git checkout no ccache base is invented",
+        "BASEDIR=\n" in outside.stdout,
+        outside.stdout + outside.stderr,
     )
     fails += check(
         "heavy: --mem-mib reserves for the command and is released when it ends",
