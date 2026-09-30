@@ -8,57 +8,18 @@ environment.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_MODEL = "opencode/space-bunny-free"
-DEFAULT_SLOTS = 24
 DEFAULT_WORKERS = 8
-# The floor is headroom kept on top of every outstanding reservation. It need not
-# exceed the pressure watcher's pause threshold, which is the backstop if the
-# reservations were too small: at 2-3 GiB the host sat idle (load 2.5 on 16
-# cores, 7.8 GiB available) while two build slots waited on memory for 28 min.
-DEFAULT_MEMORY_FLOOR_MIB = 1024
-# Peak a unit may still grow into, reserved with the machine at admission time. A
-# free-model worker runs a private model server and edits a build tree; a gate
-# build compiles the whole project; a game, browser or bot instance holds a
-# window, a scene graph and a decoder.
-# Measured 2026-09-30: nine live opencode worker groups held 81-88 MiB each.
-SWARM_RESERVE_MIB = 256
-HEAVY_RESERVE_MIB = {"build": 3072, "run": 1536}
-# Concurrent heavy commands per kind on the shared 16-core / 15 GB workstation. A build
-# uses at most -j 4, so four fill the cores; a run is one game, browser, Ghidra or bot
-# instance. Memory is admitted separately (reservations and HEAVY_MEMORY_FLOOR_MIB), so
-# the slots bound CPU only. Two build slots left 15 builds queued behind two hour-long
-# verifiers at load 4 of 16 on 2026-09-30.
-HEAVY_SLOTS = {"build": 4, "run": 4}
-HEAVY_MEMORY_FLOOR_MIB = DEFAULT_MEMORY_FLOOR_MIB
-# Below PRESSURE_PAUSE_MIB the watcher pauses the newest unit it owns; above
+# The kinds a unit is registered as, for the guard's and the watchdog's reports.
+UNIT_KINDS = ("build", "run", "swarm")
+# Below PRESSURE_PAUSE_MIB the guard pauses the newest running unit; above
 # PRESSURE_RESUME_MIB the paused ones are resumed. The gap is the hysteresis that
 # stops a host hovering at the threshold from pausing and resuming forever.
 PRESSURE_PAUSE_MIB = 1024
 PRESSURE_RESUME_MIB = 2560
 LOCK_DIR_VARIABLE = "SWARM_LOCK_DIR"
-
-
-@dataclass(frozen=True)
-class SwarmConfig:
-    """Machine-wide coordination paths and limits shared by every swarm invocation."""
-
-    lock_dir: Path
-    slots: int = DEFAULT_SLOTS
-    memory_floor_mib: int = DEFAULT_MEMORY_FLOOR_MIB
-
-    @property
-    def slot_dir(self) -> Path:
-        return self.lock_dir / "swarm-slots"
-
-    def heavy_slot_dir(self, kind: str) -> Path:
-        if kind not in HEAVY_SLOTS:
-            raise ValueError(
-                f"unknown heavy kind {kind!r}; expected one of {sorted(HEAVY_SLOTS)}"
-            )
-        return self.lock_dir / f"heavy-{kind}"
 
 
 def default_lock_dir() -> Path:
@@ -67,3 +28,8 @@ def default_lock_dir() -> Path:
     if configured:
         return Path(configured).expanduser()
     return Path.home() / "repo" / "scratch" / "locks"
+
+
+def guard_heartbeat(lock_dir: Path) -> Path:
+    """The file the pressure guard touches every poll; its age tells whether it runs."""
+    return lock_dir / "guard" / "heartbeat"

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Run one heavy command under machine-wide admission (a slot, a memory reservation, a floor).
+"""Run one heavy command at once, as a unit the pressure guard can pause under real memory pressure.
 
-    heavy.py [--kind build|run] [--lock-dir DIR] [--mem-mib N] -- <command> [args...]
+    heavy.py [--kind build|run] [--lock-dir DIR] -- <command> [args...]
 
-``build`` is a compiler or verifier run (a few at once, each with a moderate -j);
-``run`` is one game, browser, Ghidra or bot instance. The exit status is the
-command's. See skills/global/swarm/SKILL.md, "Slots, heavy gates, and memory".
+``build`` is a compiler or verifier run; ``run`` is one game, browser, Ghidra or
+bot instance. Nothing is queued: the command starts immediately, runs under the
+reaper so its whole subtree ends with it, and is registered so that
+``pressure_guard.py`` can pause it if the host runs out of memory. The exit
+status is the command's. See skills/global/swarm/SKILL.md, "Memory".
 """
 
 from __future__ import annotations
@@ -15,93 +17,33 @@ import sys
 from pathlib import Path
 
 if not sys.platform.startswith("linux"):
-    sys.exit("heavy: refused: Linux-only (flock slots, /proc/meminfo floor)")
+    sys.exit("heavy: refused: Linux-only (process groups, subreaper)")
 
 from swarmkit import config
-from swarmkit.admission import MachineSlots
-from swarmkit.console import emit
-from swarmkit.heavy import HeavyAdmission, run_admitted
+from swarmkit.heavy import run_unit
 from swarmkit.lifetime import RunLifetime
-from swarmkit.peaks import PeakHistory, command_key
-from swarmkit.pressure import PressureWatcher
-from swarmkit.procs import MIB
-from swarmkit.reservations import ReservationLedger
-from swarmkit.worktree import WorktreeError, main_checkout
+from swarmkit.units import UnitRegistry
 
 
 def parse(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="heavy.py", description=__doc__.splitlines()[0]
     )
-    parser.add_argument("--kind", choices=sorted(config.HEAVY_SLOTS), default="build")
+    parser.add_argument("--kind", choices=("build", "run"), default="build")
     parser.add_argument("--lock-dir", type=Path, default=None)
-    parser.add_argument(
-        "--mem-mib",
-        type=int,
-        default=None,
-        help="peak this command may grow into (default: its measured peak with "
-        "headroom, or the kind's reservation until it has been measured)",
-    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if args.command[:1] == ["--"]:
         args.command = args.command[1:]
     if not args.command:
         parser.error("no command given (use: heavy.py [--kind K] -- <command> ...)")
-    if args.mem_mib is not None and args.mem_mib < 1:
-        parser.error("--mem-mib must be a positive whole number of MiB")
     return args
 
 
 def main(argv: list[str]) -> int:
     args = parse(argv)
-    settings = config.SwarmConfig(
-        lock_dir=(args.lock_dir or config.default_lock_dir()).resolve()
-    )
-    count = config.HEAVY_SLOTS[args.kind]
-    floor_mib = config.HEAVY_MEMORY_FLOOR_MIB
-    peaks = PeakHistory(settings.lock_dir)
-    key = command_key(args.kind, _checkout(), args.command)
-    reserve_mib = args.mem_mib or peaks.reservation(key, config.HEAVY_RESERVE_MIB[args.kind])
-    memory = ReservationLedger(
-        settings.lock_dir,
-        floor_mib,
-        on_wait=lambda free, held, ahead: emit(
-            f"heavy: waiting behind {ahead} earlier request(s), MemAvailable "
-            f"{free // MIB} MiB - reserved {held} MiB < {floor_mib} MiB"
-        ),
-    )
-    pressure = PressureWatcher(
-        config.PRESSURE_PAUSE_MIB,
-        config.PRESSURE_RESUME_MIB,
-        on_event=emit,
-    )
-    admission = HeavyAdmission(
-        slots=MachineSlots(settings.heavy_slot_dir(args.kind), count),
-        memory=memory,
-        reserve_mib=reserve_mib,
-        kind=args.kind,
-        pressure=pressure,
-    )
-    pressure.start()
-    try:
-        return run_admitted(
-            admission,
-            args.command,
-            RunLifetime(),
-            on_wait=lambda: emit(f"heavy: all {count} {args.kind} slots busy; waiting"),
-            on_peak=lambda peak_mib: peaks.record(key, peak_mib),
-        )
-    finally:
-        pressure.stop()
-
-
-def _checkout() -> Path:
-    """The cwd's main checkout: one command run from any worktree or subdirectory is one command."""
-    try:
-        return main_checkout(Path.cwd())
-    except WorktreeError:
-        return Path.cwd().resolve()
+    lock_dir = (args.lock_dir or config.default_lock_dir()).resolve()
+    return run_unit(UnitRegistry(lock_dir), args.kind, args.command, RunLifetime())
 
 
 if __name__ == "__main__":

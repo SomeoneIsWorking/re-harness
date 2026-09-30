@@ -21,21 +21,18 @@ HERE = Path(__file__).resolve().parent
 FAKE_WORKER = HERE / "swarm_fake_worker.py"
 sys.path.insert(0, str(HERE.parent / "tools"))
 
-from swarmkit.admission import MachineSlots
 from swarmkit.apply import ApplyRefused, apply_accepted
 from swarmkit.backends import BACKENDS, PROMPT_ATTACHED
 from swarmkit.cleanup import CleanupRefused, remove_worktrees
-from swarmkit.config import HEAVY_SLOTS
 from swarmkit.jobs import Job, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
-from swarmkit.peaks import PeakHistory
-from swarmkit.pressure import PressureWatcher
+from swarmkit.pressure import PressureGuard
 from swarmkit.process import ProcessOutcome, run_bounded
 from swarmkit.procs import MIB, descendants
 from swarmkit.report import summarize
-from swarmkit.reservations import ReservationLedger
 from swarmkit.results import JobResult, Reason, Verdict
 from swarmkit.runner import RunSettings, run_jobs
+from swarmkit.units import UnitRegistry
 from swarmkit.worktree import Worktree, WorktreeError, registered_worktrees
 
 Check = Callable[..., int]
@@ -45,9 +42,7 @@ PY = sys.executable
 class FakeBackend:
     name = "fake"
 
-    def command(
-        self, task_file: Path, files: Sequence[str], model: str
-    ) -> list[str]:
+    def command(self, task_file: Path, files: Sequence[str], model: str) -> list[str]:
         return [PY, str(FAKE_WORKER), str(task_file), *files]
 
     def environment(self, read_only: Sequence[Path]) -> dict[str, str]:
@@ -72,27 +67,12 @@ def make_repo(root: Path, ignore_scratch: bool = True) -> Path:
     return repo
 
 
-def settings(root: Path, slots: int = 8, retries: int = 0) -> RunSettings:
+def settings(root: Path, retries: int = 0) -> RunSettings:
     return RunSettings(
         backend=FakeBackend(),
         model="fake",
         retries=retries,
-        slots=MachineSlots(root / "locks" / "slots", slots, poll_seconds=0.05),
-        build_slots=MachineSlots(
-            root / "locks" / "heavy-build", HEAVY_SLOTS["build"], poll_seconds=0.05
-        ),
-        run_slots=MachineSlots(
-            root / "locks" / "heavy-run", HEAVY_SLOTS["run"], poll_seconds=0.05
-        ),
-        memory=ReservationLedger(
-            root / "locks",
-            0,
-            reader=lambda: 64 * MIB,
-            rss_reader=lambda groups: {group: 0 for group in groups},
-            poll_seconds=0.05,
-        ),
-        pressure=PressureWatcher(0, 0, reader=lambda: 64 * MIB),
-        reserve_mib=1,
+        units=UnitRegistry(root / "locks"),
         lifetime=RunLifetime(),
     )
 
@@ -134,17 +114,13 @@ def run_checks(check: Check, scratch: str) -> int:
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _verdict_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
-        fails += _admission_checks(check, Path(tmp))
+        fails += _unit_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _interrupt_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _resume_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _input_checks(check, Path(tmp))
-    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
-        fails += _reservation_checks(check, Path(tmp))
-    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
-        fails += _fifo_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _pressure_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
@@ -153,8 +129,6 @@ def run_checks(check: Check, scratch: str) -> int:
         fails += _task_file_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _heavy_checks(check, Path(tmp))
-    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
-        fails += _peak_checks(check, Path(tmp))
     fails += _reaper_adoption_checks(check)
     fails += _backend_checks(check)
     return fails
@@ -177,7 +151,12 @@ def _verdict_checks(check: Check, root: Path) -> int:
         ),
         job(repo, "timeout", f"orphan {pidfile}", gate_file_is("x", "x"), timeout=1.0),
         job(repo, "worker-fail", "fail 5", gate_file_is("x", "x")),
-        job(repo, "worker-fail-changed", "fail 1 w.txt done", gate_file_is("w.txt", "done")),
+        job(
+            repo,
+            "worker-fail-changed",
+            "fail 1 w.txt done",
+            gate_file_is("w.txt", "done"),
+        ),
         job(repo, "empty", "noop", (PY, "-c", "pass")),
         job(
             repo,
@@ -402,7 +381,8 @@ def _verdict_checks(check: Check, root: Path) -> int:
     return fails
 
 
-def _admission_checks(check: Check, root: Path) -> int:
+def _unit_checks(check: Check, root: Path) -> int:
+    """Nothing is admitted or queued; every running worker and gate is a registered unit."""
     fails = 0
     repo = make_repo(root)
     events = root / "events.txt"
@@ -410,7 +390,7 @@ def _admission_checks(check: Check, root: Path) -> int:
         job(repo, f"j{i}", f"overlap {events} 0.4", (PY, "-c", "pass"))
         for i in range(6)
     ]
-    run_jobs(jobs, "cap", settings(root, slots=2), workers=6)
+    run_jobs(jobs, "wide", settings(root), workers=6)
     stamps = sorted(
         (float(t), 1 if s == "+" else -1)
         for s, t in (line.split() for line in events.read_text().splitlines())
@@ -420,172 +400,49 @@ def _admission_checks(check: Check, root: Path) -> int:
         level += delta
         peak = max(peak, level)
     fails += check(
-        "swarm: machine slots cap concurrency (6 jobs, 6 workers, 2 slots)",
-        peak == 2,
+        "swarm: every requested worker runs at once (6 jobs, 6 workers, no machine cap)",
+        peak == 6,
         f"peak {peak}",
     )
 
-    slots = MachineSlots(root / "held", 2)
-    first, second = slots.try_acquire(), slots.try_acquire()
-    third = slots.try_acquire()
-    fails += check(
-        "swarm: a full slot set admits nobody", first and second and third is None
+    units = root / "locks" / "units"
+    worker_saw = root / "worker-units.json"
+    gate_saw = root / "gate-units.json"
+    census = (
+        "import json, os, pathlib; "
+        f"rows = [json.loads(p.read_text()) for p in pathlib.Path({str(units)!r}).glob('*.json')]; "
+        f"pathlib.Path({str(gate_saw)!r}).write_text(json.dumps([rows, os.getpgrp()]))"
     )
-    assert first is not None
-    first.release()
-    fourth = slots.try_acquire()
-    fails += check("swarm: a released slot is reusable", fourth is not None)
-
-    build_slots = MachineSlots(root / "locks" / "heavy-build", HEAVY_SLOTS["build"])
-    holders = [build_slots.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
-    ran = root / "heavy-ran.txt"
-    heavy = job(
-        repo,
-        "heavy",
-        "write h.txt x",
-        (PY, "-c", f"open({str(ran)!r}, 'w')"),
-        heavy_gate="build",
-        mem_mib=8,
-        gate_timeout=1.0,
-    )
-    light = job(repo, "light", "write h.txt x", (PY, "-c", "pass"), gate_timeout=1.0)
-
-    def release_holders() -> None:
-        # Held well past the heavy gate's whole deadline: time spent waiting for
-        # admission must not count against it.
-        time.sleep(2.5)
-        for holder in holders:
-            assert holder is not None
-            holder.release()
-
-    releaser = threading.Thread(target=release_holders)
-    releaser.start()
-    held = {
-        r.id: r for r in run_jobs([heavy, light], "heavy", settings(root), workers=2)
-    }
-    releaser.join()
-    fails += check(
-        "swarm: a heavy gate's deadline starts at admission, not while it waits for a slot",
-        held["heavy"].verdict is Verdict.ACCEPTED
-        and ran.exists()
-        and held["heavy"].seconds > 2.5,
+    counted = job(repo, "units", f"units {units} {worker_saw}", (PY, "-c", census))
+    (counted_result,) = run_jobs([counted], "units", settings(root), workers=1)
+    worker_rows = json.loads(worker_saw.read_text()) if worker_saw.exists() else None
+    gate_rows, gate_group = (
+        json.loads(gate_saw.read_text()) if gate_saw.exists() else ([], -1)
     )
     fails += check(
-        "swarm: a light gate ignores the build slots",
-        held["light"].verdict is Verdict.ACCEPTED and held["light"].seconds < 2.5,
+        "swarm: a running worker and a running gate are each registered as a unit",
+        counted_result.verdict is Verdict.ACCEPTED
+        and worker_rows is not None
+        and len(worker_rows) == 1
+        and [row["group"] for row in gate_rows] == [gate_group],
+        f"worker saw {worker_rows}, gate saw {gate_rows} in group {gate_group}",
+    )
+    fails += check(
+        "swarm: NEGATIVE a finished job leaves no unit behind",
+        not list(units.glob("*.json")),
+        f"{sorted(p.name for p in units.glob('*.json'))}",
     )
     slow = job(
         repo,
-        "heavy-slow",
+        "slow-gate",
         "write h.txt x",
         (PY, "-c", "import time; time.sleep(30)"),
-        heavy_gate="build",
-        mem_mib=8,
         gate_timeout=0.5,
     )
-    (slow_result,) = run_jobs([slow], "heavy-slow", settings(root), workers=1)
+    (slow_result,) = run_jobs([slow], "slow-gate", settings(root), workers=1)
     fails += check(
-        "swarm: NEGATIVE an admitted heavy gate still times out at its deadline",
+        "swarm: NEGATIVE a gate still times out at its deadline",
         slow_result.verdict is Verdict.TIMEOUT and slow_result.reason is Reason.GATE,
-    )
-
-    # Every build slot and every run slot is held. A run gate must wait only for a
-    # run slot, and a build gate only for a build slot: neither may queue behind the
-    # other kind, which is how two game runs used to starve every build.
-    build_slots = MachineSlots(root / "locks" / "heavy-build", HEAVY_SLOTS["build"])
-    run_slots = MachineSlots(root / "locks" / "heavy-run", HEAVY_SLOTS["run"])
-    build_holders = [build_slots.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
-    run_holders = [run_slots.try_acquire() for _ in range(HEAVY_SLOTS["run"])]
-    game_ran = root / "game-ran.txt"
-    game = job(
-        repo,
-        "heavy-game",
-        "write h.txt x",
-        (PY, "-c", f"open({str(game_ran)!r}, 'w')"),
-        heavy_gate="run",
-        mem_mib=8,
-        gate_timeout=1.0,
-    )
-    compile_ran = root / "compile-ran.txt"
-    compile_job = job(
-        repo,
-        "heavy-compile",
-        "write h.txt x",
-        (PY, "-c", f"open({str(compile_ran)!r}, 'w')"),
-        heavy_gate="build",
-        mem_mib=8,
-        gate_timeout=1.0,
-    )
-
-    def release(holders: list, after: float) -> None:
-        time.sleep(after)
-        for holder in holders:
-            assert holder is not None
-            holder.release()
-
-    releasers = [
-        threading.Thread(target=release, args=(run_holders, 2.0)),
-        threading.Thread(target=release, args=(build_holders, 4.0)),
-    ]
-    for releaser in releasers:
-        releaser.start()
-    gated = {
-        r.id: r
-        for r in run_jobs([game, compile_job], "heavy-kinds", settings(root), workers=2)
-    }
-    for releaser in releasers:
-        releaser.join()
-    fails += check(
-        "swarm: a run gate waits for a run slot, then runs with its full deadline",
-        gated["heavy-game"].verdict is Verdict.ACCEPTED
-        and game_ran.exists()
-        and 2.0 < gated["heavy-game"].seconds < 4.0,
-    )
-    fails += check(
-        "swarm: NEGATIVE a run gate does not wait for a build slot",
-        gated["heavy-game"].seconds < 4.0,
-    )
-    fails += check(
-        "swarm: a build gate waits for a build slot, not a run slot",
-        gated["heavy-compile"].verdict is Verdict.ACCEPTED
-        and compile_ran.exists()
-        and gated["heavy-compile"].seconds > 4.0,
-    )
-
-    # 64 MiB free, floor 0: a job whose gate needs 40 MiB fits once, never twice.
-    # Its gate must run inside the job's own reservation, not wait behind it, and the
-    # worker phase must hold only the worker's reserve (1 MiB in these settings).
-    entries = root / "gate-saw.json"
-    worker_saw = root / "worker-saw.json"
-    census = (
-        "import json, pathlib, sys; "
-        f"d = pathlib.Path({str(root / 'locks' / 'reservations')!r}); "
-        "rows = [json.loads(p.read_text()) for p in d.glob('*.json')]; "
-        f"pathlib.Path({str(entries)!r}).write_text(json.dumps(rows))"
-    )
-    sized = job(
-        repo,
-        "heavy-sized",
-        f"ledger {root / 'locks' / 'reservations'} {worker_saw}",
-        (PY, "-c", census),
-        heavy_gate="build",
-        mem_mib=40,
-        timeout=5.0,
-        gate_timeout=5.0,
-    )
-    (sized_result,) = run_jobs([sized], "heavy-sized", settings(root), workers=1)
-    rows = json.loads(entries.read_text()) if entries.exists() else []
-    worker_rows = json.loads(worker_saw.read_text()) if worker_saw.exists() else []
-    fails += check(
-        "swarm: a heavy gate grows its job's one reservation to the gate's peak",
-        sized_result.verdict is Verdict.ACCEPTED
-        and [row["reserve_mib"] for row in rows] == [40],
-        f"gate saw {rows}",
-    )
-    fails += check(
-        "swarm: NEGATIVE the worker phase does not hold the gate's peak",
-        worker_rows == [1],
-        f"worker saw {worker_rows}",
     )
     return fails
 
@@ -640,26 +497,6 @@ def _interrupt_checks(check: Check, root: Path) -> int:
         and "unfinished 1" in "\n".join(summarize(repo / "scratch/swarm/stopped")),
         repr(outcome),
     )
-
-    slots = MachineSlots(root / "full", 1, poll_seconds=0.05)
-    holder = slots.try_acquire()
-    lifetime = RunLifetime()
-    waited: list[BaseException] = []
-
-    def waiter() -> None:
-        try:
-            slots.acquire(lifetime)
-        except RunInterrupted as error:
-            waited.append(error)
-
-    thread = threading.Thread(target=waiter)
-    thread.start()
-    time.sleep(0.2)
-    lifetime.stop()
-    thread.join(timeout=5)
-    assert holder is not None
-    holder.release()
-    fails += check("swarm: a slot wait gives up when the run stops", len(waited) == 1)
     return fails
 
 
@@ -678,10 +515,14 @@ def _resume_checks(check: Check, root: Path) -> int:
     cut = job(repo, "cut", "resume c.txt", gate_file_is("c.txt", "partial\nresumed"))
     # A worker that failed without a gate verdict: its edit is in the tree.
     crashed = job(repo, "crashed", "fail 3", gate_file_is("k.txt", "partial\nresumed"))
-    (crashed_result,) = run_jobs([crashed], "resumable", settings(root), workers=1, resume=True)
+    (crashed_result,) = run_jobs(
+        [crashed], "resumable", settings(root), workers=1, resume=True
+    )
     crashed_tree = run_dir / "crashed" / "tree"
     (crashed_tree / "k.txt").write_text("partial\n", encoding="utf-8")
-    crashed = job(repo, "crashed", "resume k.txt", gate_file_is("k.txt", "partial\nresumed"))
+    crashed = job(
+        repo, "crashed", "resume k.txt", gate_file_is("k.txt", "partial\nresumed")
+    )
     new = job(repo, "new", "resume n.txt", gate_file_is("n.txt", "fresh"))
     changed = job(repo, "done", "write d.txt second", gate_file_is("d.txt", "second"))
 
@@ -690,12 +531,18 @@ def _resume_checks(check: Check, root: Path) -> int:
         refused = False
     except FileExistsError:
         refused = True
-    fails += check("swarm: NEGATIVE an existing run name is refused without --resume", refused)
+    fails += check(
+        "swarm: NEGATIVE an existing run name is refused without --resume", refused
+    )
 
     results = {
         r.id: r
         for r in run_jobs(
-            [changed, cut, new, crashed], "resumable", settings(root), workers=4, resume=True
+            [changed, cut, new, crashed],
+            "resumable",
+            settings(root),
+            workers=4,
+            resume=True,
         )
     }
     fails += check(
@@ -758,60 +605,20 @@ def _input_checks(check: Check, root: Path) -> int:
         refused = False
     except JobFileError:
         refused = True
-    fails += check("swarm: jobs file refuses a read_only directory that does not exist", refused)
+    fails += check(
+        "swarm: jobs file refuses a read_only directory that does not exist", refused
+    )
 
-    jobs_file.write_text(json.dumps(dict(good, heavy_gate="build", mem_mib=4096)) + "\n")
-    fails += check(
-        "swarm: mem_mib is a whole number of MiB that reaches the heavy gate",
-        load_jobs(jobs_file)[0].mem_mib == 4096,
-    )
-    mem_cases = {
-        "zero mem_mib": 0,
-        "negative mem_mib": -8,
-        "fractional mem_mib": 512.0,
-        "text mem_mib": "512",
-    }
-    for label, value in mem_cases.items():
-        jobs_file.write_text(
-            json.dumps(dict(good, heavy_gate="build", mem_mib=value)) + "\n"
-        )
+    for field in ("heavy_gate", "mem_mib", "run_slot"):
+        jobs_file.write_text(json.dumps(dict(good, **{field: "build"})) + "\n")
         try:
             load_jobs(jobs_file)
             refused = False
         except JobFileError:
             refused = True
-        fails += check(f"swarm: jobs file refuses {label}", refused)
-    jobs_file.write_text(json.dumps(dict(good, mem_mib=4096)) + "\n")
-    try:
-        load_jobs(jobs_file)
-        refused = False
-    except JobFileError:
-        refused = True
-    fails += check(
-        "swarm: jobs file refuses mem_mib on a gate with no heavy admission", refused
-    )
-    for kind in ("build", "run"):
-        jobs_file.write_text(json.dumps(dict(good, heavy_gate=kind)) + "\n")
         fails += check(
-            f"swarm: heavy_gate {kind!r} reaches the job",
-            load_jobs(jobs_file)[0].heavy_gate == kind,
+            f"swarm: jobs file refuses the removed admission field {field}", refused
         )
-    jobs_file.write_text(json.dumps(good) + "\n")
-    fails += check(
-        "swarm: a gate without heavy_gate is light", load_jobs(jobs_file)[0].heavy_gate is None
-    )
-    for label, record in {
-        "a boolean heavy_gate": dict(good, heavy_gate=True),
-        "an unknown heavy_gate kind": dict(good, heavy_gate="game"),
-        "the retired run_slot field": dict(good, heavy_gate="run", run_slot=True),
-    }.items():
-        jobs_file.write_text(json.dumps(record) + "\n")
-        try:
-            load_jobs(jobs_file)
-            refused = False
-        except JobFileError:
-            refused = True
-        fails += check(f"swarm: jobs file refuses {label}", refused)
 
     unignored = make_repo(root / "plain", ignore_scratch=False)
     try:
@@ -823,21 +630,6 @@ def _input_checks(check: Check, root: Path) -> int:
         refused = True
     fails += check("swarm: refuses a repo whose scratch/ is not ignored", refused)
     return fails
-
-
-def _take_ticket_in_a_child_left_unreaped(root: Path) -> subprocess.Popen[bytes]:
-    """A waiter that takes its ticket and exits; the caller has not reaped it yet."""
-    code = (
-        "import sys; sys.path.insert(0, sys.argv[1]);"
-        "from pathlib import Path;"
-        "from swarmkit.reservations import ReservationLedger;"
-        "ReservationLedger(Path(sys.argv[2]), 1024).take_ticket(3072, 'build')"
-    )
-    child = subprocess.Popen([PY, "-c", code, str(HERE.parent / "tools"), str(root / "locks")])
-    deadline = time.time() + 15.0
-    while _proc_state(child.pid) != "Z" and time.time() < deadline:
-        time.sleep(0.05)
-    return child
 
 
 def _proc_state(pid: int) -> str:
@@ -856,410 +648,118 @@ def _live_group(seconds: float = 30.0) -> subprocess.Popen:
     )
 
 
-def _ledger(
-    root: Path,
-    available_mib: int,
-    rss_mib: dict[int, int] | None = None,
-    floor_mib: int = 1024,
-    on_wait: Callable[[int, int, int], None] | None = None,
-) -> ReservationLedger:
-    """A ledger over fixed answers, so the headroom arithmetic is the only variable."""
-    used = rss_mib if rss_mib is not None else {}
-    return ReservationLedger(
-        root / "locks",
-        floor_mib,
-        reader=lambda: available_mib * MIB,
-        rss_reader=lambda groups: {group: used.get(group, 0) * MIB for group in groups},
-        poll_seconds=0,
-        on_wait=on_wait,
-    )
-
-
-def _reservation_checks(check: Check, root: Path) -> int:
-    fails = 0
-    free = _ledger(root, 4000)
-    # 8000 MiB free, floor 1024, a 512 MiB worker: the headroom rule admits it.
-    roomy = _ledger(root, 8000)
-    with roomy.try_acquire(512, "swarm") as held:
-        fails += check(
-            "swarm: a unit is admitted when free memory covers its reserve and the floor",
-            held is not None
-            and roomy.outstanding_bytes() == 512 * MIB
-            and list(roomy.directory.iterdir()),
-            f"outstanding {roomy.outstanding_bytes()}",
-        )
-    fails += check(
-        "swarm: a released reservation stops holding headroom",
-        roomy.outstanding_bytes() == 0 and not list(roomy.directory.iterdir()),
-    )
-
-    # A live 3072 MiB build leaves 4000 - 3072 = 928 MiB for a 512 MiB worker
-    # against a 1024 MiB floor: refused, even though 4000 MiB of MemAvailable is
-    # four times the floor. That gap is exactly the bug the reservation closes.
-    build_unit = _live_group()
-    alone = free.try_acquire(512, "swarm")
-    fails += check(
-        "swarm: on the same host with nothing held, 4000 MiB of MemAvailable admits it",
-        alone is not None,
-    )
-    assert alone is not None
-    alone.release()
-    with _ledger(root, 8000).try_acquire(3072, "build") as reservation:
-        assert reservation is not None
-        reservation.attach(build_unit.pid)
-        tight = _ledger(root, 4000)
-        fails += check(
-            "swarm: NEGATIVE admission refuses while reservations exhaust the headroom",
-            tight.try_acquire(512, "swarm") is None
-            and len(list(tight.directory.iterdir())) == 1,
-            f"{[p.name for p in tight.directory.iterdir()]}",
-        )
-        reservation.release()
-        generous = _ledger(root, 4000)
-        freed = generous.try_acquire(512, "swarm")
-        fails += check(
-            "swarm: the same unit is admitted once the outstanding reservation is released",
-            freed is not None,
-        )
-        if freed is not None:
-            freed.release()
-    build_unit.kill()
-    build_unit.wait()
-
-    # The outstanding part is the peak a unit has not reached yet.
-    rss: dict[int, int] = {}
-    growing = _ledger(root, 8000, rss_mib=rss)
-    unit = _live_group()
-    with growing.try_acquire(512, "swarm") as reservation:
-        assert reservation is not None
-        reservation.attach(unit.pid)
-        rss[unit.pid] = 0
-        cold = growing.outstanding_bytes() // MIB
-        rss[unit.pid] = 400
-        warm = growing.outstanding_bytes() // MIB
-        rss[unit.pid] = 900
-        full = growing.outstanding_bytes() // MIB
-    unit.kill()
-    unit.wait()
-    fails += check(
-        "swarm: outstanding shrinks as a unit's RSS approaches its reserve, never below 0",
-        (cold, warm, full) == (512, 112, 0),
-        f"{cold}, {warm}, {full}",
-    )
-
-    # A crashed admitter's entry is ignored once its group is gone.
-    victim = _live_group()
-    dead = _ledger(root, 8000)
-    with dead.try_acquire(3072, "build") as reservation:
-        assert reservation is not None
-        reservation.attach(victim.pid)
-        counted = dead.outstanding_bytes() // MIB
-        victim.kill()
-        victim.wait()
-        process_gone(victim.pid)
-        admitted = _ledger(root, 5000).try_acquire(3072, "build")
-    if admitted is not None:
-        admitted.release()
-    fails += check(
-        "swarm: NEGATIVE an entry whose process group is dead is ignored, not counted",
-        counted == 3072
-        and dead.outstanding_bytes() == 0
-        and admitted is not None,
-        f"counted {counted}",
-    )
-    fails += check(
-        "swarm: a dead entry is removed from the shared directory",
-        not list(dead.directory.iterdir()),
-    )
-
-    # A wait that never becomes room is cancelled with the run, like a slot wait.
-    holder = _live_group()
-    with _ledger(root, 8000).try_acquire(3072, "build") as reservation:
-        assert reservation is not None
-        reservation.attach(holder.pid)
-        waits: list[tuple[int, int]] = []
-        waiting = _ledger(
-            root, 4000, on_wait=lambda free, held, ahead: waits.append((free, held))
-        )
-        lifetime = RunLifetime()
-        gave_up: list[BaseException] = []
-
-        def waiter() -> None:
-            try:
-                waiting.acquire(lifetime, 512, "swarm")
-            except RunInterrupted as error:
-                gave_up.append(error)
-
-        thread = threading.Thread(target=waiter)
-        thread.start()
-        time.sleep(0.2)
-        lifetime.stop()
-        thread.join(timeout=5)
-    holder.kill()
-    holder.wait()
-    fails += check(
-        "swarm: a reservation wait gives up when the run stops",
-        len(gave_up) == 1
-        and bool(waits)
-        and all(wait == (4000 * MIB, 3072) for wait in waits),
-        f"waits {waits[:2]}",
-    )
-    try:
-        _ledger(root, 8000).try_acquire(0, "swarm")
-        refused = False
-    except ValueError:
-        refused = True
-    fails += check("swarm: a zero reservation is refused", refused)
-    return fails
-
-
-def _fifo_checks(check: Check, root: Path) -> int:
-    """Admission order: a large unit queued must not be starved by small ones.
-
-    The measured bug: 5000 MiB free over a 1024 MiB floor, a live 3 GiB build
-    already admitted, a second 3 GiB build queued, and eight 512 MiB workers
-    each replacing the last. Every worker fit, so every worker was admitted, and
-    the build's headroom was spent before it ever saw a free moment.
-    """
-    fails = 0
-    holder = _live_group()
-    busy = _ledger(root, 5000)
-    with busy.try_acquire(3072, "build") as reservation:
-        assert reservation is not None
-        reservation.attach(holder.pid)
-        small = _ledger(root, 5000)
-
-        # The negative control first: with nothing queued, the small unit fits.
-        admitted = small.try_acquire(512, "swarm")
-        fails += check(
-            "swarm: NEGATIVE with no waiting ticket the small unit is admitted",
-            admitted is not None,
-        )
-        if admitted is not None:
-            admitted.release()
-
-        ticket = busy.take_ticket(3072, "build")
-        fails += check(
-            "swarm: a waiting large unit blocks a newer small unit that would fit",
-            small.try_acquire(512, "swarm") is None
-            and len(list(small.directory.glob("*.json"))) == 1,
-            f"{[p.name for p in small.directory.iterdir()]}",
-        )
-
-        # The headroom the build waits for appears: it is admitted first, and
-        # the small unit that queued behind it follows.
-        reservation.release()
-        build = busy.try_acquire(3072, "build", ticket)
-        fails += check(
-            "swarm: the queued large unit is admitted once headroom appears",
-            build is not None and not ticket.path.exists(),
-        )
-        if build is not None:
-            after = small.try_acquire(512, "swarm")
-            fails += check(
-                "swarm: the small unit is admitted once the large one is",
-                after is not None,
-            )
-            if after is not None:
-                after.release()
-            build.release()
-    holder.kill()
-    holder.wait()
-
-    # A waiter that crashed leaves its ticket; the queue must not wait on a ghost.
-    _take_ticket_in_a_child_that_dies(root)
-    ghost = _ledger(root, 5000)
-    left_behind = sorted(ghost.waiting_directory.iterdir())
-    fails += check(
-        "swarm: a crashed waiter's ticket is ignored and deleted when read",
-        len(left_behind) == 1
-        and ghost.live_tickets() == []
-        and not left_behind[0].exists(),
-        f"{[p.name for p in left_behind]}",
-    )
-    served = ghost.try_acquire(512, "swarm")
-    fails += check(
-        "swarm: a crashed waiter does not block an admission",
-        served is not None,
-    )
-    if served is not None:
-        served.release()
-
-    # A waiter that exited but was never reaped is a zombie, and a zombie still
-    # answers kill(pid, 0). Measured: one headed the machine's queue for 35 min.
-    zombie = _take_ticket_in_a_child_left_unreaped(root)
-    headed = _ledger(root, 5000)
-    zombie_tickets = sorted(headed.waiting_directory.iterdir())
-    fails += check(
-        "swarm: a zombie waiter's ticket is ignored and deleted when read",
-        _proc_state(zombie.pid) == "Z"
-        and len(zombie_tickets) == 1
-        and headed.live_tickets() == []
-        and not zombie_tickets[0].exists(),
-        f"state {_proc_state(zombie.pid)!r}, tickets {[p.name for p in zombie_tickets]}",
-    )
-    later = headed.try_acquire(512, "swarm")
-    fails += check(
-        "swarm: a later ticket is admitted past a zombie at the queue head",
-        later is not None,
-    )
-    if later is not None:
-        later.release()
-    zombie.wait()
-
-    # A cancelled waiter leaves the queue as it entered it.
-    blocking = _live_group()
-    ahead_seen: list[int] = []
-    waiting = _ledger(
-        root,
-        5000,
-        on_wait=lambda _free, _held, ahead: ahead_seen.append(ahead),
-    )
-    lifetime = RunLifetime()
-    gave_up: list[BaseException] = []
-    with waiting.try_acquire(3072, "build") as held:
-        assert held is not None
-        held.attach(blocking.pid)
-        # Queued only once the headroom is gone: a ticket is a claim on room
-        # that does not exist yet, which is the case FIFO exists for.
-        queued = waiting.take_ticket(3072, "build")
-
-        def waiter() -> None:
-            try:
-                waiting.acquire(lifetime, 512, "swarm")
-            except RunInterrupted as error:
-                gave_up.append(error)
-
-        thread = threading.Thread(target=waiter)
-        thread.start()
-        time.sleep(0.2)
-        waiting_files = sorted(p.name for p in waiting.waiting_directory.iterdir())
-        lifetime.stop()
-        thread.join(timeout=5)
-    blocking.kill()
-    blocking.wait()
-    fails += check(
-        "swarm: a waiting unit reports how many earlier requests it is behind",
-        bool(ahead_seen) and all(ahead == 1 for ahead in ahead_seen)
-        and len(waiting_files) == 2,
-        f"ahead {ahead_seen[:2]}, tickets {waiting_files}",
-    )
-    fails += check(
-        "swarm: a cancelled waiter removes its own ticket and leaves the others",
-        len(gave_up) == 1
-        and [p.name for p in waiting.waiting_directory.iterdir()] == [queued.path.name]
-        and queued.path.exists(),
-    )
-    queued.cancel()
-    return fails
-
-
-def _take_ticket_in_a_child_that_dies(root: Path) -> None:
-    """A real waiter that takes its ticket and then exits, leaving the ticket behind."""
-    code = (
-        "import sys; sys.path.insert(0, sys.argv[1]);"
-        "from pathlib import Path;"
-        "from swarmkit.reservations import ReservationLedger;"
-        "ReservationLedger(Path(sys.argv[2]), 1024).take_ticket(3072, 'build')"
-    )
-    subprocess.run(
-        [PY, "-c", code, str(HERE.parent / "tools"), str(root / "locks")], check=True
-    )
-
-
 def _pressure_checks(check: Check, root: Path) -> int:
     fails = 0
     sent: list[tuple[int, int]] = []
-    events: list[str] = []
     free_mib = [500]
-    watcher = PressureWatcher(
+    guard = PressureGuard(
         1024,
         2560,
         reader=lambda: free_mib[0] * MIB,
-        on_event=events.append,
         stopper=lambda group, signum: sent.append((group, signum)),
     )
-    units = [_live_group(), _live_group(), _live_group()]
-    for unit in units:
-        watcher.adopt(unit.pid)
-    first_stop = watcher.poll()
-    second_stop = watcher.poll()
-    third_stop = watcher.poll()
+    groups = [101, 102, 103]
+    first_stop = guard.poll(groups)
+    second_stop = guard.poll(groups)
+    third_stop = guard.poll(groups)
     free_mib[0] = 4096
-    resumed = watcher.poll()
+    resumed = guard.poll(groups)
     fails += check(
-        "swarm: pressure pauses the newest unit first, then all but the last",
-        [call[0] for call in sent[:2]] == [units[2].pid, units[1].pid]
-        and all(call[1] == SIGSTOP for call in sent[:2])
+        "pressure: pauses the newest unit first, then all but the last",
+        sent[:2] == [(103, SIGSTOP), (102, SIGSTOP)]
         and third_stop == []
         and len(first_stop) == 1
         and len(second_stop) == 1,
         f"sent {sent[:2]}",
     )
     fails += check(
-        "swarm: pressure resumes the paused groups oldest first once memory returns",
-        [call[0] for call in sent[2:]] == [units[1].pid, units[2].pid]
-        and all(call[1] == SIGCONT for call in sent[2:])
-        and len(resumed) == 2,
+        "pressure: resumes every paused unit once memory returns",
+        sorted(sent[2:]) == [(102, SIGCONT), (103, SIGCONT)] and len(resumed) == 2,
         f"resumed {sent[2:]}",
     )
     fails += check(
-        "swarm: a pause and a resume are reported with the memory that caused them",
-        len(events) == 4
-        and "paused" in events[0]
-        and "500 MiB" in events[0]
-        and "resumed" in events[2]
-        and "4096 MiB" in events[2],
-        "; ".join(events),
+        "pressure: a pause and a resume are reported with the memory that caused them",
+        "paused" in first_stop[0]
+        and "500 MiB" in first_stop[0]
+        and "resumed" in resumed[0]
+        and "4096 MiB" in resumed[0],
+        f"{first_stop} {resumed}",
     )
+    between: list[tuple[int, int]] = []
     fails += check(
-        "swarm: NEGATIVE a host between the thresholds changes nothing (no flapping)",
-        PressureWatcher(
-            1024, 2560, reader=lambda: 1500 * MIB, stopper=lambda g, s: sent.append((g, s))
-        ).poll()
+        "pressure: NEGATIVE a host between the thresholds changes nothing (no flapping)",
+        PressureGuard(
+            1024,
+            2560,
+            reader=lambda: 1500 * MIB,
+            stopper=lambda g, s: between.append((g, s)),
+        ).poll(groups)
         == []
-        and len(sent) == 4,
-        f"sent {sent}",
+        and between == [],
+        f"sent {between}",
     )
-    for unit in units:
+    alone: list[tuple[int, int]] = []
+    single = PressureGuard(
+        1024, 2560, reader=lambda: 100 * MIB, stopper=lambda g, s: alone.append((g, s))
+    )
+    quiet = single.poll([201]) + single.poll([201])
+    fails += check(
+        "pressure: NEGATIVE the last running unit is never paused",
+        quiet == [] and alone == [],
+        f"{quiet} {alone}",
+    )
+    # A unit that ended is no longer in the registry, so the survivor is never paused.
+    ended: list[tuple[int, int]] = []
+    shrinking = PressureGuard(
+        1024, 2560, reader=lambda: 100 * MIB, stopper=lambda g, s: ended.append((g, s))
+    )
+    shrinking.poll([301, 302])
+    shrinking.poll([301])
+    fails += check(
+        "pressure: a unit that ended is forgotten; the survivor keeps running",
+        ended == [(302, SIGSTOP)] and shrinking.stopped == set(),
+        f"{ended} {shrinking.stopped}",
+    )
+    exiting: list[tuple[int, int]] = []
+    leaving = PressureGuard(
+        1024,
+        2560,
+        reader=lambda: 100 * MIB,
+        stopper=lambda g, s: exiting.append((g, s)),
+    )
+    leaving.poll([401, 402])
+    leaving.resume_all()
+    fails += check(
+        "pressure: a guard that exits resumes what it stopped",
+        exiting == [(402, SIGSTOP), (402, SIGCONT)],
+        f"{exiting}",
+    )
+
+    registry = UnitRegistry(root / "registry")
+    older, newer = _live_group(), _live_group()
+    first = registry.register(older.pid, "build")
+    registry.register(older.pid, "swarm")
+    registry.register(newer.pid, "run")
+    dead = _live_group()
+    registry.register(dead.pid, "build")
+    dead.kill()
+    dead.wait()
+    process_gone(dead.pid)
+    live = registry.live()
+    fails += check(
+        "units: one live unit per group, oldest first; a dead group's entry is pruned",
+        [unit.group for unit in live] == [older.pid, newer.pid]
+        and not list(registry.directory.glob(f"{dead.pid}-*.json")),
+        f"{[(u.group, u.kind) for u in live]}",
+    )
+    registry.remove(first)
+    fails += check(
+        "units: removing one registrant's entry keeps the group's other entry",
+        [unit.group for unit in registry.live()] == [older.pid, newer.pid],
+    )
+    for unit in (older, newer):
         unit.kill()
         unit.wait()
-
-    # One unit on its own is never paused: with nothing else to pause, ending the
-    # run is the operator's decision, not the watcher's.
-    alone_sent: list[tuple[int, int]] = []
-    alone = PressureWatcher(
-        1024, 2560, reader=lambda: 100 * MIB, stopper=lambda g, s: alone_sent.append((g, s))
-    )
-    single = _live_group()
-    alone.adopt(single.pid)
-    quiet = alone.poll()
-    quiet += alone.poll()
-    single.kill()
-    single.wait()
-    fails += check(
-        "swarm: NEGATIVE the last running unit is never paused",
-        quiet == [] and alone_sent == [],
-        f"{quiet} {alone_sent}",
-    )
-    # An ended unit is forgotten, so a later pressure decision counts live units only.
-    reaped = PressureWatcher(
-        1024, 2560, reader=lambda: 100 * MIB, stopper=lambda g, s: alone_sent.append((g, s))
-    )
-    gone, stays = _live_group(), _live_group()
-    for unit in (gone, stays):
-        reaped.adopt(unit.pid)
-    gone.kill()
-    gone.wait()
-    process_gone(gone.pid)
-    reaped.poll()
-    fails += check(
-        "swarm: an ended unit is forgotten, so the survivor is never the one to pause",
-        alone_sent == [],
-        f"{alone_sent}",
-    )
-    stays.kill()
-    stays.wait()
     return fails
 
 
@@ -1382,7 +882,8 @@ def _backend_checks(check: Check) -> int:
     )["permission"]
     confined = check(
         "swarm: opencode denies outside paths (catch-all first) and reads, never edits, read_only",
-        list(config["external_directory"].items()) == [("*", "deny"), ("/ref/**", "allow")]
+        list(config["external_directory"].items())
+        == [("*", "deny"), ("/ref/**", "allow")]
         and list(config["edit"].items()) == [("*", "allow"), ("/ref/**", "deny")],
         str(config),
     )
@@ -1392,43 +893,47 @@ def _backend_checks(check: Check) -> int:
     pi = BACKENDS["pi"].command(
         Path("/j/task.md"), ["a.c"], "opencode/space-bunny-free"
     )
-    return confined + check(
-        "swarm: opencode argv is standalone JSON with the task attached first",
-        opencode
-        == [
-            "opencode",
-            "run",
-            "--standalone",
-            "-m",
-            "opencode/space-bunny-free",
-            "--format",
-            "json",
-            "-f",
-            "/j/task.md",
-            "-f",
-            "a.c",
-            "--",
-            PROMPT_ATTACHED,
-        ],
-        str(opencode),
-    ) + check(
-        "swarm: pi argv is print-mode, sessionless, lean, with the task attached first",
-        pi
-        == [
-            "pi",
-            "-p",
-            "--no-session",
-            "--no-extensions",
-            "--no-prompt-templates",
-            "--no-themes",
-            "--model",
-            "opencode/space-bunny-free",
-            "--",
-            "@/j/task.md",
-            "@a.c",
-            PROMPT_ATTACHED,
-        ],
-        str(pi),
+    return (
+        confined
+        + check(
+            "swarm: opencode argv is standalone JSON with the task attached first",
+            opencode
+            == [
+                "opencode",
+                "run",
+                "--standalone",
+                "-m",
+                "opencode/space-bunny-free",
+                "--format",
+                "json",
+                "-f",
+                "/j/task.md",
+                "-f",
+                "a.c",
+                "--",
+                PROMPT_ATTACHED,
+            ],
+            str(opencode),
+        )
+        + check(
+            "swarm: pi argv is print-mode, sessionless, lean, with the task attached first",
+            pi
+            == [
+                "pi",
+                "-p",
+                "--no-session",
+                "--no-extensions",
+                "--no-prompt-templates",
+                "--no-themes",
+                "--model",
+                "opencode/space-bunny-free",
+                "--",
+                "@/j/task.md",
+                "@a.c",
+                PROMPT_ATTACHED,
+            ],
+            str(pi),
+        )
     )
 
 
@@ -1468,8 +973,6 @@ def _heavy_wrapper(locks: Path, marker: Path) -> subprocess.Popen[str]:
             str(HEAVY_CLI),
             "--lock-dir",
             str(locks),
-            "--mem-mib",
-            "1",
             "--",
             PY,
             "-c",
@@ -1483,7 +986,9 @@ def _heavy_wrapper(locks: Path, marker: Path) -> subprocess.Popen[str]:
     )
 
 
-def _command_pid(marker: Path, wrapper: subprocess.Popen[str], seconds: float = 10.0) -> int:
+def _command_pid(
+    marker: Path, wrapper: subprocess.Popen[str], seconds: float = 10.0
+) -> int:
     """The pid the admitted command reported, or -1 if it never started."""
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -1515,7 +1020,9 @@ TREE = "sleep 60 & sleep 60 & wait"
 TREE_SIZE = 4
 
 
-def _wrapper_tree(locks: Path, script: str, size: int) -> tuple[subprocess.Popen[bytes], list[int]]:
+def _wrapper_tree(
+    locks: Path, script: str, size: int
+) -> tuple[subprocess.Popen[bytes], list[int]]:
     """Start ``heavy.py`` in a fresh session; return it and every pid below it."""
     wrapper = subprocess.Popen(
         [
@@ -1523,8 +1030,6 @@ def _wrapper_tree(locks: Path, script: str, size: int) -> tuple[subprocess.Popen
             str(HEAVY_CLI),
             "--lock-dir",
             str(locks),
-            "--mem-mib",
-            "1",
             "--",
             "sh",
             "-c",
@@ -1594,9 +1099,7 @@ def _orphan_checks(check: Check, locks: Path, root: Path) -> int:
     daemon_pid = _marker_pid(daemon_marker)
     fails += check(
         "heavy: a setsid daemon the command leaves behind is reaped",
-        finished.returncode == 0
-        and daemon_pid > 0
-        and process_gone(daemon_pid, 10.0),
+        finished.returncode == 0 and daemon_pid > 0 and process_gone(daemon_pid, 10.0),
         f"exit {finished.returncode}, daemon pid {daemon_pid}, {finished.stderr}",
     )
     return fails
@@ -1637,88 +1140,6 @@ def _reaper_adoption_checks(check: Check) -> int:
     )
 
 
-def _peak_checks(check: Check, root: Path) -> int:
-    """heavy.py reserves a command's measured peak once it has run, not the kind's guess."""
-    fails = 0
-    history = PeakHistory(root / "history")
-    history.record("k", 1000)
-    history.record("k", 400)
-    fails += check(
-        "peaks: an unmeasured command gets the kind's default",
-        history.reservation("unknown", 3072) == 3072,
-    )
-    fails += check(
-        "peaks: NEGATIVE a lower later peak never lowers the reservation",
-        history.reservation("k", 3072) == 1250,
-    )
-    history.record("small", 10)
-    fails += check(
-        "peaks: a tiny peak still reserves the minimum",
-        history.reservation("small", 3072) == 256,
-    )
-    locks = root / "locks"
-    repo = make_repo(root / "peaks")
-    # Prints the reservation it runs under, then holds about 120 MiB for a few samples.
-    probe = (
-        "import glob, json, time; "
-        f"print('RESERVED', [json.load(open(f))['reserve_mib'] for f in glob.glob({str(locks / 'reservations' / '*.json')!r})]); "
-        "block = bytearray(120 * 1024 * 1024); block[::4096] = b'x' * len(block[::4096]); "
-        "time.sleep(1.5)"
-    )
-    first = _heavy(locks, "--kind", "run", "--", PY, "-c", probe, cwd=repo)
-    second = _heavy(locks, "--kind", "run", "--", PY, "-c", probe, cwd=repo / ".")
-    fails += check(
-        "peaks: a command's first run reserves the kind's default",
-        "RESERVED [1536]" in first.stdout,
-        first.stdout + first.stderr,
-    )
-    learned = [
-        int(word.strip("[],"))
-        for line in second.stdout.splitlines()
-        if line.startswith("RESERVED")
-        for word in line.split()[1:]
-    ]
-    fails += check(
-        "peaks: its next run reserves the measured peak with headroom",
-        len(learned) == 1 and 150 <= learned[0] < 400,
-        second.stdout + second.stderr,
-    )
-    return fails
-
-
-def _memory_waiter_check(check: Check, locks: Path, build: MachineSlots) -> int:
-    """A command queued for memory holds no build slot.
-
-    The measured stall: heavy.py took its slot before memory admission, so two
-    commands queued behind an unfittable 3 GiB queue head held both build slots
-    for 50 minutes while nothing built.
-    """
-    waiter = subprocess.Popen(
-        [PY, str(HEAVY_CLI), "--lock-dir", str(locks), "--mem-mib", str(1 << 30)]
-        + ["--", PY, "-c", "pass"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    waiting = locks / "reservations" / "waiting"
-    deadline = time.monotonic() + 10
-    while not list(waiting.glob("*.json")) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    queued = bool(list(waiting.glob("*.json")))
-    leases = [build.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
-    free = sum(lease is not None for lease in leases)
-    for lease in leases:
-        if lease is not None:
-            lease.release()
-    os.killpg(waiter.pid, SIGKILL)
-    waiter.wait(timeout=10)
-    return check(
-        "heavy: NEGATIVE a command waiting for memory holds no build slot",
-        queued and free == HEAVY_SLOTS["build"],
-        f"queued {queued}, {free}/{HEAVY_SLOTS['build']} build slots free",
-    )
-
-
 def _heavy_checks(check: Check, root: Path) -> int:
     fails = 0
     locks = root / "locks"
@@ -1731,13 +1152,17 @@ def _heavy_checks(check: Check, root: Path) -> int:
         _heavy(locks, "--kind", "run").returncode == 2,
     )
     fails += check(
-        "heavy: NEGATIVE a --mem-mib of zero is refused",
-        _heavy(locks, "--mem-mib", "0", "--", PY, "-c", "pass").returncode == 2,
+        "heavy: NEGATIVE the removed --mem-mib flag is refused",
+        _heavy(locks, "--mem-mib", "512", "--", PY, "-c", "pass").returncode == 2,
     )
     repo = make_repo(root / "ccache")
     nested = repo / "sub"
     nested.mkdir()
-    show = (PY, "-c", "import os; print('BASEDIR=' + os.environ.get('CCACHE_BASEDIR', ''))")
+    show = (
+        PY,
+        "-c",
+        "import os; print('BASEDIR=' + os.environ.get('CCACHE_BASEDIR', ''))",
+    )
     inside = _heavy(locks, "--kind", "run", "--", *show, cwd=nested)
     # The scratch root itself sits inside a checkout; stop git's search above it.
     bare = root / "no-repo"
@@ -1762,34 +1187,34 @@ def _heavy_checks(check: Check, root: Path) -> int:
         outside.stdout + outside.stderr,
     )
     fails += check(
-        "heavy: --mem-mib reserves for the command and is released when it ends",
-        _heavy(locks, "--mem-mib", "512", "--", PY, "-c", "pass").returncode == 0
-        # Entries and tickets, not directories: the ledger leaves its empty
-        # waiting/ directory behind whenever the real host made the command wait.
-        and not list((locks / "reservations").rglob("*.json")),
+        "heavy: the command's unit is removed when it ends",
+        _heavy(locks, "--", PY, "-c", "pass").returncode == 0
+        and not list((locks / "units").glob("*.json")),
     )
-
-    build = MachineSlots(locks / "heavy-build", HEAVY_SLOTS["build"])
-    holders = [build.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
-    marker = root / "ran.txt"
-    blocked = False
-    try:
-        _heavy(locks, "--", PY, "-c", f"open({str(marker)!r}, 'w')", timeout=1.5)
-    except subprocess.TimeoutExpired:
-        blocked = True
+    # Six builds that each sleep one second finish together: nothing queues them.
+    started = time.monotonic()
+    many = [
+        subprocess.Popen(
+            [
+                PY,
+                str(HEAVY_CLI),
+                "--lock-dir",
+                str(locks),
+                "--",
+                PY,
+                "-c",
+                "import time; time.sleep(1)",
+            ]
+        )
+        for _ in range(6)
+    ]
+    codes = [child.wait(timeout=30) for child in many]
+    elapsed = time.monotonic() - started
     fails += check(
-        "heavy: NEGATIVE a build waits while every build slot is held",
-        blocked and not marker.exists(),
+        "heavy: NEGATIVE six builds at once are not queued behind each other",
+        codes == [0] * 6 and elapsed < 3.0,
+        f"codes {codes}, {elapsed:.1f} s",
     )
-    fails += check(
-        "heavy: a run is admitted while the build slots are full",
-        _heavy(locks, "--kind", "run", "--", PY, "-c", "pass").returncode == 0,
-    )
-    for holder in holders:
-        assert holder is not None
-        holder.release()
-
-    fails += _memory_waiter_check(check, locks, build)
 
     daemon = (
         "import subprocess, sys; "
@@ -1797,14 +1222,10 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)"
     )
     _heavy(locks, "--", PY, "-c", daemon)
-    leases = [build.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
     fails += check(
-        "heavy: a daemon left by the command does not keep its slot",
-        all(lease is not None for lease in leases),
+        "heavy: a daemon left by the command does not keep its unit",
+        not list((locks / "units").glob("*.json")),
     )
-    for lease in leases:
-        if lease is not None:
-            lease.release()
 
     # The measured orphan: a timed-out worker's whole process group is SIGKILLed, and
     # the gate the worker started must not survive inside a session of its own.
@@ -1815,9 +1236,9 @@ def _heavy_checks(check: Check, root: Path) -> int:
     command_group = (
         os.getpgid(group_pid) if group_pid > 0 else -1
     )  # -1: the command never started
-    reserved = [
+    registered = [
         json.loads(entry.read_text(encoding="utf-8"))
-        for entry in sorted((locks / "reservations").glob("*.json"))
+        for entry in sorted((locks / "units").glob("*.json"))
     ]
     if group_pid > 0:
         try:
@@ -1831,12 +1252,12 @@ def _heavy_checks(check: Check, root: Path) -> int:
         f"command pid {group_pid} in group {command_group}, wrapper group {wrapper_group}",
     )
     fails += check(
-        "heavy: the reservation is attached to that live group, not a dead one",
+        "heavy: the unit registered is that live group, not a dead one",
         any(
-            entry.get("pgid") == wrapper_group and entry.get("kind") == "build"
-            for entry in reserved
+            entry.get("group") == wrapper_group and entry.get("kind") == "build"
+            for entry in registered
         ),
-        f"wrapper group {wrapper_group}, entries {reserved}",
+        f"wrapper group {wrapper_group}, entries {registered}",
     )
     fails += check(
         "heavy: killing the caller's process group kills the command too",
@@ -1874,7 +1295,10 @@ def main() -> int:
         return 0 if ok else 1
 
     fails = run_checks(report, str(scratch))
-    print("swarm selftest: %s (%d check(s) failed)" % ("ok" if not fails else "FAIL", fails))
+    print(
+        "swarm selftest: %s (%d check(s) failed)"
+        % ("ok" if not fails else "FAIL", fails)
+    )
     return 1 if fails else 0
 
 

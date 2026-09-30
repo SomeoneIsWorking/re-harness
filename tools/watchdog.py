@@ -5,7 +5,7 @@
 
 Prints one line per alert and appends them, timestamped, to
 ``<lock-dir>/watchdog/alerts.log``. With ``--kill`` a runaway process (large,
-still growing, holding no heavy.py reservation, not a Claude or desktop process)
+still growing, not a registered unit, not a Claude or desktop process)
 is stopped by PID. ``--repo`` names a repo whose origin/main should keep
 landing; ``--shared`` a checkout that must stay clean with its submodules at
 their recorded commits. See skills/global/swarm/SKILL.md, "Watchdog".

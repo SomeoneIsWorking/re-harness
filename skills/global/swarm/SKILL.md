@@ -51,7 +51,7 @@ One JSON object per line:
 ```json
 {"id": "ovr-8003a1c4", "repo": "../psxport", "prompt": "...", "files": ["src/ovr/room.cpp"],
  "gate": ["uv", "run", "--frozen", "python", "tools/check_override.py", "0x8003a1c4"],
- "heavy_gate": "run", "timeout": 900, "gate_timeout": 1800}
+ "timeout": 900, "gate_timeout": 1800}
 ```
 
 - **One change per job.** Name the exact file and function to edit and say what must not change.
@@ -74,71 +74,37 @@ One JSON object per line:
   into one owner before applying more of them.
 - **Gate output is feedback.** With `--retries N` a rejected worker is re-prompted in the same
   worktree with the gate's last 60 lines, so make failures say what differed.
-- `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run
-  from the moment it is admitted: time a heavy gate spends waiting for a build slot does not
-  count. Neither counts time a unit spent paused for memory pressure.
-- **`heavy_gate`** (optional: `"build"` or `"run"`) names the one kind of machine-wide slot the
-  runner admits the gate on. Choose the kind that dominates the gate's time: `"build"` for
-  compiling and verifiers, `"run"` for a game, browser or bot instance, even when a short ccache
-  rebuild precedes it. A gate holds one kind only, so game runs never occupy build slots. Do not
-  call `heavy.py` from inside a swarm gate, or from a worker checking its own patch against the
-  gate: the job's one reservation already covers the gate's whole group, and a nested request
-  queues behind requests that may be waiting on it.
-- **`mem_mib`** (optional, whole MiB, `heavy_gate` only) is the peak this job's gate may grow
-  into (default: its kind's reserve, 3072 MiB for `build`, 1536 MiB for `run`).
+- `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run.
+  Neither counts time a unit spent paused by the pressure guard.
+- Do not call `heavy.py` from inside a swarm gate: the runner already registers the gate's group
+  as a unit and runs it under the reaper.
 - **A prompt is a file, not an argument.** The runner writes it to `<id>/prompt-<n>.md` and the
   backend attaches it (`-f` for opencode, `@` for pi), because Linux caps one argv string at
   128 KiB and a long task plus gate feedback exceeds that. Retries reuse the same path with the
   feedback appended.
 
-## Slots, heavy gates, and memory
+## Memory: nothing queues, the guard pauses
 
-- **Machine-wide slots.** Every swarm on the machine shares `<lock-dir>/swarm-slots/` (default
-  `~/repo/scratch/locks`, or `$SWARM_LOCK_DIR`, or `--lock-dir`): 24 flock'd slot files, one held
-  per running job. Several projects' swarms together never exceed the slot count. Keep `--slots`
-  at the default unless every concurrent user agrees; the cap is only as strong as the smallest
-  value in use. `--workers` (default 8) is this invocation's own ceiling.
-- **Reservations.** Slots cap how many units run, not how big they get, and a free-model worker
-  plus a gate build both grow after they start. Every admitted unit therefore reserves the memory
-  it may still grow into: one file `<lock-dir>/reservations/<pid>.<n>.json` holding its process
-  group (the group the unit's processes are in — for a heavy command, the wrapper's), `reserve_mib`
-  and kind, deleted when the unit is released and ignored once its group is gone (a crashed swarm
-  leaks nothing). A new unit starts only when
-  `MemAvailable - outstanding - reserve >= --mem-floor-mib` (default 1024, the pressure watcher's
-  pause threshold), where an entry's
-  outstanding part is its reserve minus what its process group already has resident, read from
-  `/proc` once per check. Check and write happen under one flock on `<lock-dir>/reservations.lock`,
-  so two swarm invocations cannot both spend the same headroom. Admission is
-  first come first served: a unit that does not fit leaves a ticket in
-  `<lock-dir>/reservations/waiting/` and is refused while any older live ticket
-  is still queued, so a large build is not starved by a stream of small workers.
-  A unit that does not fit waits and
-  says so, and gives up when the run is stopped.
-- **Reserve what, by default.** A worker reserves 256 MiB (`--mem-reserve-mib`; opencode workers measure ~85 MiB), a `build` 3072 MiB
-  and a `run` 1536 MiB. `heavy.py --mem-mib N` overrides one command, and a job's `mem_mib` field
-  overrides its heavy gate. Raise these when a real job outgrew its default; do not lower them
-  without measuring the peak.
-- **Pressure pause.** While a unit is admitted, a watcher in the admitting process polls
-  `MemAvailable` every 2 s. Below 1024 MiB it SIGSTOPs one of its own units, the most recently
-  admitted first and the oldest last, and never leaves less than one unit running; above 2560 MiB
-  it SIGCONTs the stopped groups oldest first. A paused unit is not working, so its deadline is
-  extended by the time it spent stopped. This is the machine getting tight, not a failure: the
-  run continues.
-- **Heavy commands** go through `heavy.py [--kind build|run] [--mem-mib N] -- <command...>` (on
-  PATH). `build` (compilers, verifiers; 4 at once, each with at most `-j 4`) and `run` (one game,
-  browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
-  `<lock-dir>/heavy-<kind>/`, and admission also keeps the same 1024 MiB floor. Without `--mem-mib` the
-  reservation is learned: the first run of a command (kind, main checkout, argv) reserves the kind's
-  default, heavy.py samples the command tree's peak RSS, and later runs reserve the highest peak seen
-  ×1.25 (at least 256 MiB), kept in `<lock-dir>/heavy-peaks.json`. The wrapper
-  holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
-  job with `heavy_gate` runs its gate under that kind, admitted by the swarm runner itself: it
-  takes one of the same slots and grows the job's one reservation from the worker's reserve to
-  the gate's peak (`mem_mib`) for the gate's duration, then shrinks it back. Growing needs headroom
-  only for the increase, so the job never waits on its own entry, and the long worker phase does not
-  hold the gate's peak. The gate still runs
-  under the reaper. Do not run heavy work outside it; the old
-  single `heavy.lock` is retired.
+- **Nothing is admitted ahead of time.** A job starts as soon as one of this invocation's
+  `--workers` (default 8) is free, and `heavy.py` starts its command at once. There are no
+  machine-wide slots, no predicted memory reservations and no `-j` cap. Per-kind slots and
+  reserved peaks (3 GiB per build, against measured compiles of ~400 MiB) queued builds for up to
+  50 minutes on 2026-09-30 while the host had 7 GiB free and half its cores idle; they were
+  removed.
+- **Units.** Every running worker, gate and `heavy.py` command registers its process group in
+  `<lock-dir>/units/` (default `~/repo/scratch/locks`, or `$SWARM_LOCK_DIR`, or `--lock-dir`) and
+  removes the entry when it ends; an entry whose group is gone is pruned.
+- **The pressure guard is the one memory countermeasure.** `pressure_guard.py` runs as the systemd
+  user service `pressure-guard` and polls `MemAvailable` every 0.5 s. Below 1024 MiB it SIGSTOPs
+  the newest running unit (its pages can go to swap while older units finish), one per poll, and
+  never the last running one; above 2560 MiB it SIGCONTs every unit it stopped. A paused swarm unit
+  is not working, so its deadline is extended by the time it spent stopped. On start the guard
+  resumes every registered unit (a guard that died cannot remember what it stopped), and on exit
+  it resumes what it stopped. Check it with `systemctl --user status pressure-guard`; the watchdog
+  alerts when its heartbeat (`<lock-dir>/guard/heartbeat`) is older than 60 s.
+- **Heavy commands** go through `heavy.py [--kind build|run] -- <command...>` (on PATH) so they
+  are guarded units and die with their caller. `build` is a compiler or verifier; `run` is one
+  game, browser, Ghidra or bot instance. The kind is a label for reports.
 - **Every unit's whole subtree dies with the run that started it** -- a `heavy.py` command, and
   under `swarm.py` every worker and every gate. The wrapper's direct child is a reaper
   (`swarmkit.reaper`, started by `command_argv(argv, parent)`), not the command. It runs the
@@ -154,9 +120,8 @@ One JSON object per line:
   left the group with `setsid` -- a Gradle or MSBuild node -- is still taken down. This matters:
   `PR_SET_PDEATHSIG` reaches exactly the one process it is set on, so a gate whose direct child
   was `cmake` once left `ninja` and the rest of the build compiling after the worker that started
-  it was gone. The reservation, the pressure watcher and the run lifetime therefore track the
-  wrapper's group, which is where the command lives (under `swarm.py` that group is the worker's,
-  so the caller's own resident size is read as part of the unit's). A worker's detached helper
+  it was gone. The unit entry and the run lifetime therefore track the wrapper's group, which is
+  where the command lives (under `swarm.py` that group is the worker's or the gate's). A worker's detached helper
   (opencode runs retry scripts from /tmp under `setsid`/`nohup`) is therefore reaped with the
   worker; one such script once kept re-running a gate for an hour after its swarm was killed.
 - Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
@@ -175,9 +140,10 @@ Then `gc` the run and delete its directory with `tools/scratch_gc.py`.
 modes that stalled agent work, prints one line per alert, and appends them to
 `<lock-dir>/watchdog/alerts.log`. Run it from a systemd user timer every few minutes, and have the
 operator session act on the log. It alerts on:
-- a runaway process: 4 GiB or more, grown 256 MiB since the last check, holding no heavy.py
-  reservation, and not a Claude or desktop process. With `--kill` it is stopped by PID.
-- an admission ticket waiting over 30 min;
+- a runaway process: 4 GiB or more, grown 256 MiB since the last check, not a registered unit
+  (the guard pauses those instead), and not a Claude or desktop process. With `--kill` it is
+  stopped by PID.
+- the pressure guard not running (heartbeat older than 60 s);
 - a swarm with no new verdict for 90 min;
 - a pinest agent idle for 15 min, meaning finished and unreviewed;
 - a `--repo` whose origin/main landed nothing for 90 min;

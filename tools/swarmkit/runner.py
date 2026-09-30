@@ -1,42 +1,32 @@
 """Run jobs: worktree, worker, gate, optional feedback retries, verdict on disk.
 
-Each job runs under two machine-wide claims: a slot (how many) and a memory
-reservation (how much it may still grow into). The reservation is taken once for
-the job at the worker's peak and attached to every process group the job starts.
-A heavy gate grows that same reservation to its own peak when it is admitted and
-shrinks it back afterwards. Holding the gate's peak for the whole job left 7 GiB
-reserved by workers using 40 MiB each and the host idle; a second, separate gate
-reservation was refused by the job's own worker entry, so the job waited on
-itself. Growing needs headroom only for the increase, so neither can recur.
+A job starts as soon as one of the run's ``workers`` is free; nothing else is
+admitted or queued. Every process group a job starts (its worker, its gate) is
+registered as a unit (``units``), so the machine's pressure guard can pause the
+newest one if the host really runs out of memory. Per-kind slots and predicted
+memory reservations were removed on 2026-09-30: they queued gates for up to 50
+minutes while the host had 7 GiB free and half its cores idle.
 
-A heavy gate is admitted here, in the runner, through the machine's build slots
-(and a run slot too when it starts a game instance), and its ``gate_timeout``
-starts only once it holds them. Run through ``heavy.py`` the admission wait sat
-inside the gate's deadline, so a gate queued behind other builds timed out
-without ever running. Every unit, worker and gate alike, runs under the reaper
-(``process.run_bounded``), so nothing it starts outlives the job.
+Every unit, worker and gate alike, runs under the reaper (``process.run_bounded``),
+so nothing it starts outlives the job.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
-from .admission import MachineSlots, SlotLease
 from .backends import Backend
 from .console import emit
 from .jobs import Job
 from .lifetime import RunLifetime
-from .pressure import PressureWatcher
-from .process import run_bounded
-from .reservations import Reservation, ReservationLedger
+from .process import ProcessOutcome, run_bounded
 from .results import PATCH_FILE, RESULT_FILE, RUN_FILE, JobResult, Reason, Verdict
+from .units import UnitRegistry
 from .worktree import Worktree, WorktreeError, run_directory
 
 TREE_DIR = "tree"
@@ -62,17 +52,14 @@ class RunSettings:
     backend: Backend
     model: str
     retries: int
-    slots: MachineSlots
-    build_slots: MachineSlots
-    run_slots: MachineSlots
-    memory: ReservationLedger
-    pressure: PressureWatcher
-    reserve_mib: int
+    units: UnitRegistry
     lifetime: RunLifetime
 
 
 class JobRunner:
-    def __init__(self, run_name: str, settings: RunSettings, resume: bool = False) -> None:
+    def __init__(
+        self, run_name: str, settings: RunSettings, resume: bool = False
+    ) -> None:
         self.run_name = run_name
         self.settings = settings
         self.resume = resume
@@ -87,17 +74,13 @@ class JobRunner:
             # unfinished job; every judged verdict stands.
             result = JobResult.read(job_dir)
             if result.verdict is not Verdict.WORKER_FAILED:
-                emit(f"swarm: {job.id}: kept {result.verdict.value} from the interrupted run")
+                emit(
+                    f"swarm: {job.id}: kept {result.verdict.value} from the interrupted run"
+                )
                 return result
         job_dir.mkdir(parents=True, exist_ok=self.resume)
         started = time.monotonic()
-        with (
-            self.settings.slots.acquire(self.settings.lifetime),
-            self.settings.memory.acquire(
-                self.settings.lifetime, self.settings.reserve_mib, "swarm"
-            ) as reservation,
-        ):
-            result = self._run_in_slot(job, job_dir, reservation)
+        result = self._run_job(job, job_dir)
         result.seconds = round(time.monotonic() - started, 3)
         result.write(job_dir)
         emit(
@@ -106,9 +89,7 @@ class JobRunner:
         )
         return result
 
-    def _run_in_slot(
-        self, job: Job, job_dir: Path, reservation: Reservation
-    ) -> JobResult:
+    def _run_job(self, job: Job, job_dir: Path) -> JobResult:
         tree_path = job_dir / TREE_DIR
         resumed = self.resume and tree_path.exists()
         try:
@@ -134,9 +115,7 @@ class JobRunner:
         prompt = job.prompt + RESUMED if resumed else job.prompt
         result: JobResult | None = None
         for attempt in range(first, first + self.settings.retries + 1):
-            result = self._attempt(
-                job, job_dir, tree, prompt, attempt, reservation
-            )
+            result = self._attempt(job, job_dir, tree, prompt, attempt)
             if result.verdict is not Verdict.REJECTED:
                 return result
             if result.reason is Reason.EMPTY_PATCH:
@@ -157,7 +136,6 @@ class JobRunner:
         tree: Worktree,
         prompt: str,
         attempt: int,
-        reservation: Reservation,
     ) -> JobResult:
         def verdict(value: Verdict, reason: Reason | None, **fields) -> JobResult:
             return JobResult(
@@ -180,8 +158,11 @@ class JobRunner:
         # tree the last attempt left, where a listed file may be deleted. opencode refuses to
         # start when asked to attach a missing file. The task file lives outside the worktree,
         # so the job's own directory joins read_only and the worker may read it, not edit it.
-        files = [str(tree.path / name) for name in job.files if (tree.path / name).is_file()]
-        worker = run_bounded(
+        files = [
+            str(tree.path / name) for name in job.files if (tree.path / name).is_file()
+        ]
+        worker = self._run_unit(
+            "swarm",
             self.settings.backend.command(task_file, files, self.settings.model),
             tree.path,
             job.timeout,
@@ -191,7 +172,6 @@ class JobRunner:
                 **tree.cache_environment(),
                 **self.settings.backend.environment([*job.read_only, job_dir]),
             },
-            on_spawn=self._unit_started(reservation),
         )
         if worker.timed_out:
             return verdict(Verdict.TIMEOUT, Reason.WORKER, worker_tail=worker.tail())
@@ -211,16 +191,15 @@ class JobRunner:
             )
         if not changed:
             return verdict(Verdict.REJECTED, Reason.EMPTY_PATCH, worker_returncode=0)
-        with self._gate_admission(job, reservation):
-            gate = run_bounded(
-                job.gate,
-                tree.path,
-                job.gate_timeout,
-                job_dir / f"gate-{attempt}.log",
-                lifetime,
-                tree.cache_environment(),
-                on_spawn=self._unit_started(reservation),
-            )
+        gate = self._run_unit(
+            "swarm",
+            job.gate,
+            tree.path,
+            job.gate_timeout,
+            job_dir / f"gate-{attempt}.log",
+            lifetime,
+            tree.cache_environment(),
+        )
         common = {
             "worker_returncode": worker.returncode,
             "changed_files": changed,
@@ -237,49 +216,18 @@ class JobRunner:
             **common,
         )
 
-    @contextmanager
-    def _gate_admission(self, job: Job, reservation: Reservation) -> Iterator[None]:
-        """Hold the gate's peak memory, then one slot of the gate's kind, around a heavy gate.
-
-        Memory comes first, as in heavy.py, so a gate waiting in the memory queue holds
-        no slot. A gate holds exactly one kind of slot, so a game run never occupies a
-        build slot and no runner holds one kind while waiting for the other.
-        """
-        if job.heavy_gate is None:
-            yield
-            return
-        slots = {"build": self.settings.build_slots, "run": self.settings.run_slots}
-        with self._gate_memory(job, reservation):
-            with self._slot(job, slots[job.heavy_gate], job.heavy_gate):
-                yield
-
-    @contextmanager
-    def _gate_memory(self, job: Job, reservation: Reservation) -> Iterator[None]:
-        """Grow the job's reservation to its gate's peak; shrink it back afterwards."""
-        worker_mib = reservation.reserve_mib
-        gate_mib = max(worker_mib, job.mem_mib or config.HEAVY_RESERVE_MIB[job.heavy_gate])
-        memory = self.settings.memory
-        memory.resize(self.settings.lifetime, reservation, gate_mib)
-        try:
-            yield
-        finally:
-            memory.try_resize(reservation, worker_mib)
-
-    def _slot(self, job: Job, slots: MachineSlots, kind: str) -> SlotLease:
-        lease = slots.try_acquire()
-        if lease is None:
-            emit(f"swarm: {job.id}: all {slots.count} {kind} slots busy; gate waiting")
-            lease = slots.acquire(self.settings.lifetime)
-        return lease
-
-    def _unit_started(self, reservation: Reservation) -> Callable[[int], None]:
-        """Name a job's new process group for the ledger and the pressure watcher."""
+    def _run_unit(self, kind: str, *args, **kwargs) -> ProcessOutcome:
+        """``run_bounded`` with the new process group registered as a unit while it runs."""
+        units = []
 
         def started(group: int) -> None:
-            reservation.attach(group)
-            self.settings.pressure.adopt(group)
+            units.append(self.settings.units.register(group, kind))
 
-        return started
+        try:
+            return run_bounded(*args, **kwargs, on_spawn=started)
+        finally:
+            for unit in units:
+                self.settings.units.remove(unit)
 
 
 def run_jobs(

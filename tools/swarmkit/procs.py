@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import errno
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from pathlib import Path
 
 MIB = 1024 * 1024
@@ -30,24 +30,6 @@ def read_mem_available() -> int:
             if line.startswith("MemAvailable:"):
                 return int(line.split()[1]) * 1024
     raise RuntimeError("/proc/meminfo has no MemAvailable line")
-
-
-def read_group_rss(groups: Iterable[int]) -> dict[int, int]:
-    """Resident bytes per process group in ``groups``, from one pass over ``/proc``."""
-    wanted = set(groups)
-    total: dict[int, int] = {group: 0 for group in wanted}
-    if not wanted:
-        return total
-    for pid in _numeric_entries():
-        group = _process_group(pid)
-        if group in wanted:
-            total[group] += _resident_bytes(pid)
-    return total
-
-
-def read_tree_rss(pids: Iterable[int]) -> int:
-    """Resident bytes summed over ``pids``; a process that has exited counts 0."""
-    return sum(_resident_bytes(str(pid)) for pid in pids)
 
 
 def descendants(pid: int) -> list[int]:
@@ -128,23 +110,8 @@ def _parent_pid(pid: str) -> int | None:
     return int(fields[PPID_INDEX])
 
 
-def _process_group(pid: str) -> int | None:
-    fields = _stat_fields(pid)
-    if fields is None or len(fields) <= PGRP_INDEX:
-        return None
-    return int(fields[PGRP_INDEX])
-
-
 def _state(pid: str | int) -> str:
     fields = _stat_fields(pid)
     if not fields or len(fields) <= STATE_INDEX:
         return ""
     return fields[STATE_INDEX]
-
-
-def _resident_bytes(pid: str) -> int:
-    try:
-        pages = (PROC / pid / "statm").read_text(encoding="ascii").split()[1]
-    except (FileNotFoundError, ProcessLookupError, PermissionError, IndexError):
-        return 0
-    return int(pages) * PAGE_SIZE

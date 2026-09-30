@@ -27,6 +27,7 @@ TOOL_NAMES = (
     "heavy.py",
     "info.py",
     "piagent.py",
+    "pressure_guard.py",
     "project_state.py",
     "re_frontier.py",
     "safekill",

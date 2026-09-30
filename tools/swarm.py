@@ -11,7 +11,7 @@ ever committed; ``apply`` copies an accepted patch into the main working tree.
     swarm.py apply <run-dir> <job-id>
     swarm.py gc <run-dir>
 
-See skills/global/swarm/SKILL.md for the jobs format and the slot/lock rules.
+See skills/global/swarm/SKILL.md for the jobs format and the memory guard.
 """
 
 from __future__ import annotations
@@ -24,25 +24,19 @@ from pathlib import Path
 
 SUPPORTED = sys.platform.startswith("linux")
 if not SUPPORTED:
-    sys.exit(
-        "swarm: refused: Linux-only (flock(1) heavy lock, /proc/meminfo floor, "
-        "POSIX process groups)"
-    )
+    sys.exit("swarm: refused: Linux-only (subreaper, /proc, POSIX process groups)")
 
 from swarmkit import config
-from swarmkit.admission import MachineSlots
 from swarmkit.apply import ApplyRefused, apply_accepted
 from swarmkit.backends import BACKENDS, DEFAULT_BACKEND
 from swarmkit.cleanup import CleanupRefused, remove_worktrees
 from swarmkit.console import emit
 from swarmkit.jobs import JOB_ID, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
-from swarmkit.pressure import PressureWatcher
-from swarmkit.procs import MIB
 from swarmkit.report import summarize
-from swarmkit.reservations import ReservationLedger
 from swarmkit.results import Verdict
 from swarmkit.runner import RunSettings, run_jobs
+from swarmkit.units import UnitRegistry
 from swarmkit.worktree import WorktreeError
 
 
@@ -94,24 +88,6 @@ def parser() -> argparse.ArgumentParser:
         help=f"shared lock root (default: ${config.LOCK_DIR_VARIABLE} "
         "or ~/repo/scratch/locks)",
     )
-    run.add_argument(
-        "--slots",
-        type=positive,
-        default=config.DEFAULT_SLOTS,
-        help="machine-wide worker cap shared by every swarm invocation",
-    )
-    run.add_argument(
-        "--mem-floor-mib",
-        type=int,
-        default=config.DEFAULT_MEMORY_FLOOR_MIB,
-        help="keep this much MemAvailable free after every outstanding reservation",
-    )
-    run.add_argument(
-        "--mem-reserve-mib",
-        type=positive,
-        default=config.SWARM_RESERVE_MIB,
-        help="peak one worker may grow into, reserved when it is admitted",
-    )
     run.set_defaults(handler=command_run)
 
     report = commands.add_parser("report", help="print a run's denominators")
@@ -145,47 +121,16 @@ def command_run(args: argparse.Namespace) -> int:
     name = args.name or time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     if not JOB_ID.match(name):
         raise JobFileError(f"run name {name!r} must match {JOB_ID.pattern}")
-    settings_config = config.SwarmConfig(
-        lock_dir=(args.lock_dir or config.default_lock_dir()).resolve(),
-        slots=args.slots,
-        memory_floor_mib=args.mem_floor_mib,
-    )
-    floor_mib = settings_config.memory_floor_mib
-    memory = ReservationLedger(
-        settings_config.lock_dir,
-        floor_mib,
-        on_wait=lambda free, held, ahead: emit(
-            f"swarm: waiting behind {ahead} earlier request(s), MemAvailable "
-            f"{free // MIB} MiB - reserved {held} MiB < floor {floor_mib} MiB"
-        ),
-    )
-    pressure = PressureWatcher(
-        config.PRESSURE_PAUSE_MIB,
-        config.PRESSURE_RESUME_MIB,
-        on_event=emit,
-    )
+    lock_dir = (args.lock_dir or config.default_lock_dir()).resolve()
     settings = RunSettings(
         backend=BACKENDS[args.backend],
         model=args.model,
         retries=args.retries,
-        slots=MachineSlots(settings_config.slot_dir, settings_config.slots),
-        build_slots=MachineSlots(
-            settings_config.heavy_slot_dir("build"), config.HEAVY_SLOTS["build"]
-        ),
-        run_slots=MachineSlots(
-            settings_config.heavy_slot_dir("run"), config.HEAVY_SLOTS["run"]
-        ),
-        memory=memory,
-        pressure=pressure,
-        reserve_mib=args.mem_reserve_mib,
+        units=UnitRegistry(lock_dir),
         lifetime=RunLifetime(),
     )
     signal.signal(signal.SIGTERM, interrupt)
-    pressure.start()
-    try:
-        results = run_jobs(jobs, name, settings, args.workers, args.resume)
-    finally:
-        pressure.stop()
+    results = run_jobs(jobs, name, settings, args.workers, args.resume)
     accepted = sum(result.verdict is Verdict.ACCEPTED for result in results)
     emit(f"swarm: {accepted}/{len(results)} accepted")
     return 0
