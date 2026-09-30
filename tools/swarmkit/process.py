@@ -12,7 +12,7 @@ orphan below it and takes the whole parent-graph subtree down when the command
 ends, and dies with the runner thread that started it. On a timeout the runner
 also kills that subtree itself, in case the reaper is killed before it finishes.
 
-A unit paused by the pressure watcher (``pressure``) is not working, so the
+A unit paused by the pressure guard (``pressure``) is not working, so the
 deadline is extended by every slice it spends stopped; a unit stopped just before
 its deadline still gets its full budget of running time.
 """
@@ -64,8 +64,7 @@ def run_bounded(
 ) -> ProcessOutcome:
     """Run ``argv`` in ``cwd`` with stdout+stderr in ``log_path``; kill its group on timeout.
 
-    ``on_spawn`` receives the new process group, which is the unit a memory
-    reservation and the pressure watcher own.
+    ``on_spawn`` receives the new process group, the unit the pressure guard may pause.
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     # Some CLIs (opencode) resolve paths from $PWD rather than getcwd(); keep them in agreement.

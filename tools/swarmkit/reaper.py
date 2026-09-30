@@ -148,9 +148,8 @@ def _wait_reaping_adopted(child: subprocess.Popen[bytes]) -> int:
     """Wait for ``child`` while reaping every orphan this subreaper adopts meanwhile.
 
     A subreaper that waits only for its own child leaves each adopted orphan a
-    zombie until that child ends, and a zombie still answers ``kill(pid, 0)``:
-    one left holding a heavy.py ticket headed the machine's admission queue
-    for as long as its worker ran.
+    zombie until that child ends, and a zombie still answers ``kill(pid, 0)``,
+    so it looked alive to every liveness check for as long as its worker ran.
     """
     while True:
         reaped, status = os.waitpid(-1, 0)

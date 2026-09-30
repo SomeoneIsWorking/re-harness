@@ -1,13 +1,12 @@
-"""Machine-wide admission for heavy commands: builds, game instances, Ghidra, sweeps.
+"""Run one heavy command (a build, a game instance, Ghidra, a sweep) as a guarded unit.
 
-A single exclusive lock serialized every heavy job on the machine, so a one-hour
-verify held back a dozen jobs that would have fit beside it. Heavy work is now
-admitted through a small counting semaphore per kind (``MachineSlots``) plus a
-memory reservation, reusing the swarm runner's two admission owners.
+Nothing waits to start. The command's group is registered as a unit, so the
+pressure guard (``pressure``) can pause it if the host really runs out of memory;
+per-kind slots and predicted memory reservations were removed on 2026-09-30,
+after they queued builds for up to 50 minutes with 7 GiB free and cores idle.
 
-The wrapper, not the command, holds the slot and the reservation: those
-descriptors are not inherited, so a daemon the command leaves behind (an
-MSBuild node, a Gradle daemon) cannot keep either after the command returns.
+The wrapper, not the command, owns the registry entry, so a daemon the command
+leaves behind (an MSBuild node, a Gradle daemon) does not keep it.
 
 The command runs in the wrapper's own process group rather than a new session.
 A session of its own made it unreachable by every group signal aimed at the
@@ -22,8 +21,8 @@ The reaper is what makes the command's whole subtree die with the run.
 because each was reparented to init and kept compiling. The reaper takes that
 contract instead -- a subreaper, so an orphan is reparented to it rather than to
 init, and it SIGTERMs, then SIGKILLs, every remaining descendant. Because the
-unit no longer owns a group, the reservation, the pressure watcher and the run
-lifetime track the wrapper's group, which is where the command now lives.
+unit no longer owns a group, the registry entry and the run lifetime track the
+wrapper's group, which is where the command now lives.
 """
 
 from __future__ import annotations
@@ -31,57 +30,30 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import Path
 from types import FrameType
 
-from .admission import MachineSlots, SlotLease
 from .lifetime import RunLifetime
-from .peaks import PeakSampler
-from .pressure import PressureWatcher
 from .reaper import command_argv
-from .reservations import ReservationLedger
+from .units import UnitRegistry
 from .worktree import WorktreeError, ccache_environment, repo_root
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
 
-@dataclass(frozen=True)
-class HeavyAdmission:
-    """The slots, the memory reservation, and the watcher one heavy kind is admitted through."""
-
-    slots: MachineSlots
-    memory: ReservationLedger
-    reserve_mib: int
-    kind: str
-    pressure: PressureWatcher
-
-
-def run_admitted(
-    admission: HeavyAdmission,
+def run_unit(
+    registry: UnitRegistry,
+    kind: str,
     argv: Sequence[str],
     lifetime: RunLifetime,
-    on_wait: Callable[[], None],
-    on_peak: Callable[[int], None] | None = None,
 ) -> int:
-    """Run ``argv`` while holding its memory reservation and one heavy slot.
-
-    Memory is admitted first and the slot second, the one order every heavy admission
-    uses. A command waiting in the memory queue therefore holds no slot: taking the
-    slot first let two memory waiters hold both build slots for 50 minutes behind a
-    queue head that did not fit.
-
-    ``on_peak`` receives the command's measured peak in MiB once it exits.
-    """
-    with admission.memory.acquire(
-        lifetime, admission.reserve_mib, admission.kind
-    ) as reservation, _slot_lease(admission.slots, lifetime, on_wait):
-        # The unit is this group: the wrapper and the command it is about to start.
-        # Adopted before the spawn, so a run that has already stopped starts nothing.
-        group = os.getpgrp()
-        reservation.attach(group)
-        admission.pressure.adopt(group)
+    """Run ``argv`` at once as a registered unit of ``kind``; return its exit status."""
+    # The unit is this group: the wrapper and the command it is about to start.
+    # Adopted before the spawn, so a run that has already stopped starts nothing.
+    group = os.getpgrp()
+    unit = registry.register(group, kind)
+    try:
         lifetime.adopt(group)
         # The wrapper's own death is the reaper's cue to take the command's
         # subtree down; the reaper arms that itself, naming this process.
@@ -90,24 +62,12 @@ def run_admitted(
         )
         previous = _forward_signals(child.pid)
         try:
-            with PeakSampler(child.pid) as sampler:
-                code = child.wait()
-            if on_peak is not None:
-                on_peak(sampler.peak_mib)
-            return code
+            return child.wait()
         finally:
             _restore_signals(previous)
             lifetime.release(group)
-
-
-def _slot_lease(
-    slots: MachineSlots, lifetime: RunLifetime, on_wait: Callable[[], None]
-) -> SlotLease:
-    lease = slots.try_acquire()
-    if lease is None:
-        on_wait()
-        lease = slots.acquire(lifetime)
-    return lease
+    finally:
+        registry.remove(unit)
 
 
 def _command_environment() -> dict[str, str]:

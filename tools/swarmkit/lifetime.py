@@ -1,7 +1,7 @@
 """Bounds every child and wait of one run to the run's own lifetime.
 
 An interrupted run (Ctrl-C, SIGTERM) calls ``stop``: every live worker/gate
-process group is terminated by its captured id, slot and memory waits give up,
+process group is terminated by its captured id, waits give up,
 and no new child starts. Jobs cut short raise ``RunInterrupted`` and write no
 verdict, so ``report`` counts them as unfinished rather than as a failure the
 worker never made.

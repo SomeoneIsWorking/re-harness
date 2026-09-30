@@ -7,8 +7,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import HEAVY_SLOTS
-
 JOB_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 DEFAULT_GATE_TIMEOUT_SECONDS = 3600.0
 KNOWN_FIELDS = {
@@ -18,8 +16,6 @@ KNOWN_FIELDS = {
     "files",
     "read_only",
     "gate",
-    "heavy_gate",
-    "mem_mib",
     "timeout",
     "gate_timeout",
 }
@@ -42,13 +38,6 @@ class Job:
     # Absolute directories outside the worktree the worker may read but not edit, e.g.
     # a gitignored generated tree or an uninitialised submodule of the main checkout.
     read_only: tuple[Path, ...] = ()
-    # The machine-wide slot kind the runner admits this job's gate on: "build" for a
-    # gate dominated by compiling, "run" for one dominated by a game, browser or bot
-    # instance. None is a light gate with no admission of its own.
-    heavy_gate: str | None = None
-    # Peak this job's heavy gate may grow into, overriding its kind's default. A gate
-    # that is not heavy has no admission of its own, so it would mean nothing there.
-    mem_mib: int | None = None
     gate_timeout: float = DEFAULT_GATE_TIMEOUT_SECONDS
 
 
@@ -103,17 +92,6 @@ def _parse(record: object, where: str, base: Path) -> Job:
         isinstance(r, str) and r for r in read_only
     ):
         raise JobFileError(f"{where}: read_only must be a list of paths")
-    heavy = record.get("heavy_gate")
-    if heavy is not None and heavy not in HEAVY_SLOTS:
-        raise JobFileError(
-            f"{where}: heavy_gate must be one of {sorted(HEAVY_SLOTS)}, got {heavy!r}"
-        )
-    mem_mib = _positive_int(record, "mem_mib", where)
-    if mem_mib is not None and heavy is None:
-        raise JobFileError(
-            f"{where}: mem_mib reserves memory for a heavy gate; "
-            "set heavy_gate to 'build' or 'run', or drop it"
-        )
     repo = (base / Path(_required(record, "repo", str, where)).expanduser()).resolve()
     readable = tuple((repo / r).resolve() for r in read_only)
     missing = [str(r) for r in readable if not r.is_dir()]
@@ -127,8 +105,6 @@ def _parse(record: object, where: str, base: Path) -> Job:
         timeout=_seconds(record, "timeout", where, None),
         files=tuple(files),
         read_only=readable,
-        heavy_gate=heavy,
-        mem_mib=mem_mib,
         gate_timeout=_seconds(
             record, "gate_timeout", where, DEFAULT_GATE_TIMEOUT_SECONDS
         ),
@@ -147,13 +123,3 @@ def _seconds(record: dict, name: str, where: str, default: float | None) -> floa
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         raise JobFileError(f"{where}: {name!r} must be a positive number of seconds")
     return float(value)
-
-
-def _positive_int(record: dict, name: str, where: str) -> int | None:
-    """An optional whole number of MiB; anything else is a malformed jobs file."""
-    if name not in record:
-        return None
-    value = record[name]
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise JobFileError(f"{where}: {name!r} must be a positive whole number of MiB")
-    return value
