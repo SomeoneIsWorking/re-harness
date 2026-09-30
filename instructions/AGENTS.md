@@ -43,9 +43,11 @@
 - **Widescreen is a deterministic projection change.** Feed the same vertex stream with topology,
   UVs, depth, and colors preserved; widen the horizontal projection/viewport and override the
   title's draw area/scissor and every horizontal culling or screen-rect limit it owns (world,
-  actors, particles, shadows), so the margins show what the view would. Where the camera window
-  also drives behavior (object spawn/unload, activation; Tomba! 2, Mega Man X4), widen that guest
-  window too, so margin objects exist and act; record it as a gameplay delta in the baseline.
+  actors, particles, shadows), so the margins show what the view would. By default the native
+  renderer ignores the title's culls and draws from object memory, animating margin-only objects
+  itself, with guest memory untouched. Only where the camera window decides whether objects exist
+  at all (spawn/unload, typically side-scrollers: Tomba! 2, Mega Man X4) widen that guest window,
+  recorded as a gameplay delta in the baseline.
   Anchor the UI: edge HUD elements move to the widened edges or safe area,
   centred ones stay centred, nothing stretches. Never sample adjacent frames, infer geometry from
   pixels, or stretch the final image. Interpolation is a separate opt-in feature over matching
