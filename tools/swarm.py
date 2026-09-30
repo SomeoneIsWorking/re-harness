@@ -146,9 +146,9 @@ def command_run(args: argparse.Namespace) -> int:
     memory = ReservationLedger(
         settings_config.lock_dir,
         floor_mib,
-        on_wait=lambda free, held: emit(
-            f"swarm: waiting, MemAvailable {free // MIB} MiB - reserved {held} MiB "
-            f"< floor {floor_mib} MiB"
+        on_wait=lambda free, held, ahead: emit(
+            f"swarm: waiting behind {ahead} earlier request(s), MemAvailable "
+            f"{free // MIB} MiB - reserved {held} MiB < floor {floor_mib} MiB"
         ),
     )
     pressure = PressureWatcher(
