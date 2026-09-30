@@ -184,7 +184,10 @@ class JobRunner:
             job.timeout,
             job_dir / f"worker-{attempt}.log",
             lifetime,
-            self.settings.backend.environment([*job.read_only, job_dir]),
+            {
+                **tree.cache_environment(),
+                **self.settings.backend.environment([*job.read_only, job_dir]),
+            },
             on_spawn=self._unit_started(reservation),
         )
         if worker.timed_out:
@@ -208,6 +211,7 @@ class JobRunner:
                 job.gate_timeout,
                 job_dir / f"gate-{attempt}.log",
                 lifetime,
+                tree.cache_environment(),
                 on_spawn=self._unit_started(reservation),
             )
         common = {

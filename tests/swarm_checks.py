@@ -288,6 +288,18 @@ def _verdict_checks(check: Check, root: Path) -> int:
                 job(env_repo, "pwd", "envpwd", gate_file_is("pwd.txt", "pwd")),
                 job(
                     env_repo,
+                    "ccache",
+                    "envpwd",
+                    (
+                        PY,
+                        "-c",
+                        "import os, sys; ok = open('ccache.txt').read().strip() == 'ok' "
+                        "and os.environ.get('CCACHE_BASEDIR') == os.getcwd(); "
+                        "sys.exit(0 if ok else 1)",
+                    ),
+                ),
+                job(
+                    env_repo,
                     "files",
                     "attached",
                     gate_file_is("attached.txt", "ok"),
@@ -303,6 +315,10 @@ def _verdict_checks(check: Check, root: Path) -> int:
         "swarm: $PWD of a worker is its worktree",
         located["pwd"].verdict is Verdict.ACCEPTED
         and not (env_repo / "pwd.txt").exists(),
+    )
+    fails += check(
+        "swarm: worker and gate share ccache across worktrees (CCACHE_BASEDIR is the tree)",
+        located["ccache"].verdict is Verdict.ACCEPTED,
     )
     fails += check(
         "swarm: attachments are absolute paths inside the worktree, and only files that exist",
