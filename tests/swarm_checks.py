@@ -76,8 +76,10 @@ def settings(root: Path, slots: int = 8, retries: int = 0) -> RunSettings:
         backend=FakeBackend(),
         model="fake",
         retries=retries,
-        heavy_lock_dir=root / "locks",
         slots=MachineSlots(root / "locks" / "slots", slots, poll_seconds=0.05),
+        gate_slots=MachineSlots(
+            root / "locks" / "heavy-build", HEAVY_SLOTS["build"], poll_seconds=0.05
+        ),
         memory=ReservationLedger(
             root / "locks",
             0,
@@ -372,30 +374,82 @@ def _admission_checks(check: Check, root: Path) -> int:
 
     build_slots = MachineSlots(root / "locks" / "heavy-build", HEAVY_SLOTS["build"])
     holders = [build_slots.try_acquire() for _ in range(HEAVY_SLOTS["build"])]
+    ran = root / "heavy-ran.txt"
     heavy = job(
         repo,
         "heavy",
         "write h.txt x",
-        (PY, "-c", "pass"),
+        (PY, "-c", f"open({str(ran)!r}, 'w')"),
         heavy_gate=True,
+        mem_mib=8,
         gate_timeout=1.0,
     )
     light = job(repo, "light", "write h.txt x", (PY, "-c", "pass"), gate_timeout=1.0)
+
+    def release_holders() -> None:
+        # Held well past the heavy gate's whole deadline: time spent waiting for
+        # admission must not count against it.
+        time.sleep(2.5)
+        for holder in holders:
+            assert holder is not None
+            holder.release()
+
+    releaser = threading.Thread(target=release_holders)
+    releaser.start()
     held = {
         r.id: r for r in run_jobs([heavy, light], "heavy", settings(root), workers=2)
     }
-    for holder in holders:
-        assert holder is not None
-        holder.release()
+    releaser.join()
     fails += check(
-        "swarm: a heavy gate waits while every build slot is held",
-        held["heavy"].verdict is Verdict.TIMEOUT
-        and held["heavy"].reason is Reason.GATE
-        and "heavy.py" in held["heavy"].gate[1],
+        "swarm: a heavy gate's deadline starts at admission, not while it waits for a slot",
+        held["heavy"].verdict is Verdict.ACCEPTED
+        and ran.exists()
+        and held["heavy"].seconds > 2.5,
     )
     fails += check(
-        "swarm: a light gate ignores the heavy lock",
-        held["light"].verdict is Verdict.ACCEPTED,
+        "swarm: a light gate ignores the build slots",
+        held["light"].verdict is Verdict.ACCEPTED and held["light"].seconds < 2.5,
+    )
+    slow = job(
+        repo,
+        "heavy-slow",
+        "write h.txt x",
+        (PY, "-c", "import time; time.sleep(30)"),
+        heavy_gate=True,
+        mem_mib=8,
+        gate_timeout=0.5,
+    )
+    (slow_result,) = run_jobs([slow], "heavy-slow", settings(root), workers=1)
+    fails += check(
+        "swarm: NEGATIVE an admitted heavy gate still times out at its deadline",
+        slow_result.verdict is Verdict.TIMEOUT and slow_result.reason is Reason.GATE,
+    )
+
+    # 64 MiB free, floor 0: a job whose gate needs 40 MiB fits once, never twice.
+    # Its gate must run inside the job's own reservation, not wait behind it.
+    entries = root / "gate-saw.json"
+    census = (
+        "import json, pathlib, sys; "
+        f"d = pathlib.Path({str(root / 'locks' / 'reservations')!r}); "
+        "rows = [json.loads(p.read_text()) for p in d.glob('*.json')]; "
+        f"pathlib.Path({str(entries)!r}).write_text(json.dumps(rows))"
+    )
+    sized = job(
+        repo,
+        "heavy-sized",
+        "write h.txt x",
+        (PY, "-c", census),
+        heavy_gate=True,
+        mem_mib=40,
+        timeout=5.0,
+        gate_timeout=5.0,
+    )
+    (sized_result,) = run_jobs([sized], "heavy-sized", settings(root), workers=1)
+    rows = json.loads(entries.read_text()) if entries.exists() else []
+    fails += check(
+        "swarm: a heavy gate runs inside its job's one reservation, sized for the larger peak",
+        sized_result.verdict is Verdict.ACCEPTED
+        and [row["reserve_mib"] for row in rows] == [40],
     )
     return fails
 

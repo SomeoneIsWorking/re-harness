@@ -2,27 +2,36 @@
 
 Each job runs under two machine-wide claims: a slot (how many) and a memory
 reservation (how much it may still grow into). The reservation is taken once for
-the job and attached to every process group the job starts, so the headroom the
-ledger keeps free covers the worker's peak and the gate's alike.
+the job, sized for the larger of the worker's and the gate's peak, and attached to
+every process group the job starts, so the headroom the ledger keeps free covers
+both. A heavy gate therefore takes no reservation of its own: a second one was
+refused by the job's own idle worker entry, and the job waited on itself.
+
+A heavy gate is admitted here, in the runner, through the machine's build slots,
+and its ``gate_timeout`` starts only once it holds one. Run through ``heavy.py``
+the admission wait sat inside the gate's deadline, so a gate queued behind other
+builds timed out without ever running.
 """
 
 from __future__ import annotations
 
 import json
-import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from .admission import MachineSlots
+from . import config
+from .admission import MachineSlots, SlotLease
 from .backends import Backend
 from .console import emit
 from .jobs import Job
 from .lifetime import RunLifetime
 from .pressure import PressureWatcher
 from .process import run_bounded
+from .reaper import command_argv, command_environment_overrides
 from .reservations import Reservation, ReservationLedger
 from .results import PATCH_FILE, RUN_FILE, JobResult, Reason, Verdict
 from .worktree import Worktree, WorktreeError, run_directory
@@ -40,16 +49,13 @@ EMPTY_FEEDBACK = (
 )
 
 
-HEAVY_CLI = Path(__file__).resolve().parent.parent / "heavy.py"
-
-
 @dataclass(frozen=True)
 class RunSettings:
     backend: Backend
     model: str
     retries: int
-    heavy_lock_dir: Path
     slots: MachineSlots
+    gate_slots: MachineSlots
     memory: ReservationLedger
     pressure: PressureWatcher
     reserve_mib: int
@@ -71,7 +77,7 @@ class JobRunner:
         with (
             self.settings.slots.acquire(self.settings.lifetime),
             self.settings.memory.acquire(
-                self.settings.lifetime, self.settings.reserve_mib, "swarm"
+                self.settings.lifetime, self._reserve_mib(job), "swarm"
             ) as reservation,
         ):
             result = self._run_in_slot(job, job_dir, reservation)
@@ -82,6 +88,13 @@ class JobRunner:
             + (f" ({result.reason.value})" if result.reason else "")
         )
         return result
+
+    def _reserve_mib(self, job: Job) -> int:
+        """The job's one reservation: its worker's peak or its heavy gate's, whichever is larger."""
+        if not job.heavy_gate:
+            return self.settings.reserve_mib
+        gate_mib = job.mem_mib or config.HEAVY_RESERVE_MIB["build"]
+        return max(self.settings.reserve_mib, gate_mib)
 
     def _run_in_slot(
         self, job: Job, job_dir: Path, reservation: Reservation
@@ -100,12 +113,11 @@ class JobRunner:
                 list(job.gate),
                 worker_tail=str(error),
             )
-        gate_argv = self._gate_argv(job)
         prompt = job.prompt
         result: JobResult | None = None
         for attempt in range(1, self.settings.retries + 2):
             result = self._attempt(
-                job, job_dir, tree, gate_argv, prompt, attempt, reservation
+                job, job_dir, tree, prompt, attempt, reservation
             )
             if result.verdict is not Verdict.REJECTED:
                 return result
@@ -120,27 +132,11 @@ class JobRunner:
         assert result is not None
         return result
 
-    def _gate_argv(self, job: Job) -> list[str]:
-        if not job.heavy_gate:
-            return list(job.gate)
-        argv = [
-            sys.executable,
-            str(HEAVY_CLI),
-            "--kind",
-            "build",
-            "--lock-dir",
-            str(self.settings.heavy_lock_dir),
-        ]
-        if job.mem_mib is not None:
-            argv += ["--mem-mib", str(job.mem_mib)]
-        return argv + ["--", *job.gate]
-
     def _attempt(
         self,
         job: Job,
         job_dir: Path,
         tree: Worktree,
-        gate_argv: Sequence[str],
         prompt: str,
         attempt: int,
         reservation: Reservation,
@@ -153,7 +149,7 @@ class JobRunner:
                 value,
                 reason,
                 attempt,
-                list(gate_argv),
+                list(job.gate),
                 **fields,
             )
 
@@ -190,14 +186,17 @@ class JobRunner:
         (job_dir / PATCH_FILE).write_text(patch, encoding="utf-8")
         if not changed:
             return verdict(Verdict.REJECTED, Reason.EMPTY_PATCH, worker_returncode=0)
-        gate = run_bounded(
-            gate_argv,
-            tree.path,
-            job.gate_timeout,
-            job_dir / f"gate-{attempt}.log",
-            lifetime,
-            on_spawn=self._unit_started(reservation),
-        )
+        with self._gate_admission(job):
+            argv, environment = self._gate_command(job)
+            gate = run_bounded(
+                argv,
+                tree.path,
+                job.gate_timeout,
+                job_dir / f"gate-{attempt}.log",
+                lifetime,
+                environment,
+                on_spawn=self._unit_started(reservation),
+            )
         common = {
             "worker_returncode": 0,
             "changed_files": changed,
@@ -213,6 +212,27 @@ class JobRunner:
             gate_returncode=gate.returncode,
             **common,
         )
+
+    @contextmanager
+    def _gate_admission(self, job: Job) -> Iterator[None]:
+        """Hold one build slot around a heavy gate; a light gate needs none."""
+        if not job.heavy_gate:
+            yield
+            return
+        slots = self.settings.gate_slots
+        lease: SlotLease | None = slots.try_acquire()
+        if lease is None:
+            emit(f"swarm: {job.id}: all {slots.count} build slots busy; gate waiting")
+            lease = slots.acquire(self.settings.lifetime)
+        with lease:
+            yield
+
+    @staticmethod
+    def _gate_command(job: Job) -> tuple[list[str], dict[str, str] | None]:
+        """A heavy gate runs under the reaper, so its whole subtree dies with it."""
+        if not job.heavy_gate:
+            return list(job.gate), None
+        return command_argv(job.gate), command_environment_overrides()
 
     def _unit_started(self, reservation: Reservation) -> Callable[[int], None]:
         """Name a job's new process group for the ledger and the pressure watcher."""

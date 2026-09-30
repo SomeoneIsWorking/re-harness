@@ -65,11 +65,11 @@ One JSON object per line:
   into one owner before applying more of them.
 - **Gate output is feedback.** With `--retries N` a rejected worker is re-prompted in the same
   worktree with the gate's last 60 lines, so make failures say what differed.
-- `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run,
-  including time spent waiting for a heavy slot. Neither counts time a unit spent paused for
-  memory pressure.
-- **`mem_mib`** (optional, whole MiB, `heavy_gate` only) overrides the peak reserved for this
-  job's gate.
+- `timeout` bounds each worker attempt; `gate_timeout` (default 3600 s) bounds each gate run
+  from the moment it is admitted: time a heavy gate spends waiting for a build slot does not
+  count. Neither counts time a unit spent paused for memory pressure.
+- **`mem_mib`** (optional, whole MiB, `heavy_gate` only) is the peak this job's gate may grow
+  into (default: a `build`'s 3072 MiB).
 - **A prompt is a file, not an argument.** The runner writes it to `<id>/prompt-<n>.md` and the
   backend attaches it (`-f` for opencode, `@` for pi), because Linux caps one argv string at
   128 KiB and a long task plus gate feedback exceeds that. Retries reuse the same path with the
@@ -112,7 +112,11 @@ One JSON object per line:
   browser, Ghidra or bot instance; 4 at once) are separate flock slot sets under
   `<lock-dir>/heavy-<kind>/`, and admission also waits for 2048 MiB of `MemAvailable`. The wrapper
   holds the slot and the reservation, so a daemon the command leaves behind never keeps either. A
-  job with `heavy_gate: true` runs its gate as a `build`. Do not run heavy work outside it; the old
+  job with `heavy_gate: true` runs its gate as a `build`, admitted by the swarm runner itself: it
+  takes one of the same build slots but no second reservation. The job's one reservation is sized
+  for the larger of its worker's and its gate's peak (`max(--mem-reserve-mib, mem_mib)`), because a
+  separate gate reservation was refused by the job's own idle worker entry. The gate still runs
+  under the reaper. Do not run heavy work outside it; the old
   single `heavy.lock` is retired.
 - **A heavy command's whole subtree dies with the run that started it.** The wrapper's direct
   child is a reaper (`python3 -m swarmkit.reaper -- <command>`), not the command. It runs the

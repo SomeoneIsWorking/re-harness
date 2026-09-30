@@ -71,11 +71,14 @@ def command_argv(argv: Sequence[str]) -> list[str]:
 
 def command_environment() -> dict[str, str]:
     """The child's environment, with this package importable by ``-m``."""
-    environment = dict(os.environ)
+    return dict(os.environ, **command_environment_overrides())
+
+
+def command_environment_overrides() -> dict[str, str]:
+    """The variables ``command_argv`` needs on top of the caller's environment."""
     root = str(PACKAGE_ROOT)
-    inherited = environment.get("PYTHONPATH")
-    environment["PYTHONPATH"] = f"{root}{os.pathsep}{inherited}" if inherited else root
-    return environment
+    inherited = os.environ.get("PYTHONPATH")
+    return {"PYTHONPATH": f"{root}{os.pathsep}{inherited}" if inherited else root}
 
 
 def die_with_parent(parent: int, signum: int = signal.SIGTERM) -> Callable[[], None]:
