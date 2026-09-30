@@ -33,6 +33,7 @@ import signal
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from types import FrameType
 
 from .admission import MachineSlots
@@ -40,6 +41,7 @@ from .lifetime import RunLifetime
 from .pressure import PressureWatcher
 from .reaper import command_argv
 from .reservations import ReservationLedger
+from .worktree import WorktreeError, ccache_environment, repo_root
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
@@ -77,13 +79,30 @@ def run_admitted(
         lifetime.adopt(group)
         # The wrapper's own death is the reaper's cue to take the command's
         # subtree down; the reaper arms that itself, naming this process.
-        child = subprocess.Popen(command_argv(argv, os.getpid()), close_fds=True)
+        child = subprocess.Popen(
+            command_argv(argv, os.getpid()), close_fds=True, env=_command_environment()
+        )
         previous = _forward_signals(child.pid)
         try:
             return child.wait()
         finally:
             _restore_signals(previous)
             lifetime.release(group)
+
+
+def _command_environment() -> dict[str, str]:
+    """The caller's environment, with ccache shared across worktrees of the cwd's repo.
+
+    A CCACHE_BASEDIR the caller set wins; outside a git checkout nothing is added.
+    """
+    environment = dict(os.environ)
+    if "CCACHE_BASEDIR" in environment:
+        return environment
+    try:
+        root = repo_root(Path.cwd())
+    except WorktreeError:
+        return environment
+    return environment | ccache_environment(root)
 
 
 def _forward_signals(pid: int) -> dict[int, object]:
