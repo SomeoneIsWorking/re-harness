@@ -38,7 +38,7 @@ from types import FrameType
 from .admission import MachineSlots
 from .lifetime import RunLifetime
 from .pressure import PressureWatcher
-from .reaper import command_argv, command_environment, die_with_parent
+from .reaper import command_argv
 from .reservations import ReservationLedger
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
@@ -75,15 +75,9 @@ def run_admitted(
         reservation.attach(group)
         admission.pressure.adopt(group)
         lifetime.adopt(group)
-        child = subprocess.Popen(
-            command_argv(argv),
-            close_fds=True,
-            env=command_environment(),
-            # The wrapper's own death is the reaper's cue to take the command's
-            # subtree down; SIGTERM, because a SIGKILLed reaper would reap
-            # nothing. Its own child hook is armed the same way, one level down.
-            preexec_fn=die_with_parent(os.getpid()),  # noqa: PLW1509
-        )
+        # The wrapper's own death is the reaper's cue to take the command's
+        # subtree down; the reaper arms that itself, naming this process.
+        child = subprocess.Popen(command_argv(argv, os.getpid()), close_fds=True)
         previous = _forward_signals(child.pid)
         try:
             return child.wait()

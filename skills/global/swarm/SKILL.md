@@ -122,11 +122,14 @@ One JSON object per line:
   separate gate reservation was refused by the job's own idle worker entry. The gate still runs
   under the reaper. Do not run heavy work outside it; the old
   single `heavy.lock` is retired.
-- **A heavy command's whole subtree dies with the run that started it.** The wrapper's direct
-  child is a reaper (`python3 -m swarmkit.reaper -- <command>`), not the command. It runs the
+- **Every unit's whole subtree dies with the run that started it** -- a `heavy.py` command, and
+  under `swarm.py` every worker and every gate. The wrapper's direct child is a reaper
+  (`swarmkit.reaper`, started by `command_argv(argv, parent)`), not the command. It runs the
   command in the caller's own process group, never a new session, so the group kill a timeout
-  sends reaches the command and not only the wrapper; and it carries `PR_SET_PDEATHSIG` (SIGTERM,
-  catchable, not SIGKILL), so a wrapper killed on its own hands the subtree over to it. The reaper
+  sends reaches the command and not only the wrapper; and it arms `PR_SET_PDEATHSIG` (SIGTERM,
+  catchable, not SIGKILL) on itself, refusing to start if its named parent is already gone, so a
+  wrapper killed on its own hands the subtree over to it. The command's environment is the
+  caller's, unchanged: the reaper finds its own package without `PYTHONPATH`. The reaper
   calls `prctl(PR_SET_CHILD_SUBREAPER)`, so a descendant orphaned when its own parent dies is
   reparented to the reaper instead of init, and it then SIGTERMs every remaining descendant,
   waits 5 s, SIGKILLs the survivors and exits with the command's status. Descendants are found
@@ -136,7 +139,9 @@ One JSON object per line:
   was `cmake` once left `ninja` and the rest of the build compiling after the worker that started
   it was gone. The reservation, the pressure watcher and the run lifetime therefore track the
   wrapper's group, which is where the command lives (under `swarm.py` that group is the worker's,
-  so the caller's own resident size is read as part of the unit's).
+  so the caller's own resident size is read as part of the unit's). A worker's detached helper
+  (opencode runs retry scripts from /tmp under `setsid`/`nohup`) is therefore reaped with the
+  worker; one such script once kept re-running a gate for an hour after its swarm was killed.
 - Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
   `--standalone` so its model server is inside that group; through the shared `opencode serve`
   service a timed-out session would keep editing the worktree.
