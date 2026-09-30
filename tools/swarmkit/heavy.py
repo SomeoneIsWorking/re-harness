@@ -1,12 +1,7 @@
-"""Run one heavy command (a build, a game instance, Ghidra, a sweep) as a guarded unit.
+"""Run one heavy command (a build, a game instance, Ghidra, a sweep) under the reaper.
 
-Nothing waits to start. The command's group is registered as a unit, so the
-pressure guard (``pressure``) can pause it if the host really runs out of memory;
-per-kind slots and predicted memory reservations were removed on 2026-09-30,
-after they queued builds for up to 50 minutes with 7 GiB free and cores idle.
-
-The wrapper, not the command, owns the registry entry, so a daemon the command
-leaves behind (an MSBuild node, a Gradle daemon) does not keep it.
+Nothing waits to start: admission slots, memory reservations and the pressure
+guard were all removed on 2026-09-30.
 
 The command runs in the wrapper's own process group rather than a new session.
 A session of its own made it unreachable by every group signal aimed at the
@@ -21,8 +16,8 @@ The reaper is what makes the command's whole subtree die with the run.
 because each was reparented to init and kept compiling. The reaper takes that
 contract instead -- a subreaper, so an orphan is reparented to it rather than to
 init, and it SIGTERMs, then SIGKILLs, every remaining descendant. Because the
-unit no longer owns a group, the registry entry and the run lifetime track the
-wrapper's group, which is where the command now lives.
+unit no longer owns a group, the run lifetime tracks the wrapper's group, which
+is where the command now lives.
 """
 
 from __future__ import annotations
@@ -36,25 +31,17 @@ from types import FrameType
 
 from .lifetime import RunLifetime
 from .reaper import command_argv
-from .units import UnitRegistry
 from .worktree import WorktreeError, ccache_environment, repo_root
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
 
-def run_unit(
-    registry: UnitRegistry,
-    kind: str,
-    argv: Sequence[str],
-    lifetime: RunLifetime,
-) -> int:
-    """Run ``argv`` at once as a registered unit of ``kind``; return its exit status."""
-    # The unit is this group: the wrapper and the command it is about to start.
+def run_command(argv: Sequence[str], lifetime: RunLifetime) -> int:
+    """Run ``argv`` at once under the reaper; return its exit status."""
     # Adopted before the spawn, so a run that has already stopped starts nothing.
     group = os.getpgrp()
-    unit = registry.register(group, kind)
+    lifetime.adopt(group)
     try:
-        lifetime.adopt(group)
         # The wrapper's own death is the reaper's cue to take the command's
         # subtree down; the reaper arms that itself, naming this process.
         child = subprocess.Popen(
@@ -65,9 +52,8 @@ def run_unit(
             return child.wait()
         finally:
             _restore_signals(previous)
-            lifetime.release(group)
     finally:
-        registry.remove(unit)
+        lifetime.release(group)
 
 
 def _command_environment() -> dict[str, str]:

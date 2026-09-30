@@ -11,7 +11,7 @@ ever committed; ``apply`` copies an accepted patch into the main working tree.
     swarm.py apply <run-dir> <job-id>
     swarm.py gc <run-dir>
 
-See skills/global/swarm/SKILL.md for the jobs format and the memory guard.
+See skills/global/swarm/SKILL.md for the jobs format.
 """
 
 from __future__ import annotations
@@ -36,7 +36,6 @@ from swarmkit.lifetime import RunInterrupted, RunLifetime
 from swarmkit.report import summarize
 from swarmkit.results import Verdict
 from swarmkit.runner import RunSettings, run_jobs
-from swarmkit.units import UnitRegistry
 from swarmkit.worktree import WorktreeError
 
 
@@ -81,13 +80,6 @@ def parser() -> argparse.ArgumentParser:
         help="continue the interrupted run --name: keep verdicts, resume unfinished "
         "jobs in their worktrees",
     )
-    run.add_argument(
-        "--lock-dir",
-        type=Path,
-        default=None,
-        help=f"shared lock root (default: ${config.LOCK_DIR_VARIABLE} "
-        "or ~/repo/scratch/locks)",
-    )
     run.set_defaults(handler=command_run)
 
     report = commands.add_parser("report", help="print a run's denominators")
@@ -121,12 +113,10 @@ def command_run(args: argparse.Namespace) -> int:
     name = args.name or time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     if not JOB_ID.match(name):
         raise JobFileError(f"run name {name!r} must match {JOB_ID.pattern}")
-    lock_dir = (args.lock_dir or config.default_lock_dir()).resolve()
     settings = RunSettings(
         backend=BACKENDS[args.backend],
         model=args.model,
         retries=args.retries,
-        units=UnitRegistry(lock_dir),
         lifetime=RunLifetime(),
     )
     signal.signal(signal.SIGTERM, interrupt)

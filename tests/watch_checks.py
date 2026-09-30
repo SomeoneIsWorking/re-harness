@@ -8,7 +8,6 @@ from swarmkit.watch import (
     AGENT_IDLE_SECONDS,
     QUIET_REPO_SECONDS,
     SWARM_STALL_SECONDS,
-    GUARD_STALE_SECONDS,
     Agent,
     Checkout,
     Process,
@@ -45,7 +44,6 @@ def run_checks_suite(check: Check) -> int:
             0,
             processes=(
                 process(1, 5000),
-                process(2, 5000, group=9),
                 process(3, 5000, "claude --x"),
                 process(4, 5000),
             ),
@@ -56,11 +54,9 @@ def run_checks_suite(check: Check) -> int:
         60,
         processes=(
             process(1, 6000),
-            process(2, 6000, group=9),
             process(3, 6000, "claude --x"),
             process(4, 5100),
         ),
-        unit_groups=frozenset({9}),
     )
     alerts = [a for a in run_checks(grown, state) if a.kind == "runaway_memory"]
     fails += check(
@@ -69,27 +65,13 @@ def run_checks_suite(check: Check) -> int:
         str(alerts),
     )
     fails += check(
-        "watch: NEGATIVE a registered unit, a Claude, or a barely growing process is left alone",
+        "watch: NEGATIVE a Claude or a barely growing process is left alone",
         all(a.kill_pid == 1 for a in alerts),
     )
     fails += check(
         "watch: NEGATIVE a large process seen for the first time is not killed",
         "runaway_memory"
         not in kinds(Snapshot(0, processes=(process(7, 9000),)), WatchState()),
-    )
-
-    fails += check(
-        "watch: a pressure guard that never polled is down",
-        "guard_down" in kinds(Snapshot(0, guard_age_seconds=None), WatchState()),
-    )
-    fails += check(
-        "watch: a pressure guard whose last poll is stale is down",
-        "guard_down"
-        in kinds(Snapshot(0, guard_age_seconds=GUARD_STALE_SECONDS + 1), WatchState()),
-    )
-    fails += check(
-        "watch: NEGATIVE a guard that polled just now is not down",
-        not kinds(Snapshot(0, guard_age_seconds=1.0), WatchState()),
     )
 
     state = WatchState()

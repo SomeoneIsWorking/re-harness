@@ -26,13 +26,11 @@ from swarmkit.backends import BACKENDS, PROMPT_ATTACHED
 from swarmkit.cleanup import CleanupRefused, remove_worktrees
 from swarmkit.jobs import Job, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
-from swarmkit.pressure import PressureGuard
 from swarmkit.process import ProcessOutcome, run_bounded
-from swarmkit.procs import MIB, descendants
+from swarmkit.procs import descendants
 from swarmkit.report import summarize
 from swarmkit.results import JobResult, Reason, Verdict
 from swarmkit.runner import RunSettings, run_jobs
-from swarmkit.units import UnitRegistry
 from swarmkit.worktree import Worktree, WorktreeError, registered_worktrees
 
 Check = Callable[..., int]
@@ -72,7 +70,6 @@ def settings(root: Path, retries: int = 0) -> RunSettings:
         backend=FakeBackend(),
         model="fake",
         retries=retries,
-        units=UnitRegistry(root / "locks"),
         lifetime=RunLifetime(),
     )
 
@@ -114,15 +111,13 @@ def run_checks(check: Check, scratch: str) -> int:
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _verdict_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
-        fails += _unit_checks(check, Path(tmp))
+        fails += _width_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _interrupt_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _resume_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _input_checks(check, Path(tmp))
-    with tempfile.TemporaryDirectory(dir=scratch) as tmp:
-        fails += _pressure_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
         fails += _deadline_checks(check, Path(tmp))
     with tempfile.TemporaryDirectory(dir=scratch) as tmp:
@@ -381,8 +376,8 @@ def _verdict_checks(check: Check, root: Path) -> int:
     return fails
 
 
-def _unit_checks(check: Check, root: Path) -> int:
-    """Nothing is admitted or queued; every running worker and gate is a registered unit."""
+def _width_checks(check: Check, root: Path) -> int:
+    """Nothing is admitted or queued: every requested worker runs at once."""
     fails = 0
     repo = make_repo(root)
     events = root / "events.txt"
@@ -405,33 +400,6 @@ def _unit_checks(check: Check, root: Path) -> int:
         f"peak {peak}",
     )
 
-    units = root / "locks" / "units"
-    worker_saw = root / "worker-units.json"
-    gate_saw = root / "gate-units.json"
-    census = (
-        "import json, os, pathlib; "
-        f"rows = [json.loads(p.read_text()) for p in pathlib.Path({str(units)!r}).glob('*.json')]; "
-        f"pathlib.Path({str(gate_saw)!r}).write_text(json.dumps([rows, os.getpgrp()]))"
-    )
-    counted = job(repo, "units", f"units {units} {worker_saw}", (PY, "-c", census))
-    (counted_result,) = run_jobs([counted], "units", settings(root), workers=1)
-    worker_rows = json.loads(worker_saw.read_text()) if worker_saw.exists() else None
-    gate_rows, gate_group = (
-        json.loads(gate_saw.read_text()) if gate_saw.exists() else ([], -1)
-    )
-    fails += check(
-        "swarm: a running worker and a running gate are each registered as a unit",
-        counted_result.verdict is Verdict.ACCEPTED
-        and worker_rows is not None
-        and len(worker_rows) == 1
-        and [row["group"] for row in gate_rows] == [gate_group],
-        f"worker saw {worker_rows}, gate saw {gate_rows} in group {gate_group}",
-    )
-    fails += check(
-        "swarm: NEGATIVE a finished job leaves no unit behind",
-        not list(units.glob("*.json")),
-        f"{sorted(p.name for p in units.glob('*.json'))}",
-    )
     slow = job(
         repo,
         "slow-gate",
@@ -648,131 +616,12 @@ def _live_group(seconds: float = 30.0) -> subprocess.Popen:
     )
 
 
-def _guard(free_mib: list[int], now: list[float], sent: list) -> PressureGuard:
-    """A guard at the shipping thresholds over a fake MemAvailable, clock and signal sender."""
-    return PressureGuard(
-        2048,
-        3584,
-        1400,
-        5.0,
-        reader=lambda: free_mib[0] * MIB,
-        stopper=lambda group, signum: sent.append((group, signum)),
-        clock=lambda: now[0],
-    )
-
-
-def _pressure_checks(check: Check, root: Path) -> int:
-    fails = 0
-    groups = [101, 102, 103, 104]
-    sent: list[tuple[int, int]] = []
-    free, now = [1800], [0.0]
-    guard = _guard(free, now, sent)
-
-    def at(seconds: float, mib: int) -> list[str]:
-        now[0], free[0] = seconds, mib
-        return guard.poll(groups)
-
-    first = at(0.0, 1800)
-    at(1.0, 1800)
-    at(6.0, 1800)
-    fails += check(
-        "pressure: pauses the newest unit once, then NEGATIVE no more while memory holds steady",
-        sent == [(104, SIGSTOP)] and "paused" in first[0] and "1800 MiB" in first[0],
-        f"sent {sent}",
-    )
-    at(7.0, 1700)
-    at(12.0, 1700)
-    fails += check(
-        "pressure: pauses the next newest once settled only if memory kept falling",
-        sent == [(104, SIGSTOP), (103, SIGSTOP)],
-        f"sent {sent}",
-    )
-    at(12.5, 1000)
-    at(13.0, 900)
-    fails += check(
-        "pressure: below the critical floor it pauses every poll, never the last unit",
-        sent[2:] == [(102, SIGSTOP)] and guard.stopped == [104, 103, 102],
-        f"sent {sent[2:]}",
-    )
-    resumed = at(20.0, 4000)
-    at(21.0, 4000)
-    at(26.0, 4000)
-    fails += check(
-        "pressure: resumes one unit per settle interval, oldest stopped first",
-        sent[3:] == [(102, SIGCONT), (103, SIGCONT)]
-        and "resumed" in resumed[0]
-        and "4000 MiB" in resumed[0],
-        f"sent {sent[3:]}",
-    )
-    between: list[tuple[int, int]] = []
-    fails += check(
-        "pressure: NEGATIVE a host between the thresholds changes nothing (no flapping)",
-        _guard([2500], [0.0], between).poll(groups) == [] and between == [],
-        f"sent {between}",
-    )
-    alone: list[tuple[int, int]] = []
-    single = _guard([100], [0.0], alone)
-    quiet = single.poll([201]) + single.poll([201])
-    fails += check(
-        "pressure: NEGATIVE the last running unit is never paused",
-        quiet == [] and alone == [],
-        f"{quiet} {alone}",
-    )
-    ended: list[tuple[int, int]] = []
-    shrinking = _guard([100], [0.0], ended)
-    shrinking.poll([301, 302])
-    shrinking.poll([301])
-    fails += check(
-        "pressure: a unit that ended is forgotten; the survivor keeps running",
-        ended == [(302, SIGSTOP)] and shrinking.stopped == [],
-        f"{ended} {shrinking.stopped}",
-    )
-    exiting: list[tuple[int, int]] = []
-    leaving = _guard([100], [0.0], exiting)
-    leaving.poll([401, 402, 403])
-    leaving.poll([401, 402, 403])
-    leaving.resume_all()
-    fails += check(
-        "pressure: a guard that exits resumes everything it stopped",
-        sorted(exiting[2:]) == [(402, SIGCONT), (403, SIGCONT)]
-        and leaving.stopped == [],
-        f"{exiting}",
-    )
-
-    registry = UnitRegistry(root / "registry")
-    older, newer = _live_group(), _live_group()
-    first = registry.register(older.pid, "build")
-    registry.register(older.pid, "swarm")
-    registry.register(newer.pid, "run")
-    dead = _live_group()
-    registry.register(dead.pid, "build")
-    dead.kill()
-    dead.wait()
-    process_gone(dead.pid)
-    live = registry.live()
-    fails += check(
-        "units: one live unit per group, oldest first; a dead group's entry is pruned",
-        [unit.group for unit in live] == [older.pid, newer.pid]
-        and not list(registry.directory.glob(f"{dead.pid}-*.json")),
-        f"{[(u.group, u.kind) for u in live]}",
-    )
-    registry.remove(first)
-    fails += check(
-        "units: removing one registrant's entry keeps the group's other entry",
-        [unit.group for unit in registry.live()] == [older.pid, newer.pid],
-    )
-    for unit in (older, newer):
-        unit.kill()
-        unit.wait()
-    return fails
-
-
 def _deadline_checks(check: Check, root: Path) -> int:
     """A paused unit is not working, so its deadline is extended by the pause."""
     fails = 0
     outcome = _run_sleeping_child(root, 2.0, timeout=1.0, paused_for=1.5)
     fails += check(
-        "swarm: a unit paused under pressure still gets its full running budget",
+        "swarm: a unit stopped by a signal still gets its full running budget",
         not outcome.timed_out and outcome.returncode == 0,
         f"timed_out={outcome.timed_out} returncode={outcome.returncode}",
     )
@@ -959,7 +808,7 @@ def _heavy(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [PY, str(HEAVY_CLI), "--lock-dir", str(locks), *argv],
+        [PY, str(HEAVY_CLI), *argv],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -975,8 +824,6 @@ def _heavy_wrapper(locks: Path, marker: Path) -> subprocess.Popen[str]:
         [
             PY,
             str(HEAVY_CLI),
-            "--lock-dir",
-            str(locks),
             "--",
             PY,
             "-c",
@@ -1032,8 +879,6 @@ def _wrapper_tree(
         [
             PY,
             str(HEAVY_CLI),
-            "--lock-dir",
-            str(locks),
             "--",
             "sh",
             "-c",
@@ -1153,11 +998,22 @@ def _heavy_checks(check: Check, root: Path) -> int:
     )
     fails += check(
         "heavy: NEGATIVE no command is refused",
-        _heavy(locks, "--kind", "run").returncode == 2,
+        _heavy(locks).returncode == 2,
+    )
+    for flag in ("--kind", "--lock-dir", "--mem-mib"):
+        refused = _heavy(locks, flag, "x", "--", PY, "-c", "pass")
+        fails += check(
+            f"heavy: NEGATIVE the removed {flag} flag is refused by name",
+            refused.returncode == 2 and flag in refused.stderr,
+            refused.stderr,
+        )
+    passed_on = _heavy(
+        locks, "--", PY, "-c", "import sys; print(sys.argv[1:])", "--kind", "run"
     )
     fails += check(
-        "heavy: NEGATIVE the removed --mem-mib flag is refused",
-        _heavy(locks, "--mem-mib", "512", "--", PY, "-c", "pass").returncode == 2,
+        "heavy: a --kind after -- belongs to the command, not to heavy.py",
+        passed_on.returncode == 0 and "'--kind', 'run'" in passed_on.stdout,
+        passed_on.stdout + passed_on.stderr,
     )
     repo = make_repo(root / "ccache")
     nested = repo / "sub"
@@ -1167,14 +1023,12 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "-c",
         "import os; print('BASEDIR=' + os.environ.get('CCACHE_BASEDIR', ''))",
     )
-    inside = _heavy(locks, "--kind", "run", "--", *show, cwd=nested)
+    inside = _heavy(locks, "--", *show, cwd=nested)
     # The scratch root itself sits inside a checkout; stop git's search above it.
     bare = root / "no-repo"
     bare.mkdir()
     outside = _heavy(
         locks,
-        "--kind",
-        "run",
         "--",
         *show,
         cwd=bare,
@@ -1190,11 +1044,6 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "BASEDIR=\n" in outside.stdout,
         outside.stdout + outside.stderr,
     )
-    fails += check(
-        "heavy: the command's unit is removed when it ends",
-        _heavy(locks, "--", PY, "-c", "pass").returncode == 0
-        and not list((locks / "units").glob("*.json")),
-    )
     # Six builds that each sleep one second finish together: nothing queues them.
     started = time.monotonic()
     many = [
@@ -1202,8 +1051,6 @@ def _heavy_checks(check: Check, root: Path) -> int:
             [
                 PY,
                 str(HEAVY_CLI),
-                "--lock-dir",
-                str(locks),
                 "--",
                 PY,
                 "-c",
@@ -1225,10 +1072,11 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
         "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)"
     )
+    started = time.monotonic()
     _heavy(locks, "--", PY, "-c", daemon)
     fails += check(
-        "heavy: a daemon left by the command does not keep its unit",
-        not list((locks / "units").glob("*.json")),
+        "heavy: a daemon the command leaves behind does not hold the wrapper open",
+        time.monotonic() - started < 20,
     )
 
     # The measured orphan: a timed-out worker's whole process group is SIGKILLed, and
@@ -1240,10 +1088,6 @@ def _heavy_checks(check: Check, root: Path) -> int:
     command_group = (
         os.getpgid(group_pid) if group_pid > 0 else -1
     )  # -1: the command never started
-    registered = [
-        json.loads(entry.read_text(encoding="utf-8"))
-        for entry in sorted((locks / "units").glob("*.json"))
-    ]
     if group_pid > 0:
         try:
             os.killpg(group_wrapper.pid, SIGKILL)
@@ -1254,14 +1098,6 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "heavy: the command runs in the wrapper's own process group",
         group_pid > 0 and command_group == wrapper_group,
         f"command pid {group_pid} in group {command_group}, wrapper group {wrapper_group}",
-    )
-    fails += check(
-        "heavy: the unit registered is that live group, not a dead one",
-        any(
-            entry.get("group") == wrapper_group and entry.get("kind") == "build"
-            for entry in registered
-        ),
-        f"wrapper group {wrapper_group}, entries {registered}",
     )
     fails += check(
         "heavy: killing the caller's process group kills the command too",

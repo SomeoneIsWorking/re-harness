@@ -29,7 +29,9 @@ def repo_root(repo: Path) -> Path:
 
 def main_checkout(path: Path) -> Path:
     """The main working tree of the repository ``path`` is in, from any of its worktrees."""
-    common = Path(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+    common = Path(
+        git(path, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    )
     return common.parent.resolve()
 
 
@@ -91,7 +93,9 @@ class Worktree:
             raise WorktreeError(f"{path} is not a registered worktree of {repo}")
         base_file = path.parent / BASE_FILE
         if not base_file.is_file():
-            raise WorktreeError(f"{base_file} is missing; the worktree's base is unknown")
+            raise WorktreeError(
+                f"{base_file} is missing; the worktree's base is unknown"
+            )
         return cls(repo, path, base_file.read_text(encoding="utf-8").strip())
 
     def cache_environment(self) -> dict[str, str]:

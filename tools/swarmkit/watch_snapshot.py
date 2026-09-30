@@ -1,4 +1,4 @@
-"""Read one watchdog ``Snapshot`` from the live machine: /proc, the ledger, git, pinest."""
+"""Read one watchdog ``Snapshot`` from the live machine: /proc, git, pinest."""
 
 from __future__ import annotations
 
@@ -9,11 +9,9 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from . import config
 from .jobs import JobFileError, load_jobs
 from .procs import MIB, PAGE_SIZE, PROC
 from .results import RESULT_FILE
-from .units import UnitRegistry
 from .watch import Agent, Checkout, Process, Snapshot, SwarmRun
 from .worktree import SWARM_SCRATCH
 
@@ -23,16 +21,12 @@ GIT_TIMEOUT_SECONDS = 60
 PPID, PGRP, START = 1, 2, 19
 
 
-def take_snapshot(
-    lock_dir: Path, repos: Sequence[Path], shared: Sequence[Path]
-) -> Snapshot:
+def take_snapshot(repos: Sequence[Path], shared: Sequence[Path]) -> Snapshot:
     now = time.time()
     processes = tuple(_processes(now))
     return Snapshot(
         now=now,
         processes=processes,
-        unit_groups=frozenset(unit.group for unit in UnitRegistry(lock_dir).live()),
-        guard_age_seconds=_guard_age(lock_dir, now),
         swarms=tuple(_swarms(processes)),
         agents=tuple(_agents()),
         last_commit={str(repo): when for repo in repos if (when := _last_commit(repo))},
@@ -75,13 +69,6 @@ def _processes(now: float) -> list[Process]:
             )
         )
     return found
-
-
-def _guard_age(lock_dir: Path, now: float) -> float | None:
-    try:
-        return now - config.guard_heartbeat(lock_dir).stat().st_mtime
-    except FileNotFoundError:
-        return None
 
 
 def _swarms(processes: Sequence[Process]) -> list[SwarmRun]:

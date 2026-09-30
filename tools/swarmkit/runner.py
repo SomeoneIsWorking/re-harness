@@ -1,14 +1,8 @@
 """Run jobs: worktree, worker, gate, optional feedback retries, verdict on disk.
 
 A job starts as soon as one of the run's ``workers`` is free; nothing else is
-admitted or queued. Every process group a job starts (its worker, its gate) is
-registered as a unit (``units``), so the machine's pressure guard can pause the
-newest one if the host really runs out of memory. Per-kind slots and predicted
-memory reservations were removed on 2026-09-30: they queued gates for up to 50
-minutes while the host had 7 GiB free and half its cores idle.
-
-Every unit, worker and gate alike, runs under the reaper (``process.run_bounded``),
-so nothing it starts outlives the job.
+admitted, queued or paused. Every unit, worker and gate alike, runs under the
+reaper (``process.run_bounded``), so nothing it starts outlives the job.
 """
 
 from __future__ import annotations
@@ -24,9 +18,8 @@ from .backends import Backend
 from .console import emit
 from .jobs import Job
 from .lifetime import RunLifetime
-from .process import ProcessOutcome, run_bounded
+from .process import run_bounded
 from .results import PATCH_FILE, RESULT_FILE, RUN_FILE, JobResult, Reason, Verdict
-from .units import UnitRegistry
 from .worktree import Worktree, WorktreeError, run_directory
 
 TREE_DIR = "tree"
@@ -52,7 +45,6 @@ class RunSettings:
     backend: Backend
     model: str
     retries: int
-    units: UnitRegistry
     lifetime: RunLifetime
 
 
@@ -161,8 +153,7 @@ class JobRunner:
         files = [
             str(tree.path / name) for name in job.files if (tree.path / name).is_file()
         ]
-        worker = self._run_unit(
-            "swarm",
+        worker = run_bounded(
             self.settings.backend.command(task_file, files, self.settings.model),
             tree.path,
             job.timeout,
@@ -191,8 +182,7 @@ class JobRunner:
             )
         if not changed:
             return verdict(Verdict.REJECTED, Reason.EMPTY_PATCH, worker_returncode=0)
-        gate = self._run_unit(
-            "swarm",
+        gate = run_bounded(
             job.gate,
             tree.path,
             job.gate_timeout,
@@ -215,19 +205,6 @@ class JobRunner:
             gate_returncode=gate.returncode,
             **common,
         )
-
-    def _run_unit(self, kind: str, *args, **kwargs) -> ProcessOutcome:
-        """``run_bounded`` with the new process group registered as a unit while it runs."""
-        units = []
-
-        def started(group: int) -> None:
-            units.append(self.settings.units.register(group, kind))
-
-        try:
-            return run_bounded(*args, **kwargs, on_spawn=started)
-        finally:
-            for unit in units:
-                self.settings.units.remove(unit)
 
 
 def run_jobs(
