@@ -12,16 +12,22 @@ MSBuild node, a Gradle daemon) cannot keep either after the command returns.
 The command runs in the wrapper's own process group rather than a new session.
 A session of its own made it unreachable by every group signal aimed at the
 caller, and the group kill a swarm sends a worker past its deadline is exactly
-such a signal: the wrapper died, the 7 GB gate survived it and was reparented to
-init. The command therefore carries ``PR_SET_PDEATHSIG`` as the other half of
-the guarantee, so it also dies with a wrapper that is killed on its own. Because
-the unit no longer owns a group, the reservation, the pressure watcher and the
-run lifetime track the wrapper's group, which is where the command now lives.
+such a signal. That group signal still reaches the command, because the
+wrapper's direct child is the reaper (``swarmkit.reaper``), which runs the
+command in the caller's group.
+
+The reaper is what makes the command's whole subtree die with the run.
+``PR_SET_PDEATHSIG`` reaches exactly the process it is set on: a direct child of
+``cmake`` lost ``ninja`` and the rest of the build when the wrapper was killed,
+because each was reparented to init and kept compiling. The reaper takes that
+contract instead -- a subreaper, so an orphan is reparented to it rather than to
+init, and it SIGTERMs, then SIGKILLs, every remaining descendant. Because the
+unit no longer owns a group, the reservation, the pressure watcher and the run
+lifetime track the wrapper's group, which is where the command now lives.
 """
 
 from __future__ import annotations
 
-import ctypes
 import os
 import signal
 import subprocess
@@ -32,23 +38,10 @@ from types import FrameType
 from .admission import MachineSlots
 from .lifetime import RunLifetime
 from .pressure import PressureWatcher
+from .reaper import command_argv, command_environment, die_with_parent
 from .reservations import ReservationLedger
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-PR_SET_PDEATHSIG = 1
-# 126 is the shell's "cannot execute", here "cannot arm the parent-death signal":
-# the command is not safe to start without it, so the wrapper refuses rather than
-# runs a gate that may outlive it.
-PRCTL_FAILURE_EXIT = 126
-_LIBC = ctypes.CDLL("libc.so.6", use_errno=True)
-_LIBC.prctl.argtypes = [
-    ctypes.c_int,
-    ctypes.c_ulong,
-    ctypes.c_ulong,
-    ctypes.c_ulong,
-    ctypes.c_ulong,
-]
-_LIBC.prctl.restype = ctypes.c_int
 
 
 @dataclass(frozen=True)
@@ -83,13 +76,13 @@ def run_admitted(
         admission.pressure.adopt(group)
         lifetime.adopt(group)
         child = subprocess.Popen(
-            list(argv),
+            command_argv(argv),
             close_fds=True,
-            # The one place a hook is unavoidable: nothing else can set
-            # PR_SET_PDEATHSIG between the fork and the exec. It runs in the
-            # single-threaded child and does nothing but prctl, getppid and
-            # _exit -- no import, no allocation, no lock a killed thread could hold.
-            preexec_fn=_die_with_parent(os.getpid()),  # noqa: PLW1509
+            env=command_environment(),
+            # The wrapper's own death is the reaper's cue to take the command's
+            # subtree down; SIGTERM, because a SIGKILLed reaper would reap
+            # nothing. Its own child hook is armed the same way, one level down.
+            preexec_fn=die_with_parent(os.getpid()),  # noqa: PLW1509
         )
         previous = _forward_signals(child.pid)
         try:
@@ -97,21 +90,6 @@ def run_admitted(
         finally:
             _restore_signals(previous)
             lifetime.release(group)
-
-
-def _die_with_parent(parent: int) -> Callable[[], None]:
-    """Build the child's ``preexec_fn``: be SIGKILLed with the wrapper, but only if it lives."""
-
-    def arm() -> None:
-        if _LIBC.prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
-            os._exit(PRCTL_FAILURE_EXIT)
-        # The wrapper can die between the fork and the prctl above, and the signal
-        # that would have told the child is not delivered to one already reparented.
-        # It refuses to start the command instead of becoming an orphan of it.
-        if os.getppid() != parent:
-            os._exit(1)
-
-    return arm
 
 
 def _forward_signals(pid: int) -> dict[int, object]:

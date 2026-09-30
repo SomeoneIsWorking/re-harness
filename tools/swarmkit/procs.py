@@ -1,7 +1,8 @@
 """The one reader of the kernel's process and memory state under ``/proc``.
 
-Everything the swarm knows about memory comes through here: ``MemAvailable``,
-the resident size of a process group, and whether a process group is stopped.
+Everything the swarm knows about memory and about process ownership comes
+through here: ``MemAvailable``, the resident size of a process group, whether a
+process group is stopped, and which processes are descendants of another one.
 Other modules receive these as callables so a test can inject a fixed answer.
 """
 
@@ -17,6 +18,7 @@ PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
 PROC = Path("/proc")
 # Fields of /proc/<pid>/stat after the comm field: state, ppid, pgrp, ...
 STATE_INDEX = 0
+PPID_INDEX = 1
 PGRP_INDEX = 2
 STOPPED_STATES = frozenset({"T", "t"})
 
@@ -41,6 +43,28 @@ def read_group_rss(groups: Iterable[int]) -> dict[int, int]:
         if group in wanted:
             total[group] += _resident_bytes(pid)
     return total
+
+
+def descendants(pid: int) -> list[int]:
+    """Every process whose parent chain reaches ``pid``, from one pass over ``/proc``.
+
+    The parent graph, not the process group: a descendant that started a session
+    of its own -- a ``setsid`` daemon, a Gradle or MSBuild node -- is still a
+    descendant, and a group kill aimed at the caller never reaches it.
+    """
+    children: dict[int, list[int]] = {}
+    for entry in _numeric_entries():
+        parent = _parent_pid(entry)
+        if parent is not None:
+            children.setdefault(parent, []).append(int(entry))
+    found: list[int] = []
+    pending = [pid]
+    while pending:
+        for child in children.get(pending.pop(), ()):
+            if child not in found:
+                found.append(child)
+                pending.append(child)
+    return found
 
 
 def group_stopped(group: int) -> bool:
@@ -90,6 +114,13 @@ def _stat_fields(pid: str | int) -> list[str] | None:
     except (FileNotFoundError, ProcessLookupError, PermissionError):
         return None
     return raw.rsplit(")", 1)[-1].split()
+
+
+def _parent_pid(pid: str) -> int | None:
+    fields = _stat_fields(pid)
+    if fields is None or len(fields) <= PPID_INDEX:
+        return None
+    return int(fields[PPID_INDEX])
 
 
 def _process_group(pid: str) -> int | None:

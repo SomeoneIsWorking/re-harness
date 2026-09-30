@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from signal import SIGCONT, SIGKILL, SIGSTOP
+from signal import SIGCONT, SIGKILL, SIGSTOP, SIGTERM
 
 HERE = Path(__file__).resolve().parent
 FAKE_WORKER = HERE / "swarm_fake_worker.py"
@@ -30,7 +30,7 @@ from swarmkit.jobs import Job, JobFileError, load_jobs
 from swarmkit.lifetime import RunInterrupted, RunLifetime
 from swarmkit.pressure import PressureWatcher
 from swarmkit.process import ProcessOutcome, run_bounded
-from swarmkit.procs import MIB
+from swarmkit.procs import MIB, descendants
 from swarmkit.report import summarize
 from swarmkit.reservations import ReservationLedger
 from swarmkit.results import JobResult, Reason, Verdict
@@ -1174,6 +1174,111 @@ def _command_pid(marker: Path, wrapper: subprocess.Popen[str], seconds: float = 
     return -1
 
 
+def _marker_pid(marker: Path, seconds: float = 10.0) -> int:
+    """The pid a process wrote into ``marker``, or -1 if it never did."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        try:
+            return int(marker.read_text())
+        except (FileNotFoundError, ValueError):
+            time.sleep(0.05)
+    return -1
+
+
+# A command that outlives any test with its whole subtree: the shell and both
+# sleeps must all be gone, not only the one process heavy.py started.
+TREE = "sleep 60 & sleep 60 & wait"
+# The reaper, the shell and the two sleeps, all of them below the wrapper.
+TREE_SIZE = 4
+
+
+def _wrapper_tree(locks: Path, script: str, size: int) -> tuple[subprocess.Popen[bytes], list[int]]:
+    """Start ``heavy.py`` in a fresh session; return it and every pid below it."""
+    wrapper = subprocess.Popen(
+        [
+            PY,
+            str(HEAVY_CLI),
+            "--lock-dir",
+            str(locks),
+            "--mem-mib",
+            "1",
+            "--",
+            "sh",
+            "-c",
+            script,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    deadline = time.time() + 15.0
+    pids: list[int] = []
+    while time.time() < deadline:
+        pids = descendants(wrapper.pid)
+        if len(pids) >= size:
+            break
+        if wrapper.poll() is not None:
+            break
+        time.sleep(0.05)
+    return wrapper, pids
+
+
+def _all_gone(pids: Sequence[int], seconds: float = 10.0) -> bool:
+    return bool(pids) and all(process_gone(pid, seconds) for pid in pids)
+
+
+def _survivors(pids: Sequence[int]) -> list[int]:
+    return [pid for pid in pids if not process_gone(pid, 0.1)]
+
+
+def _orphan_checks(check: Check, locks: Path, root: Path) -> int:
+    """The measured orphan: a wrapper killed on its own left cmake's ninja running.
+
+    ``PR_SET_PDEATHSIG`` reaches the one process it was set on. A build's real
+    work runs in grandchildren, which that signal never touches, so the subtree
+    is the unit that has to be taken down.
+    """
+    fails = 0
+    term_wrapper, term_pids = _wrapper_tree(locks, TREE, TREE_SIZE)
+    if term_pids:
+        term_wrapper.send_signal(SIGTERM)
+    term_wrapper.wait(timeout=15)
+    fails += check(
+        "heavy: SIGTERM to the wrapper takes the command's whole subtree",
+        _all_gone(term_pids),
+        f"wrapper exit {term_wrapper.returncode}, survivors {_survivors(term_pids)}",
+    )
+
+    kill_wrapper, kill_pids = _wrapper_tree(locks, TREE, TREE_SIZE)
+    if kill_pids:
+        kill_wrapper.kill()
+    kill_wrapper.wait(timeout=15)
+    fails += check(
+        "heavy: SIGKILL to the wrapper takes the command's whole subtree",
+        _all_gone(kill_pids),
+        f"wrapper exit {kill_wrapper.returncode}, survivors {_survivors(kill_pids)}",
+    )
+
+    # The command finishes cleanly and leaves a daemon in a session of its own:
+    # a group kill cannot reach it, so only the parent graph can.
+    daemon_marker = root / "daemon.pid"
+    daemon_script = (
+        f"setsid sh -c 'echo $$ > {daemon_marker}; exec sleep 60' "
+        f">/dev/null 2>&1 & while [ ! -s {daemon_marker} ]; do sleep 0.05; "
+        "done; exit 0"
+    )
+    finished = _heavy(locks, "--", "sh", "-c", daemon_script)
+    daemon_pid = _marker_pid(daemon_marker)
+    fails += check(
+        "heavy: a setsid daemon the command leaves behind is reaped",
+        finished.returncode == 0
+        and daemon_pid > 0
+        and process_gone(daemon_pid, 10.0),
+        f"exit {finished.returncode}, daemon pid {daemon_pid}, {finished.stderr}",
+    )
+    return fails
+
+
 def _heavy_checks(check: Check, root: Path) -> int:
     fails = 0
     locks = root / "locks"
@@ -1283,7 +1388,7 @@ def _heavy_checks(check: Check, root: Path) -> int:
         death_pid > 0 and process_gone(death_pid, 5.0),
         f"command pid {death_pid}, wrapper exit {death_wrapper.returncode}",
     )
-    return fails
+    return fails + _orphan_checks(check, locks, root)
 
 
 def main() -> int:
