@@ -177,6 +177,7 @@ def _verdict_checks(check: Check, root: Path) -> int:
         ),
         job(repo, "timeout", f"orphan {pidfile}", gate_file_is("x", "x"), timeout=1.0),
         job(repo, "worker-fail", "fail 5", gate_file_is("x", "x")),
+        job(repo, "worker-fail-changed", "fail 1 w.txt done", gate_file_is("w.txt", "done")),
         job(repo, "empty", "noop", (PY, "-c", "pass")),
         job(
             repo,
@@ -262,8 +263,15 @@ def _verdict_checks(check: Check, root: Path) -> int:
         f"daemon pid {hung}",
     )
     failed = results["worker-fail"]
+    recovered = results["worker-fail-changed"]
     fails += check(
-        "swarm: nonzero worker exit is worker-failed without a gate",
+        "swarm: a nonzero worker exit that changed files is still judged by the gate",
+        recovered.verdict is Verdict.ACCEPTED
+        and recovered.worker_returncode == 1
+        and recovered.gate_returncode == 0,
+    )
+    fails += check(
+        "swarm: NEGATIVE a nonzero worker exit that changed nothing is worker-failed without a gate",
         failed.verdict is Verdict.WORKER_FAILED
         and failed.worker_returncode == 5
         and failed.gate_returncode is None
@@ -278,7 +286,7 @@ def _verdict_checks(check: Check, root: Path) -> int:
     report = "\n".join(summarize(run_dir))
     fails += check(
         "swarm: report prints denominators",
-        "jobs 8  accepted 2  rejected 3 (empty-patch 1, gate-failed 2)  "
+        "jobs 9  accepted 3  rejected 3 (empty-patch 1, gate-failed 2)  "
         "worker-failed 1 (worker-exit 1)  timeout 2 (worker 2)  unfinished 0" in report,
         report,
     )
@@ -379,8 +387,8 @@ def _verdict_checks(check: Check, root: Path) -> int:
     after = registered_worktrees(repo)
     fails += check(
         "swarm: gc removes exactly the run's worktrees",
-        removed == 8
-        and len(before) - len(after) == 8
+        removed == 9
+        and len(before) - len(after) == 9
         and (run_dir / "accept" / "result.json").exists()
         and not (run_dir / "accept" / "tree").exists(),
         f"removed {removed}",
@@ -668,6 +676,12 @@ def _resume_checks(check: Check, root: Path) -> int:
     (tree.path / "c.txt").write_text("partial\n", encoding="utf-8")
     (run_dir / "cut" / "worker-1.log").write_text("killed\n", encoding="utf-8")
     cut = job(repo, "cut", "resume c.txt", gate_file_is("c.txt", "partial\nresumed"))
+    # A worker that failed without a gate verdict: its edit is in the tree.
+    crashed = job(repo, "crashed", "fail 3", gate_file_is("k.txt", "partial\nresumed"))
+    (crashed_result,) = run_jobs([crashed], "resumable", settings(root), workers=1, resume=True)
+    crashed_tree = run_dir / "crashed" / "tree"
+    (crashed_tree / "k.txt").write_text("partial\n", encoding="utf-8")
+    crashed = job(repo, "crashed", "resume k.txt", gate_file_is("k.txt", "partial\nresumed"))
     new = job(repo, "new", "resume n.txt", gate_file_is("n.txt", "fresh"))
     changed = job(repo, "done", "write d.txt second", gate_file_is("d.txt", "second"))
 
@@ -681,7 +695,7 @@ def _resume_checks(check: Check, root: Path) -> int:
     results = {
         r.id: r
         for r in run_jobs(
-            [changed, cut, new], "resumable", settings(root), workers=3, resume=True
+            [changed, cut, new, crashed], "resumable", settings(root), workers=4, resume=True
         )
     }
     fails += check(
@@ -695,6 +709,11 @@ def _resume_checks(check: Check, root: Path) -> int:
         results["cut"].verdict is Verdict.ACCEPTED
         and results["cut"].base == tree.base
         and (run_dir / "cut" / "worker-2.log").exists(),
+    )
+    fails += check(
+        "swarm: resume retries a worker failure the gate never judged, in its tree",
+        crashed_result.verdict is Verdict.WORKER_FAILED
+        and results["crashed"].verdict is Verdict.ACCEPTED,
     )
     fails += check(
         "swarm: NEGATIVE a job that never started runs fresh under resume",
