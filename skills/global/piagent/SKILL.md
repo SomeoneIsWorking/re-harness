@@ -33,6 +33,12 @@ Rules:
   result, gates it and lands it.
 - Stop an agent when its task is done; an idle agent still holds context in the host.
 - Builds and game runs inside an agent go through `heavy.py`, as everywhere.
+- Put in every brief: run long commands in the foreground, never `nohup …&`, `setsid` or `disown`.
+  The host's bash tool moves a command still running after 30 s to the background itself, and when
+  that command ends it wakes the agent with the result. A command the agent detaches itself is
+  invisible to the host. The agent then ends its turn to poll the PID, and nothing ever wakes it.
+- Put in every brief: never move, delete or re-point a path while a backgrounded command is still
+  using it.
 - Kill nothing by name. `stop` ends a session; the host process is shared and stays up.
 
 `tools/piagent.py` (one pi process per agent) is the previous mechanism, kept only until the agents
