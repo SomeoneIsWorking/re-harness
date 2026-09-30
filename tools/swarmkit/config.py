@@ -22,6 +22,11 @@ UNIT_KINDS = ("build", "run", "swarm")
 # seconds that the guard, then pausing at 1024 MiB, paused its first two units.
 PRESSURE_PAUSE_MIB = 2048
 PRESSURE_RESUME_MIB = 3584
+# Below PRESSURE_CRITICAL_MIB the guard pauses every poll regardless of settling,
+# keeping clear of Claude Code's reaper near 1 GiB. PRESSURE_SETTLE_SECONDS is the
+# wait after a pause or resume before the next one, so each can take effect.
+PRESSURE_CRITICAL_MIB = 1400
+PRESSURE_SETTLE_SECONDS = 5.0
 LOCK_DIR_VARIABLE = "SWARM_LOCK_DIR"
 
 

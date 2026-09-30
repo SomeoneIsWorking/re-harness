@@ -648,90 +648,94 @@ def _live_group(seconds: float = 30.0) -> subprocess.Popen:
     )
 
 
-def _pressure_checks(check: Check, root: Path) -> int:
-    fails = 0
-    sent: list[tuple[int, int]] = []
-    free_mib = [500]
-    guard = PressureGuard(
-        1024,
-        2560,
+def _guard(free_mib: list[int], now: list[float], sent: list) -> PressureGuard:
+    """A guard at the shipping thresholds over a fake MemAvailable, clock and signal sender."""
+    return PressureGuard(
+        2048,
+        3584,
+        1400,
+        5.0,
         reader=lambda: free_mib[0] * MIB,
         stopper=lambda group, signum: sent.append((group, signum)),
+        clock=lambda: now[0],
     )
-    groups = [101, 102, 103]
-    first_stop = guard.poll(groups)
-    second_stop = guard.poll(groups)
-    third_stop = guard.poll(groups)
-    free_mib[0] = 4096
-    resumed = guard.poll(groups)
+
+
+def _pressure_checks(check: Check, root: Path) -> int:
+    fails = 0
+    groups = [101, 102, 103, 104]
+    sent: list[tuple[int, int]] = []
+    free, now = [1800], [0.0]
+    guard = _guard(free, now, sent)
+
+    def at(seconds: float, mib: int) -> list[str]:
+        now[0], free[0] = seconds, mib
+        return guard.poll(groups)
+
+    first = at(0.0, 1800)
+    at(1.0, 1800)
+    at(6.0, 1800)
     fails += check(
-        "pressure: pauses the newest unit first, then all but the last",
-        sent[:2] == [(103, SIGSTOP), (102, SIGSTOP)]
-        and third_stop == []
-        and len(first_stop) == 1
-        and len(second_stop) == 1,
-        f"sent {sent[:2]}",
+        "pressure: pauses the newest unit once, then NEGATIVE no more while memory holds steady",
+        sent == [(104, SIGSTOP)] and "paused" in first[0] and "1800 MiB" in first[0],
+        f"sent {sent}",
     )
+    at(7.0, 1700)
+    at(12.0, 1700)
     fails += check(
-        "pressure: resumes every paused unit once memory returns",
-        sorted(sent[2:]) == [(102, SIGCONT), (103, SIGCONT)] and len(resumed) == 2,
-        f"resumed {sent[2:]}",
+        "pressure: pauses the next newest once settled only if memory kept falling",
+        sent == [(104, SIGSTOP), (103, SIGSTOP)],
+        f"sent {sent}",
     )
+    at(12.5, 1000)
+    at(13.0, 900)
     fails += check(
-        "pressure: a pause and a resume are reported with the memory that caused them",
-        "paused" in first_stop[0]
-        and "500 MiB" in first_stop[0]
+        "pressure: below the critical floor it pauses every poll, never the last unit",
+        sent[2:] == [(102, SIGSTOP)] and guard.stopped == [104, 103, 102],
+        f"sent {sent[2:]}",
+    )
+    resumed = at(20.0, 4000)
+    at(21.0, 4000)
+    at(26.0, 4000)
+    fails += check(
+        "pressure: resumes one unit per settle interval, oldest stopped first",
+        sent[3:] == [(102, SIGCONT), (103, SIGCONT)]
         and "resumed" in resumed[0]
-        and "4096 MiB" in resumed[0],
-        f"{first_stop} {resumed}",
+        and "4000 MiB" in resumed[0],
+        f"sent {sent[3:]}",
     )
     between: list[tuple[int, int]] = []
     fails += check(
         "pressure: NEGATIVE a host between the thresholds changes nothing (no flapping)",
-        PressureGuard(
-            1024,
-            2560,
-            reader=lambda: 1500 * MIB,
-            stopper=lambda g, s: between.append((g, s)),
-        ).poll(groups)
-        == []
-        and between == [],
+        _guard([2500], [0.0], between).poll(groups) == [] and between == [],
         f"sent {between}",
     )
     alone: list[tuple[int, int]] = []
-    single = PressureGuard(
-        1024, 2560, reader=lambda: 100 * MIB, stopper=lambda g, s: alone.append((g, s))
-    )
+    single = _guard([100], [0.0], alone)
     quiet = single.poll([201]) + single.poll([201])
     fails += check(
         "pressure: NEGATIVE the last running unit is never paused",
         quiet == [] and alone == [],
         f"{quiet} {alone}",
     )
-    # A unit that ended is no longer in the registry, so the survivor is never paused.
     ended: list[tuple[int, int]] = []
-    shrinking = PressureGuard(
-        1024, 2560, reader=lambda: 100 * MIB, stopper=lambda g, s: ended.append((g, s))
-    )
+    shrinking = _guard([100], [0.0], ended)
     shrinking.poll([301, 302])
     shrinking.poll([301])
     fails += check(
         "pressure: a unit that ended is forgotten; the survivor keeps running",
-        ended == [(302, SIGSTOP)] and shrinking.stopped == set(),
+        ended == [(302, SIGSTOP)] and shrinking.stopped == [],
         f"{ended} {shrinking.stopped}",
     )
     exiting: list[tuple[int, int]] = []
-    leaving = PressureGuard(
-        1024,
-        2560,
-        reader=lambda: 100 * MIB,
-        stopper=lambda g, s: exiting.append((g, s)),
-    )
-    leaving.poll([401, 402])
+    leaving = _guard([100], [0.0], exiting)
+    leaving.poll([401, 402, 403])
+    leaving.poll([401, 402, 403])
     leaving.resume_all()
     fails += check(
-        "pressure: a guard that exits resumes what it stopped",
-        exiting == [(402, SIGSTOP), (402, SIGCONT)],
+        "pressure: a guard that exits resumes everything it stopped",
+        sorted(exiting[2:]) == [(402, SIGCONT), (403, SIGCONT)]
+        and leaving.stopped == [],
         f"{exiting}",
     )
 

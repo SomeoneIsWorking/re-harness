@@ -103,9 +103,11 @@ One JSON object per line:
   removes the entry when it ends; an entry whose group is gone is pruned.
 - **The pressure guard is the one memory countermeasure.** `pressure_guard.py` runs as the systemd
   user service `pressure-guard` and polls `MemAvailable` every 0.5 s. Below 2048 MiB (before
-  Claude Code's own low-memory reaper kills background shells) it SIGSTOPs
-  the newest running unit (its pages can go to swap while older units finish), one per poll, and
-  never the last running one; above 3584 MiB it SIGCONTs every unit it stopped. A paused swarm unit
+  Claude Code's own low-memory reaper kills background shells) it SIGSTOPs the newest running
+  unit, never the last. A stop only halts growth, it frees nothing, so after a pause it waits 5 s
+  and pauses again only if memory has kept falling past that pause's reading; below the 1400 MiB
+  critical floor it pauses every poll. Above 3584 MiB it resumes one unit, the oldest stopped, per 5 s. (Pausing every
+  poll kept ~19 units stopped at once on 2026-09-30.) A paused swarm unit
   is not working, so its deadline is extended by the time it spent stopped. On start the guard
   resumes every registered unit (a guard that died cannot remember what it stopped), and on exit
   it resumes what it stopped. Check it with `systemctl --user status pressure-guard`; the watchdog

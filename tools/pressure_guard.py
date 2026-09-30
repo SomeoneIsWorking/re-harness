@@ -43,7 +43,12 @@ def main(argv: list[str]) -> int:
     registry = UnitRegistry(lock_dir)
     heartbeat = config.guard_heartbeat(lock_dir)
     heartbeat.parent.mkdir(parents=True, exist_ok=True)
-    guard = PressureGuard(config.PRESSURE_PAUSE_MIB, config.PRESSURE_RESUME_MIB)
+    guard = PressureGuard(
+        config.PRESSURE_PAUSE_MIB,
+        config.PRESSURE_RESUME_MIB,
+        config.PRESSURE_CRITICAL_MIB,
+        config.PRESSURE_SETTLE_SECONDS,
+    )
     for unit in registry.live():
         signal_group(unit.group, signal.SIGCONT)
     finished = threading.Event()
