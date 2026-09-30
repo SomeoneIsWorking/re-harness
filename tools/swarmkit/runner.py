@@ -36,7 +36,7 @@ from .lifetime import RunLifetime
 from .pressure import PressureWatcher
 from .process import run_bounded
 from .reservations import Reservation, ReservationLedger
-from .results import PATCH_FILE, RUN_FILE, JobResult, Reason, Verdict
+from .results import PATCH_FILE, RESULT_FILE, RUN_FILE, JobResult, Reason, Verdict
 from .worktree import Worktree, WorktreeError, run_directory
 
 TREE_DIR = "tree"
@@ -45,6 +45,11 @@ FEEDBACK = (
     "\n\n---\nYour previous attempt was rejected by the gate `{gate}` (exit {code}). "
     "Its output ends with:\n```\n{tail}\n```\nFix the cause and try again. "
     "The worktree still contains your previous changes."
+)
+RESUMED = (
+    "\n\n---\nThis job was interrupted part-way through an earlier attempt. The current "
+    "directory still holds that attempt's unfinished changes: read `git diff` and "
+    "`git status` first and continue from them; do not start over."
 )
 EMPTY_FEEDBACK = (
     "\n\n---\nYour previous attempt changed no files, so nothing could be accepted. "
@@ -67,16 +72,21 @@ class RunSettings:
 
 
 class JobRunner:
-    def __init__(self, run_name: str, settings: RunSettings) -> None:
+    def __init__(self, run_name: str, settings: RunSettings, resume: bool = False) -> None:
         self.run_name = run_name
         self.settings = settings
+        self.resume = resume
 
     def job_dir(self, job: Job) -> Path:
         return run_directory(job.repo, self.run_name) / job.id
 
     def run(self, job: Job) -> JobResult:
         job_dir = self.job_dir(job)
-        job_dir.mkdir(parents=True, exist_ok=False)
+        if self.resume and (job_dir / RESULT_FILE).is_file():
+            result = JobResult.read(job_dir)
+            emit(f"swarm: {job.id}: kept {result.verdict.value} from the interrupted run")
+            return result
+        job_dir.mkdir(parents=True, exist_ok=self.resume)
         started = time.monotonic()
         with (
             self.settings.slots.acquire(self.settings.lifetime),
@@ -96,8 +106,13 @@ class JobRunner:
     def _run_in_slot(
         self, job: Job, job_dir: Path, reservation: Reservation
     ) -> JobResult:
+        tree_path = job_dir / TREE_DIR
+        resumed = self.resume and tree_path.exists()
         try:
-            tree = Worktree.create(job.repo, job_dir / TREE_DIR)
+            if resumed:
+                tree = Worktree.reopen(job.repo, tree_path)
+            else:
+                tree = Worktree.create(job.repo, tree_path)
         except WorktreeError as error:
             (job_dir / "setup.log").write_text(f"{error}\n", encoding="utf-8")
             return JobResult(
@@ -110,9 +125,12 @@ class JobRunner:
                 list(job.gate),
                 worker_tail=str(error),
             )
-        prompt = job.prompt
+        # An interrupted attempt keeps its log; the resumed one is numbered after it
+        # and does not count against the retries.
+        first = 1 + len(list(job_dir.glob("worker-*.log")))
+        prompt = job.prompt + RESUMED if resumed else job.prompt
         result: JobResult | None = None
-        for attempt in range(1, self.settings.retries + 2):
+        for attempt in range(first, first + self.settings.retries + 1):
             result = self._attempt(
                 job, job_dir, tree, prompt, attempt, reservation
             )
@@ -253,16 +271,26 @@ class JobRunner:
 
 
 def run_jobs(
-    jobs: Sequence[Job], run_name: str, settings: RunSettings, workers: int
+    jobs: Sequence[Job],
+    run_name: str,
+    settings: RunSettings,
+    workers: int,
+    resume: bool = False,
 ) -> list[JobResult]:
-    """Run every job with at most ``workers`` in flight; write ``run.json`` per repository."""
-    runner = JobRunner(run_name, settings)
+    """Run every job with at most ``workers`` in flight; write ``run.json`` per repository.
+
+    With ``resume`` the run continues an interrupted one of the same name: a job with a
+    verdict keeps it, an unfinished job continues in the worktree it left, and a job
+    that never started starts fresh. Without it an existing job directory is refused.
+    """
+    runner = JobRunner(run_name, settings, resume)
     run_dirs: dict[Path, list[str]] = {}
     for job in jobs:
         directory = run_directory(job.repo, run_name)
-        if (directory / job.id).exists():
+        if not resume and (directory / job.id).exists():
             raise FileExistsError(
-                f"{directory / job.id} already exists; choose another --name"
+                f"{directory / job.id} already exists; choose another --name, "
+                "or pass --resume to continue that run"
             )
         run_dirs.setdefault(directory, []).append(job.id)
     started = time.time()

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SWARM_SCRATCH = Path("scratch") / "swarm"
+BASE_FILE = "base"
 
 
 class WorktreeError(RuntimeError):
@@ -63,7 +64,18 @@ class Worktree:
         base = git(repo, "rev-parse", "HEAD").strip()
         path.parent.mkdir(parents=True, exist_ok=True)
         git(repo, "worktree", "add", "--detach", str(path), base)
+        (path.parent / BASE_FILE).write_text(base + "\n", encoding="utf-8")
         return cls(repo, path, base)
+
+    @classmethod
+    def reopen(cls, repo: Path, path: Path) -> Worktree:
+        """The worktree an interrupted run left at ``path``, with the base it was created at."""
+        if path.resolve() not in registered_worktrees(repo):
+            raise WorktreeError(f"{path} is not a registered worktree of {repo}")
+        base_file = path.parent / BASE_FILE
+        if not base_file.is_file():
+            raise WorktreeError(f"{base_file} is missing; the worktree's base is unknown")
+        return cls(repo, path, base_file.read_text(encoding="utf-8").strip())
 
     def capture_patch(self) -> tuple[str, list[str]]:
         """Everything the worker changed since ``base`` (commits, edits, untracked) as a patch.

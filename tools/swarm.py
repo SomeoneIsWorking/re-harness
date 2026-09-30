@@ -82,6 +82,12 @@ def parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--name", help="run name (default: UTC timestamp)")
     run.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue the interrupted run --name: keep verdicts, resume unfinished "
+        "jobs in their worktrees",
+    )
+    run.add_argument(
         "--lock-dir",
         type=Path,
         default=None,
@@ -134,6 +140,8 @@ def positive(text: str) -> int:
 
 def command_run(args: argparse.Namespace) -> int:
     jobs = load_jobs(args.jobs)
+    if args.resume and not args.name:
+        raise JobFileError("--resume continues a named run; pass its --name")
     name = args.name or time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     if not JOB_ID.match(name):
         raise JobFileError(f"run name {name!r} must match {JOB_ID.pattern}")
@@ -175,7 +183,7 @@ def command_run(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGTERM, interrupt)
     pressure.start()
     try:
-        results = run_jobs(jobs, name, settings, args.workers)
+        results = run_jobs(jobs, name, settings, args.workers, args.resume)
     finally:
         pressure.stop()
     accepted = sum(result.verdict is Verdict.ACCEPTED for result in results)
