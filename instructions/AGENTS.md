@@ -228,28 +228,14 @@
   - `docs/codemap.md` — placement only.
   - Portfolio/catalogue entries show every item's canonical state and the baseline, traceable to
     `project-state.md`, never inferred from README or screenshots.
-- **A claim needs a falsifier** (`--expires-on`); when one falls, fix what relied on it.
-- **An instrument is trusted only after it has shown the other answer.** Uniform output is the tell.
-- **Build the tool instead of re-reasoning** a recurring task, and document it.
+## Control channel
 
-## Diagnostics that cannot lie
-
-- **Design the negative first:** a diagnostic prints what it scanned and matched ("scanned N,
-  matched 0"), refuses a missing corpus, caps the boring case while reporting every state change,
-  and treats skipped input as failure.
-- **Prove it fires in the shipping artifact** with a selftest whose case must come out positive,
-  and run a discriminator against both classes before trusting it. A grep count is text, not reached
-  code.
-- **Verify in the shipped form:** art rasterized at target size over light, dark, and mid-tone
-  backgrounds; shipped measured constants generated from or diffed by code against the measurement.
-  A trace proves mechanism, not faithfulness.
 - **Build a control channel into the product**, always open on loopback (also under `./run.sh`
-  and the bare executable, so the user's own session can be probed; an env var may move the port,
-  never close it), client in the project's language, so agents can drive input, read state, and
-  capture frames. Play-throughs
-  observe; gates use tests, invariants, and counters with denominators. Prove a run reached the code
-  before reading an absent symptom as a fix. Automated runs are headless and silent (a silent device
-  whose cursors advance) and never steal focus.
+  and the bare executable; an env var may move the port, never close it), so agents can drive input,
+  read state, and capture frames. Automated runs are headless and silent and never steal focus.
+- **Check work by running the game and looking at it.** Do not build verification tooling, probes,
+  instruments, censuses, ledgers or selftests of tools; spend the time changing the product. Unit
+  tests of function outputs are fine. Run the existing gate once at the end.
 
 ## Game ports: guest execution
 
