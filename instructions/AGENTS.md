@@ -57,13 +57,11 @@
 
 - **Product work dominates.** After two consecutive process-only actions, advance the product.
   Collapse bookkeeping that costs more than the change.
-- **Build and test continuously, at the right size.** Iterate with the smallest build target,
-  focused test, trace, or scenario that can falsify the current hypothesis. Run the comprehensive
-  gate once when semantic edits are frozen, not after every small edit; re-run it only after a
-  semantic change that can affect combined behavior. Report an interrupted gate as incomplete.
-- **One fact, one home.** At a milestone, update the nearest authority whose answer changed; do not
-  copy the finding into every registry. Create a new verifier, issue, claim, or tool only for a
-  durable contract, a reproduced regression, or a recurring operation.
+- **Build and run continuously.** Iterate with the smallest build and a short game run; look at
+  the result. Run the full gate once at the end. Report an interrupted gate as incomplete.
+- **No verification tooling, no write-ups.** Do not add verifiers, probes, instruments, claims,
+  censuses or selftests of tools, and do not write findings essays. Record a result as one line in
+  `docs/project-state.md`; open an issue only for a real bug you are not fixing now.
 - **A broad project `/goal` covers every success condition in `docs/project-goals.md`.** Keep it
   active until each is verified against `docs/project-state.md`. A scoped goal stays scoped.
 
@@ -107,15 +105,14 @@
   scoped targets. No tombstones, no broad deletion.
 - **The operator lands.** Subagents do not stage, commit, stash, or push. Review, gate, and land
   each finished batch promptly. Tell an active agent when a shared contract it depends on changes.
-- **Space Bunny does the heavy work; Claude usage is budgeted.** A Claude session designs tasks
-  and gates, reviews, and lands. Implementation, bulk RE, decompilation and investigations go to
-  the free model: `swarm.py` for gated jobs, and `opencode run -m opencode/space-bunny-free` in a
-  worktree for an open-ended investigation whose report you then verify. Spawn a Claude subagent
-  only for work Space Bunny has demonstrably failed at, and say so in your report. Report to the
-  operator only at real milestones or blockers.
-- **Subagents are authorized without a count limit**, but only for bounded tasks with
-  non-overlapping ownership. Serialize builds, tests, and runtimes that share state, ports, or
-  devices; never run two game instances without explicit isolation.
+- **Space Bunny does the heavy work; Claude usage is budgeted.** A Claude session writes short
+  product briefs, reviews, and lands. Implementation and RE go to Space Bunny (`pinest-agent` /
+  `opencode/space-bunny-free`). Spawn a Claude subagent only for work Space Bunny has demonstrably
+  failed at, and say so.
+- **No worktrees: one agent per repo**, working on `main` in the main checkout with its warm build.
+  Parallelize across repos. An agent blocked by a framework bug fixes it in the framework itself
+  (rebase, stage only its own files, its own build dir, commit locally; the operator pushes).
+- **Never run two game instances without explicit isolation.**
 - **Kill by PID, never `pkill` a shared binary name.** Capture `$!` at launch or find it with
   `ps -eo pid,etimes,args`; the `safekill` tool helps. Put this in every brief that launches an app.
 
@@ -123,8 +120,7 @@
 
 - **Quality is part of correctness.** Root-cause fixes; cohesive modules; one source of truth;
   precise names and explicit contracts; bounded lifetimes; no dead code, stale vocabulary, or
-  warnings; formatter, linter, typechecker, and tests with negative coverage. Reduce scope rather
-  than lower the bar. Review the combined diff as a product before landing.
+  warnings; formatter, linter, typechecker, and unit tests. Reduce scope rather than lower the bar. Review the combined diff as a product before landing.
 - **Error handling preserves valid state.** Fail fast or propagate. Catch only where you can restore
   an invariant, add context, safely retry an idempotent operation, or terminate cleanly. Never
   catch-and-continue in a partially mutated state.
@@ -136,8 +132,6 @@
   (2,000+ is critical), on growth of known legacy monoliths, on forbidden cross-layer dependencies,
   on output outside the logger, and on environment reads outside the configuration owner. Limits
   and allowlists only shrink.
-- **Before changing an ownership boundary, preserve the verified behavior** with a regression test
-  of the running boundary that covers the old contract as well as the new one.
 - **DRY: one implementation of each rule, formula, parser, state transition, and mapping.** Search
   for the owner before adding code. Tests and diagnostics exercise the shipping implementation
   through a seam, never a reimplementation. Do not abstract coincidental similarity.
@@ -216,8 +210,7 @@
 
 - **Write what you learn into the nearest living doc in the repo, in the same session.** Agent-home
   memory holds only cross-project preferences. Fix a wrong note instead of adding another.
-- **Consult before re-deriving** with the `project-info` skill (`info.py brief <words>`),
-  `issue-catalog`, and `codemap`; update the codemap in the change that moves or adds an owner.
+- **Read `docs/codemap.md` before placing code**; update it in the change that moves or adds an owner.
 - **Keep the authorities distinct:**
   - `docs/project-goals.md` — epic intent: stable IDs, outcomes, success conditions, non-goals.
   - `docs/project-state.md` — required for every project: the complete intended capability set,
@@ -226,8 +219,6 @@
     user-visible delta (widescreen, controls, speed, loading, platforms, …) as its own item.
   - `docs/issues/` — one task, bug, finding, blocker, or dead end per issue.
   - `docs/codemap.md` — placement only.
-  - Portfolio/catalogue entries show every item's canonical state and the baseline, traceable to
-    `project-state.md`, never inferred from README or screenshots.
 ## Control channel
 
 - **Build a control channel into the product**, always open on loopback (also under `./run.sh`
@@ -252,9 +243,7 @@
   host architecture, and configuration; a fresh install translates on its own.
 - **Invalidate on self-modifying and loaded code** (guest writes, overlays, bank switches, DMA,
   address-space changes, cache control) before reuse.
-- **The runtime reports its work with denominators:** translated blocks and instructions, cache
-  hits/misses, invalidations, overrides, fallbacks by reason. Gameplay gates require nonzero dynarec
-  execution.
+- **The runtime logs its work at run end** (translated blocks, fallbacks by reason).
 - **Migrating a static recomp: delete it first.** Keep independent evidence, oracles, overrides,
   HLE, rendering, audio, input, and saves; remove the generator, generated corpora, static dispatch,
   and their tests and docs. The build may fail at the missing executor until the dynarec lands.
@@ -273,11 +262,8 @@
 - **Engine migrations preserve the game source.** Adapt only engine-coupled APIs. Prefer direct
   compilation, then a deterministic transpiler; a manual gameplay rewrite needs proof that neither
   works and explicit user authorization.
-- **Finish one title before starting another** in a multi-title project: exact-revision identity,
-  parity, headless gameplay, packaging, and performance. Title-neutral work must serve the active
-  title. Record the active title and unmet gates before switching. Later titles may progress in
-  parallel on Space Bunny (boot, RE, title-local owners), but the active title's work lands first,
-  and nothing merged for a later title may regress the active title's gates.
+- **Multi-title repos follow the user's title priority**; a change for one title must not break
+  another title's gameplay.
 
 ## Shared repositories
 
