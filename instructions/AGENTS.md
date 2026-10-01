@@ -211,6 +211,8 @@
 - **Write what you learn into the nearest living doc in the repo, in the same session.** Agent-home
   memory holds only cross-project preferences. Fix a wrong note instead of adding another.
 - **Read `docs/codemap.md` before placing code**; update it in the change that moves or adds an owner.
+- **The RE tracker (`docs/re-frontier.md`, `tools/re_frontier.py`) records what has and has not been
+  reverse-engineered.** Check it before RE work and update the step in the same commit. It is never bloat.
 - **Keep the authorities distinct:**
   - `docs/project-goals.md` — epic intent: stable IDs, outcomes, success conditions, non-goals.
   - `docs/project-state.md` — required for every project: the complete intended capability set,
