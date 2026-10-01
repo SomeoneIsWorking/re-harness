@@ -58,7 +58,8 @@
 - **Product work dominates.** After two consecutive process-only actions, advance the product.
   Collapse bookkeeping that costs more than the change.
 - **Build and run continuously.** Iterate with the smallest build and a short game run; look at
-  the result. Run the full gate once at the end. Report an interrupted gate as incomplete.
+  the result. No full or expensive gates: test only what you changed (build the touched targets,
+  run the unit tests and format/lint of the touched files, run the game for the touched behavior).
 - **No verification tooling, no write-ups.** Do not add verifiers, probes, instruments, claims,
   censuses or selftests of tools, and do not write findings essays. Record a result as one line in
   `docs/project-state.md`; open an issue only for a real bug you are not fixing now.
@@ -228,7 +229,7 @@
   read state, and capture frames. Automated runs are headless and silent and never steal focus.
 - **Check work by running the game and looking at it.** Do not build verification tooling, probes,
   instruments, censuses, ledgers or selftests of tools; spend the time changing the product. Unit
-  tests of function outputs are fine. Run the existing gate once at the end.
+  tests of function outputs are fine. Never re-test what you did not change.
 
 ## Game ports: guest execution
 
