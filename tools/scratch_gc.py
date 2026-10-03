@@ -5,10 +5,11 @@ Agents write logs, frame dumps, screenshots, and build caches under a project's
 gitignored ``scratch/`` directory. Those artifacts are disposable but accumulate
 into tens of gigabytes. This tool removes stale scratch files safely:
 
-* A target named ``scratch`` inside ``~/repo`` (any depth) is GC'd directly. Any
-  other directory under (or equal to) ``~/repo`` is treated as a search root and
-  every ``scratch`` directory beneath it is GC'd. Everything else is refused.
-  Override the root with ``--repo-root``.
+* A directory INSIDE a project's ``scratch`` (``scratch/<activity>``) is GC'd directly;
+  that is the normal agent use. A whole ``scratch`` tree, or a search root that finds
+  them, is swept only with ``--whole-tree``: several agents share one scratch, and a
+  whole-tree sweep removes their run artifacts too. Everything outside ``~/repo`` is
+  refused. Override the root with ``--repo-root``.
 * It is dry-run by default; ``--apply`` is required to delete anything.
 * It only removes regular files whose mtime is older than ``--days`` (default 14),
   then prunes directories that became empty. Symlinks are unlinked, never followed.
@@ -36,12 +37,20 @@ def human(size: int) -> str:
     return f"{size / GIB:.2f} GiB" if size >= GIB else f"{size / 1048576:.1f} MiB"
 
 
-def resolve_targets(raw: str, repo_root: Path) -> list[Path]:
+def resolve_targets(raw: str, repo_root: Path, whole_tree: bool) -> list[Path]:
     target = Path(raw).resolve()
     if not target.is_dir():
         raise ValueError(f"{raw} is not a directory")
     if target != repo_root and repo_root not in target.parents:
         raise ValueError(f"{target} is not under {repo_root}; refusing")
+    activity = next((a for a in target.parents if a.name == "scratch"), None)
+    if target.name != "scratch" and activity is not None and activity.parent != repo_root:
+        return [target]
+    if not whole_tree:
+        raise ValueError(
+            f"{target} is a whole scratch tree or a search root; sweep your own scratch/<activity> "
+            "directory, or pass --whole-tree to sweep everything every agent left there"
+        )
     if target.name == "scratch":
         if target.parent == repo_root:
             raise ValueError(f"{target} has no project directory between it and {repo_root}; refusing")
@@ -72,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--apply", action="store_true", help="actually delete (default: dry run)")
     parser.add_argument("--keep", action="append", default=[], metavar="GLOB",
                         help="protect relative paths matching GLOB (repeatable)")
+    parser.add_argument("--whole-tree", action="store_true",
+                        help="allow sweeping a whole scratch tree or a search root (shared by every agent)")
     parser.add_argument("--repo-root", default=str(Path.home() / "repo"),
                         help="directory scratch trees must live under (default ~/repo)")
     args = parser.parse_args(argv)
@@ -83,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         seen: set[Path] = set()
         targets: list[Path] = []
         for raw in args.targets:
-            for scratch in resolve_targets(raw, repo_root):
+            for scratch in resolve_targets(raw, repo_root, args.whole_tree):
                 if scratch not in seen:
                     seen.add(scratch)
                     targets.append(scratch)
