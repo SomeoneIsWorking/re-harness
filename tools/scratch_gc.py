@@ -13,6 +13,9 @@ into tens of gigabytes. This tool removes stale scratch files safely:
 * It only removes regular files whose mtime is older than ``--days`` (default 14),
   then prunes directories that became empty. Symlinks are unlinked, never followed.
 * ``--keep GLOB`` (repeatable) protects matching relative paths.
+* A directory holding a ``.scratch-keep`` marker is protected with everything under
+  it. Provisioned inputs that live in scratch (extracted discs, executables) carry
+  the marker, so no sweep -- however broad its ``--days`` -- can remove them.
 * It always prints what it scanned, what matched, and what it skipped -- a run
   that deletes nothing says so explicitly rather than looking like a no-op.
 """
@@ -26,6 +29,7 @@ import time
 from pathlib import Path
 
 GIB = 1073741824
+KEEP_MARKER = ".scratch-keep"
 
 
 def human(size: int) -> str:
@@ -53,6 +57,11 @@ def resolve_targets(raw: str, repo_root: Path) -> list[Path]:
     if not top:
         raise ValueError(f"no 'scratch' directories found under {target}")
     return top
+
+
+def kept_roots(scratch: Path) -> list[Path]:
+    """Directories under ``scratch`` (or ``scratch`` itself) that carry the keep marker."""
+    return sorted(marker.parent for marker in scratch.rglob(KEEP_MARKER) if marker.is_file())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     for scratch in targets:
         scanned = scanned_bytes = matched = removed_bytes = kept_recent = protected = 0
         to_remove: list[Path] = []
+        marked = kept_roots(scratch)
         for path in sorted(scratch.rglob("*")):
             if path.is_dir() and not path.is_symlink():
                 continue
@@ -96,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             scanned_bytes += st.st_size
-            if any(fnmatch.fnmatch(rel, pat) for pat in args.keep):
+            if any(root == path.parent or root in path.parents for root in marked) or any(
+                fnmatch.fnmatch(rel, pat) for pat in args.keep
+            ):
                 protected += 1
                 continue
             if st.st_mtime >= cutoff:
@@ -109,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         verb = "removing" if args.apply else "would remove"
         print(f"\n{scratch}")
         print(f"  scanned  {scanned} files ({human(scanned_bytes)})")
-        print(f"  kept     {kept_recent} newer than {args.days:g}d, {protected} protected by --keep")
+        print(f"  kept     {kept_recent} newer than {args.days:g}d, {protected} protected by --keep or {KEEP_MARKER}")
         if not to_remove:
             print(f"  {verb}  nothing (no files older than {args.days:g}d)")
             continue
