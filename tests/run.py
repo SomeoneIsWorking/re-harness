@@ -134,10 +134,21 @@ def scratch_gc_checks():
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("x")
     with contextlib.redirect_stdout(io.StringIO()):
-        rc = scratch_gc.main([scratch, "--days", "0", "--apply", "--repo-root", root])
+        refused = scratch_gc.main([scratch, "--days", "0", "--apply", "--repo-root", root])
+        rc = scratch_gc.main([scratch, "--days", "0", "--apply", "--whole-tree", "--repo-root", root])
     fails = check(
         "scratch_gc: a .scratch-keep tree survives --days 0",
         rc == 0 and os.path.isfile(os.path.join(provisioned, "GAME.EXE")),
+    )
+    fails += check("scratch_gc: a whole scratch tree needs --whole-tree", refused == 2)
+    os.makedirs(probe, exist_ok=True)
+    with open(os.path.join(probe, "late.log"), "w", encoding="utf-8") as handle:
+        handle.write("x")
+    with contextlib.redirect_stdout(io.StringIO()):
+        activity_rc = scratch_gc.main([probe, "--days", "0", "--apply", "--repo-root", root])
+    fails += check(
+        "scratch_gc: scratch/<activity> sweeps without --whole-tree",
+        activity_rc == 0 and not os.path.exists(os.path.join(probe, "late.log")),
     )
     fails += check(
         "scratch_gc: unmarked scratch is still swept",

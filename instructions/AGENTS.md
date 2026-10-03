@@ -201,9 +201,10 @@
   not `/tmp` (tmpfs quota ~6 GB; diagnose with `quota -s`).
 - **Keep scratch small**: one fixed `scratch/<activity>/` per probe, overwritten; at most one
   `<activity>.prev/`; no copies of caches, SDKs, or checkouts. Delete it when the milestone lands.
-- **Clean up with scoped tools, never raw broad `rm`:** `tools/scratch_gc.py` (dry-run by default,
-  refuses paths outside `~/repo`) for scratch, `tools/cleanup-files` for explicit files. Never
-  target a root, home, unresolved variable, or broad glob.
+- **Clean up with scoped tools, never raw broad `rm`:** `tools/scratch_gc.py scratch/<activity>`
+  (dry-run by default; a whole `scratch/` needs `--whole-tree`; `.scratch-keep` subtrees are never
+  swept) for scratch, `tools/cleanup-files` for explicit files. Never target a root, home,
+  unresolved variable, or broad glob.
 - **Large CMake corpora use Ninja**, with the builder migrating a legacy generator's exact build
   child. An unchanged second build must compile nothing.
 
