@@ -116,6 +116,37 @@ def state_corpus(root, state="verified", state_id="S001"):
         )
 
 
+def scratch_gc_checks():
+    """A marked provisioned tree survives a sweep that removes everything else."""
+    import scratch_gc
+
+    root = tempfile.mkdtemp(dir=SCRATCH)
+    scratch = os.path.join(root, "project", "scratch")
+    provisioned = os.path.join(scratch, "assets", "disc")
+    probe = os.path.join(scratch, "probe")
+    os.makedirs(provisioned)
+    os.makedirs(probe)
+    for path in (
+        os.path.join(scratch, "assets", scratch_gc.KEEP_MARKER),
+        os.path.join(provisioned, "GAME.EXE"),
+        os.path.join(probe, "run.log"),
+    ):
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("x")
+    with contextlib.redirect_stdout(io.StringIO()):
+        rc = scratch_gc.main([scratch, "--days", "0", "--apply", "--repo-root", root])
+    fails = check(
+        "scratch_gc: a .scratch-keep tree survives --days 0",
+        rc == 0 and os.path.isfile(os.path.join(provisioned, "GAME.EXE")),
+    )
+    fails += check(
+        "scratch_gc: unmarked scratch is still swept",
+        not os.path.exists(os.path.join(probe, "run.log")),
+    )
+    shutil.rmtree(root)
+    return fails
+
+
 def main():
     fails = 0
     print("shared-skills selftest")
@@ -698,6 +729,8 @@ def main():
     else:
         rc, out = run([os.path.join(TOOLS, "swarm.py"), "report", SCRATCH], ROOT)
         fails += check("swarm: refuses by name off Linux", rc == 1 and "Linux-only" in out, out)
+
+    fails += scratch_gc_checks()
 
     print("shared-skills selftest: %s (%d check(s) failed)"
           % ("FAILED" if fails else "PASSED", fails))
