@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import threading
@@ -214,6 +215,29 @@ class AstRecorder:
                         self.findings.add((source, line, "block-scope static", symbol))
 
 
+class TruncatedAst(ValueError):
+    """The child stopped printing before the AST document ended.
+
+    `bytes_read` is how much of the AST the child managed to print, which is the
+    difference between "the compiler died" and "the tool misread a whole AST".
+    """
+
+    def __init__(self, message, bytes_read=0):
+        super().__init__(message)
+        self.bytes_read = bytes_read
+
+
+def describe_returncode(code):
+    """A child that died by signal, named the way an operator would name it."""
+    if code < 0:
+        try:
+            name = signal.Signals(-code).name
+        except ValueError:
+            return f"was killed by signal {-code}"
+        return f"was killed by {name}"
+    return f"exited {code}"
+
+
 class JsonStream:
     """Read Clang's AST as tokens, holding only the bytes a rule asks for.
 
@@ -234,11 +258,22 @@ class JsonStream:
         #: While a value is being captured, consumed text stays in the buffer so
         #: the whole span can be handed to the C JSON parser in one piece.
         self.holding = False
+        #: How much of the AST the child has actually printed. A failure that
+        #: reports this says whether the child wrote nothing, half, or all.
+        self.bytes_read = 0
+        #: Set once the source has no more input. The walk hitting the end of a
+        #: document it has not finished is a TRUNCATED child, not malformed JSON:
+        #: the JSON a child was going to print was cut short (a killed or aborted
+        #: compiler), and saying "malformed" sends the reader hunting a parser bug
+        #: that is not there.
+        self.exhausted = False
 
     def refill(self):
         chunk = self.source.read(self.CHUNK)
         if not chunk:
+            self.exhausted = True
             return False
+        self.bytes_read += len(chunk)
         if self.holding:
             self.buffer += chunk
         else:
@@ -381,6 +416,41 @@ class JsonStream:
         return json.loads(text)
 
 
+#: Exactly the wordings `JsonStream` uses when the INPUT RAN OUT, and no others:
+#: a grammar violation with text still to read ("malformed Clang AST JSON node")
+#: is a different failure and must keep its own name.
+INPUT_END_WORDINGS = (
+    "malformed Clang AST JSON value",
+    "truncated Clang AST JSON string",
+    "truncated Clang AST JSON escape",
+    "unterminated Clang AST JSON container",
+)
+EXPECTED_TOKEN_ENDING = "malformed Clang AST JSON: expected "
+
+
+def looks_truncated(error):
+    """True when the walk failed asking for a token the document never supplied.
+
+    Reaching the end of the input is normal for a small AST, so "the stream is
+    over" proves nothing by itself: what proves truncation is that the token that
+    was REQUIRED is the one missing, where a grammar violation is a token that
+    arrived where another was required.
+    """
+    text = str(error)
+    return text in INPUT_END_WORDINGS or text.endswith("got ''")
+
+
+def truncation_detail(error):
+    """The part of the message worth keeping: what was expected, not the accusation."""
+    text = str(error)
+    for wording in INPUT_END_WORDINGS:
+        if text.startswith(wording):
+            return ""
+    if text.startswith(EXPECTED_TOKEN_ENDING):
+        return text[len(EXPECTED_TOKEN_ENDING):]
+    return text
+
+
 def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowed_globals=()):
     """Return findings and visited files from a bounded-memory Clang JSON stream."""
     stream = JsonStream(source)
@@ -430,7 +500,23 @@ def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowe
             if marker != ",":
                 raise ValueError("malformed Clang AST JSON node")
 
-    walk(frozenset())
+    try:
+        walk(frozenset())
+    except ValueError as error:
+        # Input that ran out mid-document is a child that stopped printing, not a
+        # parser that lost sync: say which, because the two send the reader to
+        # completely different places.
+        if looks_truncated(error):
+            # The inner message says "malformed Clang AST JSON", which is precisely the
+            # wrong word here and the reason this read as a parser bug; keep the useful
+            # part (what was expected) and drop the accusation.
+            detail = truncation_detail(error)
+            raise TruncatedAst(
+                f"the AST ended after {stream.bytes_read} byte(s) without finishing "
+                f"the document{f': {detail}' if detail else ''}",
+                stream.bytes_read,
+            ) from error
+        raise
     stream.space()
     if stream.peek():
         raise ValueError("Clang AST JSON has trailing content")
@@ -511,11 +597,21 @@ def check_unit(entry, root, excluded, allowed_globals):
             process.kill()
         returncode = process.wait()
         stderr_reader.join()
-        if returncode and stderr_tail:
+        diagnostics = ''.join(stderr_tail).strip()
+        # The child's own ending is the first thing a reader needs: a compiler the
+        # kernel killed mid-print (memory pressure, a concurrent build) and a
+        # compiler that failed both leave a SHORT stream here, and reporting that
+        # as "malformed Clang AST JSON" points at this tool's parser instead.
+        if returncode:
             raise RuntimeError(
-                f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}"
+                f"the AST child for {source} {describe_returncode(returncode)} while printing "
+                f"{getattr(error, 'bytes_read', 0)} AST byte(s): {error}\n"
+                f"{diagnostics or '(no diagnostics)'}"
             ) from error
-        raise RuntimeError(f"Clang emitted no readable AST for {source}: {error}") from error
+        raise RuntimeError(
+            f"Clang emitted no readable AST for {source}: {error}"
+            + (f"\n{diagnostics}" if diagnostics else "")
+        ) from error
     finally:
         process.stdout.close()
     returncode = process.wait()

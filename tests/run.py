@@ -404,14 +404,34 @@ def main():
                     io.StringIO('{"kind":"TranslationUnitDecl","inner":['),
                     cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
                 )
-            except ValueError as error:
+            except cpp_policy.TruncatedAst as error:
                 truncated_error = str(error)
+            except ValueError as error:
+                truncated_error = f"wrongly reported as {error!r}"
             else:
                 truncated_error = ""
             fails += check(
-                "cpp_policy: refuses truncated AST instead of reporting no findings",
-                "malformed Clang AST JSON" in truncated_error,
+                "cpp_policy: names a truncated AST as truncated, not as malformed JSON",
+                truncated_error != ""
+                and "the AST ended after" in truncated_error
+                and "malformed Clang AST JSON" not in truncated_error,
                 truncated_error,
+            )
+            # The other side of the same distinction: input that is STILL there and
+            # does not fit the grammar really is malformed, and must keep saying so.
+            try:
+                cpp_policy.inspect_ast_stream(
+                    io.StringIO('{"kind":"TranslationUnitDecl" "inner":[]} trailing'),
+                    cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
+                )
+            except ValueError as error:
+                malformed_error = str(error)
+            else:
+                malformed_error = ""
+            fails += check(
+                "cpp_policy: still calls misaligned input with input left malformed",
+                "malformed Clang AST JSON" in malformed_error,
+                malformed_error,
             )
             failed_compiler = os.path.join(project, "failed_compiler.py")
             with open(failed_compiler, "w", encoding="utf-8") as target:
@@ -430,9 +450,43 @@ def main():
             else:
                 compiler_error = ""
             fails += check(
-                "cpp_policy: reports compiler failure with stderr",
-                "AST compile failed" in compiler_error and "synthetic Clang failure" in compiler_error,
+                "cpp_policy: reports the child that failed, with its stderr",
+                "exited 2" in compiler_error and "synthetic Clang failure" in compiler_error,
                 compiler_error,
+            )
+
+            # A child the kernel killed part-way through its AST is the case that
+            # cost a port an hour: the stream stops mid-document, and reporting
+            # that as malformed JSON points at this tool's parser instead of at the
+            # process that died printing it.
+            killed_compiler = os.path.join(project, "killed_compiler.py")
+            with open(killed_compiler, "w", encoding="utf-8") as target:
+                target.write(
+                    "import os, signal, sys\n"
+                    "sys.stdout.write('{\"kind\":\"TranslationUnitDecl\",\"inner\":[{\"kind\":')\n"
+                    "sys.stdout.flush()\n"
+                    "os.kill(os.getpid(), signal.SIGKILL)\n"
+                )
+            killed_database = os.path.join(project, "compile_commands.json")
+            with open(killed_database, "w", encoding="utf-8") as target:
+                json.dump([{
+                    "directory": project,
+                    "file": source,
+                    "arguments": [sys.executable, killed_compiler, source],
+                }], target)
+            try:
+                cpp_policy.check_database(cpp_policy.Path(killed_database), cpp_policy.Path(project))
+            except RuntimeError as error:
+                killed_error = str(error)
+            else:
+                killed_error = ""
+            killed_expected = "SIGKILL" if os.name != "nt" else "killed"
+            fails += check(
+                "cpp_policy: names a child killed mid-AST instead of blaming its own parser",
+                killed_expected in killed_error
+                and "AST byte(s)" in killed_error
+                and "malformed Clang AST JSON" not in killed_error,
+                killed_error,
             )
 
     # --- cleanup-files: validate the whole explicit set before unlinking -----
