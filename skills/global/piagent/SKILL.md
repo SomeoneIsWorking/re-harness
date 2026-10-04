@@ -11,7 +11,8 @@ description: >-
 
 Every agent is a session `agent:<NAME>` inside ONE pi process (the PiNest host, systemd user unit
 `pinest-host`), so ten agents cost one process instead of ten. They also appear in the user's PiNest
-app. `pinest-agent` is on PATH:
+app, under the session that spawned them: an agent is that session's subagent, with the brief's
+first line as its task and a verdict when its turn ends. `pinest-agent` is on PATH:
 
 ```sh
 pinest-agent spawn NAME --cwd WORKTREE --model opencode/space-bunny-free --brief brief.md
@@ -23,6 +24,10 @@ pinest-agent wait NAME --timeout 1800   # exit 0 idle (prints last reply), 2 tim
 pinest-agent cancel NAME       # abort the current turn, keep the session
 pinest-agent stop NAME         # cancel and close the session
 ```
+
+The parent is taken from `PINEST_SESSION_ID`, which the host sets in the environment of the
+commands a session runs, so a plain `spawn` inside a session is already a subagent of it. Use
+`--parent ID` only to name a different parent deliberately.
 
 If `spawn` reports no host, start it (it restores sessions and serves the agent socket):
 `systemctl --user start pinest-host` if the unit exists, else the `systemd-run` command in the
