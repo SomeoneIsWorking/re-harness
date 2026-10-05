@@ -289,6 +289,7 @@ change first, bump the consumer's pin, and build the consumer against that clean
 | `shared/android-port` | Android Activity/SAF, build/package/signing plumbing, dependency prefix, emulator contract |
 | `shared/setup-ui` | in-window RmlUi first-run setup, picker hand-off, staged-set validator |
 | `shared/touch-ui` | touch overlay: safe-area/DPI layout, pointer ownership, glyph rasterization |
+| `shared/bug-report` | in-app bug reports for RmlUi C++ apps: report folder lifecycle, `report.json`/`README.md`, the modal form; the app supplies captures and reproduction |
 
 Dependency direction: UE3 360 titles `title -> x360ue3 -> x360port -> Xenia`; MUA uses `x360port`
 and `shared/alchemy` directly. Lucent is a helper library (logging, config, HTTP, paths, identity,
