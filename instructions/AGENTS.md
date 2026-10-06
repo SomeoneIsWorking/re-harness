@@ -47,6 +47,34 @@
   pixels, or stretch the final image. Interpolation is a separate opt-in feature over matching
   source geometry only.
 
+## How to work a problem
+
+Every bug, regression, or feature follows these steps in order. Skipping one is how bandaids happen.
+
+1. **Reproduce.** Write down observed vs expected and the exact input that shows it (replay and
+   frame, warp target, command). No reproduction, no change.
+2. **Find the owner.** `docs/codemap.md` to the module; read its doc and the code path end to end
+   before editing anything. If the codemap cannot lead you there, fix the codemap first.
+3. **Trace to the cause.** Follow the wrong value back to where it first goes wrong; for guest
+   behaviour, decompile the guest function. Write the cause as one sentence naming `file:function`.
+   Until you can, you are still investigating: read, log, bisect; do not edit product code.
+4. **Fix at the owner.** The smallest change that makes the owner correct. If the owner's
+   structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
+   One cause per commit.
+5. **Prove it.** A unit test through the shipping code that fails before and passes after, and the
+   reproduction now showing the expected behaviour.
+6. **Record it.** Update the owner's doc where the contract or behaviour changed.
+
+If a fix does not work, revert it and return to step 3; never stack a second guess on the first.
+Never add a flag, branch, or parallel implementation for the failing case.
+
+## Docs that keep work methodical
+
+Each subsystem has one doc a new developer can work from: what it owns, its inputs and outputs,
+its invariants, how data flows through it, and how to test it. Keep these accurate and complete;
+they are what makes step 2 possible. History, measurements, and incident stories do not belong
+in them; the issue tracker and git log hold those.
+
 ## Communication
 
 - **Be brutally honest.** No flattery, no praise or affirmation openers ("You're right", "Great
