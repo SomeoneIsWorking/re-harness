@@ -22,6 +22,8 @@ class PiBackend:
         attached = [f"@{path}" for path in [str(task_file), *files]]
         return argv + attached + [PROMPT_ATTACHED]
 
-    def environment(self, read_only: Sequence[Path]) -> Mapping[str, str]:
+    def environment(
+        self, read_only: Sequence[Path], state_dir: Path
+    ) -> Mapping[str, str]:
         # pi has no path permissions to configure: it can already read ``read_only``.
         return {}

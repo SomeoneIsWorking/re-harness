@@ -1,9 +1,8 @@
 """``opencode run`` worker.
 
-``--standalone`` runs a private model server as a child of the worker instead of
-routing through the user's background ``opencode serve --service``. Only then
-does killing the worker's process group on timeout actually stop the session;
-through the shared service a timed-out session would keep editing the worktree.
+``opencode run`` serves the model in its own process, so killing the worker's process
+group on timeout stops the session. Each job gets its own ``OPENCODE_DB``: parallel
+workers sharing the default database fail with "database is locked".
 
 A non-interactive run treats opencode's default ``ask`` for a path outside the worktree
 as a rejection that aborts the whole session ("Step interrupted"), so a worker that
@@ -27,13 +26,18 @@ class OpencodeBackend:
     name = "opencode"
 
     def command(self, task_file: Path, files: Sequence[str], model: str) -> list[str]:
-        argv = ["opencode", "run", "--standalone", "-m", model, "--format", "json"]
+        argv = ["opencode", "run", "-m", model, "--format", "json"]
         for attached in [str(task_file), *files]:
             argv += ["-f", attached]
         return argv + ["--", PROMPT_ATTACHED]
 
-    def environment(self, read_only: Sequence[Path]) -> Mapping[str, str]:
+    def environment(
+        self, read_only: Sequence[Path], state_dir: Path
+    ) -> Mapping[str, str]:
         outside = {"*": "deny"} | {f"{path}/**": "allow" for path in read_only}
         edit = {"*": "allow"} | {f"{path}/**": "deny" for path in read_only}
         permission = {"external_directory": outside, "edit": edit}
-        return {"OPENCODE_CONFIG_CONTENT": json.dumps({"permission": permission})}
+        return {
+            "OPENCODE_CONFIG_CONTENT": json.dumps({"permission": permission}),
+            "OPENCODE_DB": str(state_dir / "opencode.db"),
+        }

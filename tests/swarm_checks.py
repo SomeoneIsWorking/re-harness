@@ -43,7 +43,7 @@ class FakeBackend:
     def command(self, task_file: Path, files: Sequence[str], model: str) -> list[str]:
         return [PY, str(FAKE_WORKER), str(task_file), *files]
 
-    def environment(self, read_only: Sequence[Path]) -> dict[str, str]:
+    def environment(self, read_only: Sequence[Path], state_dir: Path) -> dict[str, str]:
         return {}
 
 
@@ -731,7 +731,9 @@ def _task_file_checks(check: Check, root: Path) -> int:
 
 def _backend_checks(check: Check) -> int:
     config = json.loads(
-        BACKENDS["opencode"].environment([Path("/ref")])["OPENCODE_CONFIG_CONTENT"]
+        BACKENDS["opencode"].environment([Path("/ref")], Path("/j"))[
+            "OPENCODE_CONFIG_CONTENT"
+        ]
     )["permission"]
     confined = check(
         "swarm: opencode denies outside paths (catch-all first) and reads, never edits, read_only",
@@ -739,6 +741,11 @@ def _backend_checks(check: Check) -> int:
         == [("*", "deny"), ("/ref/**", "allow")]
         and list(config["edit"].items()) == [("*", "allow"), ("/ref/**", "deny")],
         str(config),
+    )
+    confined += check(
+        "swarm: each opencode job keeps its own database in its job directory",
+        BACKENDS["opencode"].environment([], Path("/j"))["OPENCODE_DB"]
+        == "/j/opencode.db",
     )
     opencode = BACKENDS["opencode"].command(
         Path("/j/task.md"), ["a.c"], "opencode/space-bunny-free"
@@ -749,12 +756,11 @@ def _backend_checks(check: Check) -> int:
     return (
         confined
         + check(
-            "swarm: opencode argv is standalone JSON with the task attached first",
+            "swarm: opencode argv is JSON with the task attached first",
             opencode
             == [
                 "opencode",
                 "run",
-                "--standalone",
                 "-m",
                 "opencode/space-bunny-free",
                 "--format",
