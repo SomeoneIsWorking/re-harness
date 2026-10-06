@@ -1,55 +1,13 @@
 # Global working principles
 
-## Canonical configuration and tools
-
-- **`shared/re-harness` is the only editable authority** for these instructions, shared skills
-  (`skills/global`, `skills/port`, `skills/re`, `skills/dynarec`), and shared tools (`tools/`).
-  Agent homes and `~/repo/AGENTS.md` are relative links installed by `tools/install_skills.py`;
-  never edit them as separate copies. Vendor-owned system files stay untouched.
-- **Browser automation uses WebLua** (`skills/global/weblua/SKILL.md`). Check the installed binary
-  and the `~/repo/weblua` checkout (private `SomeoneIsWorking/weblua`, via `gh`) before calling a
-  browser unavailable. Run headless on a dedicated loopback port with a project `scratch/weblua/`
-  as `WEBLUA_DIR`; never attach a personal profile. DOM success does not prove WebGPU or WASM.
-- **Provision missing tools yourself, without root.** The user often works remotely and cannot
-  run `sudo`. In order: the project's own provisioning; an official release binary or archive
-  verified by its published checksum, unpacked under `~/dev/` or `~/.local/`; a user-level package
-  manager (`uv`, `cargo`, `npm`, Homebrew on Linux); then `podman` with the project's Dockerfile or
-  an official image. Only when none can supply the exact tool the project pins, give the user the
-  exact `sudo dnf install ...` command and keep working on everything else. Never weaken the check,
-  and never swap in a different toolchain unless the project's own byte/behavior check proves it
-  equivalent.
-
-## Fix the cause, not the symptom
-
-- **Name the root cause before fixing.** A change that hides a symptom without explaining why it
-  occurred is a bandaid. Stop if the change is a magic offset, a special case for the failing input,
-  a swallowed exception, `|| true`, retry-until-pass, a sleep for a race, a skipped check, a
-  hardcoded expected value, duplicated code to avoid a shared path, or anything "for now".
-- **If the real fix is too big, say so.** Name the proper fix and the stopgap's risk, let the user
-  decide, and mark an approved stopgap `// STOPGAP: <proper fix> because <why>`.
-- **Skips are complete, owned transitions.** Use the title's recovered cancellation route or a
-  purpose-built skip that establishes the same lifecycle, resource, and state invariants. Never
-  fast-forward simulation, bypass lifecycle callbacks, or write a phase, timer, or scene pointer.
-- **Loading-only screens do not ship.** Keep loading asynchronous and go straight to the next real
-  presentation. Logo screens accept Start/confirm (PSX: Cross) through a complete cancellation route.
-  Authored transition cutscenes are presentation, not loading, and stay; a title may give one a
-  minimum duration with the same cancellation route (Tomba! 2's area transition: five seconds).
-- **Widescreen is a deterministic projection change.** Feed the same vertex stream with topology,
-  UVs, depth, and colors preserved; widen the horizontal projection/viewport and override the
-  title's draw area/scissor and every horizontal culling or screen-rect limit it owns (world,
-  actors, particles, shadows), so the margins show what the view would. By default the native
-  renderer ignores the title's culls and draws from object memory, animating margin-only objects
-  itself, with guest memory untouched. Only where the camera window decides whether objects exist
-  at all (spawn/unload, typically side-scrollers: Tomba! 2, Mega Man X4) widen that guest window,
-  recorded as a gameplay delta in the baseline.
-  Anchor the UI: edge HUD elements move to the widened edges or safe area,
-  centred ones stay centred, nothing stretches. Never sample adjacent frames, infer geometry from
-  pixels, or stretch the final image. Interpolation is a separate opt-in feature over matching
-  source geometry only.
+`shared/re-harness` is the only editable source of these instructions, the skills and the shared
+`tools/`; agent homes and `~/repo/AGENTS.md` are links installed by `tools/install_skills.py`.
+Domain rules live in skills: game ports in `dynarec-port` and `game-port-structure`, CI, releases
+and Android in `port-release`.
 
 ## How to work a problem
 
-Every bug, regression, or feature follows these steps in order. Skipping one is how bandaids happen.
+Every bug, regression or feature follows these steps in order. Skipping one is how bandaids happen.
 
 1. **Reproduce.** Write down observed vs expected and the exact input that shows it (replay and
    frame, warp target, command). No reproduction, no change.
@@ -60,287 +18,100 @@ Every bug, regression, or feature follows these steps in order. Skipping one is 
    Until you can, you are still investigating: read, log, bisect; do not edit product code.
 4. **Fix at the owner.** The smallest change that makes the owner correct. If the owner's
    structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
-   One cause per commit.
 5. **Prove it.** A unit test through the shipping code that fails before and passes after, and the
    reproduction now showing the expected behaviour.
 6. **Record it.** Update the owner's doc where the contract or behaviour changed.
 
-If a fix does not work, revert it and return to step 3; never stack a second guess on the first.
-Never add a flag, branch, or parallel implementation for the failing case.
+If a fix does not work, revert it and go back to step 3; never stack a second guess on the first.
+These are bandaids, not fixes: a magic offset, a branch or flag for the failing input, a swallowed
+error, `|| true`, retry-until-pass, a sleep for a race, a skipped check, a hardcoded expected value,
+a second implementation beside the first, anything "for now". If the real fix is too big, say so,
+name the proper fix and the stopgap's risk, and let the user decide; an approved stopgap is marked
+`// STOPGAP: <proper fix> because <why>`.
 
-## Docs that keep work methodical
+## Docs
 
-Each subsystem has one doc a new developer can work from: what it owns, its inputs and outputs,
-its invariants, how data flows through it, and how to test it. Keep these accurate and complete;
-they are what makes step 2 possible. History, measurements, and incident stories do not belong
-in them; the issue tracker and git log hold those.
+- Each subsystem has one doc a new developer can work from: what it owns, inputs and outputs,
+  invariants, data flow, how to test it. Keep it accurate; it is what makes step 2 possible.
+- `docs/codemap.md` says where code lives. Read it before placing code; update it in the change that
+  adds or moves an owner.
+- `docs/project-goals.md`: stable goal IDs, outcomes, success conditions, non-goals.
+- `docs/project-state.md`: every intended capability as `verified`/`partial`/`blocked`/`missing`
+  with evidence or the exact gap, one current focus, and a comparison baseline listing each
+  user-visible delta from the original (widescreen, loading, controls, platforms, ...).
+- `docs/issues/`: one bug, task or dead end per file. `docs/re-frontier.md`: what has and has not
+  been reverse-engineered; update it in the same commit as the RE work.
+- Write what you learn into the owning doc in the same session; fix a wrong note rather than adding
+  another. Agent memory holds only cross-project preferences.
+- Comments and docs read like a developer wrote them. A comment is one short line where the code
+  cannot speak: a reason, a hardware fact, a guest address. No paragraphs, no history or measurement
+  narration, no restating the code, no shouting caps. Delete such prose on sight.
 
 ## Communication
 
-- **Be brutally honest.** No flattery, no praise or affirmation openers ("You're right", "Great
-  question", "Exactly"), no validating a bad idea. Show agreement by doing the work. If the user is
-  wrong on fact or logic, say so plainly and proceed correctly.
-- **The user's observation of the running product outranks your evidence.** Treat a reported
-  regression as a falsifier, stop extending the suspect change, and reproduce from the last
-  known-good behavior. A green test cannot overrule what it failed to cover.
-- **Report delivery state literally.** Subagent report, dirty tree, focused test, local commit, and
-  pushed commit are different states. "Done" means integrated, gated, committed, and pushed.
-- **Do what was asked.** Suggest a better idea; do not substitute it.
-- **Do not turn destructive risk into a lazy blocker.** For an irreversible step, name the exact
-  consequence and the smallest backup path. Perform it if already authorized; otherwise ask once.
+- Be brutally honest. No flattery or affirmation openers; if the user is wrong on fact or logic, say
+  so plainly and proceed correctly.
+- The user's observation of the running product outranks your evidence. Treat a reported regression
+  as a falsifier and reproduce from the last known-good state.
+- Report delivery state literally: subagent report, dirty tree, local commit and pushed commit are
+  different states. "Done" means integrated, gated, committed and pushed.
+- Do what was asked. Suggest a better idea; do not substitute it.
+- For an irreversible step, name the exact consequence. Do it if authorized; otherwise ask once.
 
-## Repository hygiene
+## Code
 
-- **Nothing machine-specific in tracked files** — no `/home/<user>/…` or host config. Use
-  repo-relative paths, env vars, or a gitignored `.env`; grep the staged set for your home path.
-- **Never commit copyrighted game assets.** Provide them via a gitignored `.env` or a drop-in file
-  (support both). If one reaches history, purge it and force-push only with the user's go-ahead.
-- **One branch, `main`; commit directly.** This overrides any default to branch first. Confirm
-  before deleting a divergent branch.
-- **A verified fix or milestone is standing authorization to commit and push** (operator sessions),
-  overriding "only when asked" defaults. Use `Co-Authored-By`.
-- **Every maintained repo has a GitHub `origin`.** At the first verified milestone, reuse a matching
-  remote or create one with `gh`, push `main`, and verify the upstream. Follow the user's or the
-  portfolio's established visibility; run the full-history publication audit before anything public.
-- **Third-party changes live as commits in a maintained fork**, pinned by exact revision through the
-  normal dependency declaration (URL, revision, upstream base, purpose). No tracked `.patch` files
-  or apply steps; migrate an existing patch stack when touching it, one cause per commit.
+- One owner per concept: focused modules and classes with explicit dependencies; entry points only
+  compose. New behaviour goes in the smallest owning module; split a touched monolith at the relevant
+  boundary before extending it. No `Utils`/`Manager`/`Common`/`Misc`, numbered fragments or
+  forwarding webs.
+- One implementation of each rule, formula, parser, state transition and mapping. Search for the
+  owner before adding code. Tests exercise the shipping code through a seam, never a copy.
+- No dead code, stale names, warnings or compatibility paths once their replacement exists.
+- Errors preserve valid state: fail fast or propagate; catch only to restore an invariant, add
+  context, retry an idempotent operation, or terminate cleanly.
+- The project verifier fails on source files over 1,200 lines, growth of known monoliths, forbidden
+  cross-layer dependencies, output outside the logger, and environment reads outside the config
+  owner. Limits only shrink.
+- Reusable title-neutral C++ helpers go in Lucent, tested there.
 
-## The worktree is agent-owned
+## C++
 
-- **Account for every change in the tree.** Before ending, verify and commit it, continue its next
-  milestone, or remove it after proving it obsolete. Do not revert another active agent's work to
-  clean `git status`; coordinate and gate the combined tree.
-- **Remove obsolete work outright** — old code, docs, outputs, compatibility paths — through exact
-  scoped targets. No tombstones, no broad deletion.
-- **The operator lands.** Subagents do not stage, commit, stash, or push. Review, gate, and land
-  each finished batch promptly. Tell an active agent when a shared contract it depends on changes.
-- **Kill by PID, never `pkill` a shared binary name.** Capture `$!` at launch or find it with
-  `ps -eo pid,etimes,args`; the `safekill` tool helps. Put this in every brief that launches an app.
+- Agents build with Clang and confirm `CMAKE_CXX_COMPILER_ID=Clang`; projects keep building with
+  GCC, AppleClang and other supported compilers. If Clang cannot build a project, report it.
+- Tracked `.clang-format` (every body braced, one statement per line) and `.clang-tidy` (defaults plus
+  `clang-analyzer-*`, `bugprone-*`, `performance-*`, braces; warnings are errors), both checked by
+  the verifier; copy them from a maintained repo. Fix findings; never blanket-suppress.
+- State lives in classes in project namespaces with RAII; no project functions in the global
+  namespace, no C facade over a class, no `extern` globals, no function-local `static`. Declarations
+  live in the owning header; constants are `inline constexpr` there. `tools/cpp_policy.py` enforces
+  what clang-tidy cannot.
+- Logging goes through Lucent only, one line per call, never wrapped in `if`. One config owner reads
+  the environment into typed immutable config; nothing else calls `getenv`. Local HTTP and control
+  channels use `lucent::http::Server`.
 
-## Code quality and architecture
+## Tooling
 
-- **Write comments and docs like a developer.** A comment is one short line where the code cannot
-  speak: a reason, a hardware fact, a guest address. No paragraphs, no history or measurement
-  narration ("measured", "not guessed", dates, incident stories), no restating the code, no shouting
-  caps. Reading that prose makes agents worse, so delete it on sight.
-- **Quality is part of correctness.** Root-cause fixes; cohesive modules; one source of truth;
-  precise names and explicit contracts; bounded lifetimes; no dead code, stale vocabulary, or
-  warnings; formatter, linter, typechecker, and unit tests. Reduce scope rather than lower the bar. Review the combined diff as a product before landing.
-- **Error handling preserves valid state.** Fail fast or propagate. Catch only where you can restore
-  an invariant, add context, safely retry an idempotent operation, or terminate cleanly. Never
-  catch-and-continue in a partially mutated state.
-- **No god files or classes.** New behavior goes in the smallest owning module; entry points compose.
-  Extract the touched subsystem from a mixed monolith as part of the change. Each class owns one
-  concept; prefer composition. Keep public API first and each method at one level of abstraction.
-  No catch-all `Utils`/`Manager`/`Common`/`Misc`, numbered fragments, or forwarding webs.
-- **Structure is enforced mechanically.** The verifier fails on source files over 1,200 lines
-  (2,000+ is critical), on growth of known legacy monoliths, on forbidden cross-layer dependencies,
-  on output outside the logger, and on environment reads outside the configuration owner. Limits
-  and allowlists only shrink.
-- **DRY: one implementation of each rule, formula, parser, state transition, and mapping.** Search
-  for the owner before adding code. Tests and diagnostics exercise the shipping implementation
-  through a seam, never a reimplementation. Do not abstract coincidental similarity.
-- **Reusable title-neutral C++ helpers go in Lucent**, tested there, with callers migrated.
-  Collection helpers need concrete call-site evidence over `std::ranges`, and must state ownership,
-  allocation, invalidation, and complexity.
+- `./run.sh` launches the one intended product with zero arguments and is the fresh-clone setup
+  path; it is a shim (`exec uv run --frozen python bootstrap.py "$@"`). Agents never run it; verify
+  with headless, silent maintainer tools that reuse the same build modules.
+- Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
+  `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
+- A missing native package gets a refusal naming the exact install command per platform.
+- Provision missing tools yourself without root: project provisioning, then an official checksummed
+  release under `~/dev/` or `~/.local/`, then `uv`/`cargo`/`npm`/Homebrew, then `podman`. Only if
+  none works, give the user the exact `sudo` command. Never substitute a different toolchain.
+- Browser automation uses WebLua (`weblua` skill), headless, never a personal profile.
 
-## C++ toolchain and style
+## Repository and worktree
 
-- **Agents build C++ with Clang** (`CXX=clang++` / `-DCMAKE_CXX_COMPILER=clang++`) and confirm
-  `CMAKE_CXX_COMPILER_ID=Clang`. This is agent policy only: projects must keep building with GCC,
-  AppleClang, and every other supported toolchain. Remove policy-only compiler bans when found. If
-  Clang cannot build a project, report it; do not fall back silently.
-- **`clang-format`** with a tracked `.clang-format` and a non-mutating check in the verifier. Set
-  `AllowShortIfStatementsOnASingleLine: Never`, `AllowShortLoopsOnASingleLine: false`,
-  `AllowShortBlocksOnASingleLine: Never`, `AllowShortFunctionsOnASingleLine: None`,
-  `AllowShortLambdasOnASingleLine: None`, `InsertBraces: true`. Every body is braced, one statement
-  per line. Do not reformat generated or vendored code.
-- **`clang-tidy`** keeps its defaults (never start `Checks` with `-*`) and adds `clang-analyzer-*`,
-  `bugprone-*`, `performance-*`, and `readability-braces-around-statements`
-  (`ShortStatementLines: 0`), with `WarningsAsErrors: '*'`. Run it over the real compile database
-  for every first-party unit and header in the verifier; confirm with `--dump-config` and
-  `--list-checks`. Fix findings; never blanket-suppress.
-- **Named owners, not global C APIs.** State and behavior live in focused classes in project
-  namespaces with RAII and explicit dependencies; stateless algorithms may be namespace functions.
-  No project functions in the global namespace (including `x2_*`-style prefixes) and no C facade
-  over a class; keep a C ABI shim only at a real external or guest boundary.
-- **Declarations live in owning headers.** No `extern` declarations of project functions or
-  variables and no `extern` globals as shared state; an `extern "C"` ABI belongs in its boundary
-  header. No function-local `static` variables; named constants are `inline constexpr` members of
-  the owning header. Local `const`/`constexpr` values are fine.
-- **Enforce what `clang-tidy` cannot** (global-namespace APIs, `extern`, function-local `static`)
-  with the AST-based `tools/cpp_policy.py` over the real tree, with accepted and rejected fixtures.
-  When touching a legacy global API, move its callers to the owner and delete the global entry.
-- **One logger per project: Lucent** (C++20+). Product code never calls `printf`, `fprintf(stderr)`,
-  `std::cerr`, or platform debug prints; one line per log call, never wrapped in `if`.
-- **One configuration owner reads the environment** once into a typed immutable config; no other
-  subsystem calls `getenv`.
-- **Local HTTP servers and control channels use `lucent::http::Server`.** Consumers own only routes;
-  extend and test Lucent for missing generic capability.
-
-## Launcher and Python tooling
-
-- **`./run.sh` launches the project's one intended product with zero arguments** — never a legacy,
-  demo, or diagnostic path, and no selector flags or subcommands. Extra arguments may override
-  optional settings but never a required backend, renderer, entry point, or asset. The executable's
-  own zero-argument path should match. Refuse missing or stale build inputs by name.
-- **`run.sh` is also the fresh-clone setup contract:** given documented native dependencies, `uv`,
-  user assets, and a supported compiler, it provisions everything and launches. It stays a slim shim
-  (`exec uv run --frozen python bootstrap.py "$@"`); all logic is Python. Maintainer tools such as
-  Ghidra are never player prerequisites.
-- **Agents never run `./run.sh`.** It opens the user's windowed, audible product. Verify through
-  separately named headless, silent, unpaced maintainer tools that reuse the same build modules.
-- **One locked Python environment:** every dependency in `pyproject.toml`/`uv.lock`, entered via
-  `uv run --frozen`/`--locked`, and that interpreter passed to CMake, generators, and tests. A bare
-  `python3` is a defect. Verify the cold path without a warm build or venv.
-- **Missing native packages get a platform-specific refusal** naming the exact Homebrew, `apt`,
-  `dnf`, `winget`, or `vcpkg` command for the user to run; ask when the mapping is ambiguous.
-- **Project tooling is modular Python, not shell** (`run.sh` excepted): CLI at the entry point,
-  logic in importable modules with injected boundaries. Migrate a shell tool to Python when touching
-  it, with positive and negative tests, and delete the shell file.
-
-## Build, scratch, and cleanup
-
-- **Builds go only under gitignored top-level `build/`**; run artifacts go in gitignored `scratch/`,
-  not `/tmp` (tmpfs quota ~6 GB; diagnose with `quota -s`).
-- **Keep scratch small**: one fixed `scratch/<activity>/` per probe, overwritten; at most one
-  `<activity>.prev/`; no copies of caches, SDKs, or checkouts. Delete it when the milestone lands.
-- **Clean up with scoped tools, never raw broad `rm`:** `tools/scratch_gc.py scratch/<activity>`
-  (dry-run by default; a whole `scratch/` needs `--whole-tree`; `.scratch-keep` subtrees are never
-  swept) for scratch, `tools/cleanup-files` for explicit files. Never target a root, home,
-  unresolved variable, or broad glob.
-- **Large CMake corpora use Ninja**, with the builder migrating a legacy generator's exact build
-  child. An unchanged second build must compile nothing.
-
-## Knowledge and registries
-
-- **Write what you learn into the nearest living doc in the repo, in the same session.** Agent-home
-  memory holds only cross-project preferences. Fix a wrong note instead of adding another.
-- **Read `docs/codemap.md` before placing code**; update it in the change that moves or adds an owner.
-- **The RE tracker (`docs/re-frontier.md`, `tools/re_frontier.py`) records what has and has not been
-  reverse-engineered.** Check it before RE work and update the step in the same commit. It is never bloat.
-- **Keep the authorities distinct:**
-  - `docs/project-goals.md` — epic intent: stable IDs, outcomes, success conditions, non-goals.
-  - `docs/project-state.md` — required for every project: the complete intended capability set,
-    each item `verified`/`partial`/`blocked`/`missing` with evidence or exact gap, plus one current
-    focus. It includes a `Comparison baseline` (the original, upstream, or prior workflow) with each
-    user-visible delta (widescreen, controls, speed, loading, platforms, …) as its own item.
-  - `docs/issues/` — one task, bug, finding, blocker, or dead end per issue.
-  - `docs/codemap.md` — placement only.
-## Control channel
-
-- **Build a control channel into the product**, always open on loopback (also under `./run.sh`
-  and the bare executable; an env var may move the port, never close it), so agents can drive input,
-  read state, and capture frames. Automated runs are headless and silent and never steal focus.
-
-## Game ports: guest execution
-
-- **Ports are native/dynarec hybrids.** Hand-written native overrides own recovered behavior; all
-  other guest code runs through an on-demand JIT. No offline or install-time translation into
-  C/C++/objects, no prebuilt translated corpus, no static seed lists. Static analysis may produce
-  only non-executable knowledge (symbols, types, identity, override metadata).
-- **Dynarec first; the interpreter is a bounded fallback** used only after the JIT reports a block
-  cannot be compiled or fetched safely, recorded with reason, PC, and counts. Interpreter-only mode
-  is diagnostic, never the default, and never gameplay or performance evidence. Exception: low-power
-  8/16-bit targets (NES, GBA, Amiga) classified so in their goals may ship an interpreter, qualified
-  on real gameplay on every released host.
-- **A runtime translation cache is optional disposable data** keyed to guest image, runtime version,
-  host architecture, and configuration; a fresh install translates on its own.
-- **Invalidate on self-modifying and loaded code** (guest writes, overlays, bank switches, DMA,
-  address-space changes, cache control) before reuse.
-- **The runtime logs its work at run end** (translated blocks, fallbacks by reason).
-- **Migrating a static recomp: delete it first.** Keep independent evidence, oracles, overrides,
-  HLE, rendering, audio, input, and saves; remove the generator, generated corpora, static dispatch,
-  and their tests and docs. The build may fail at the missing executor until the dynarec lands.
-- **ARM64 means both Apple Silicon macOS and Android arm64-v8a**, each with a real AArch64 backend
-  qualified separately (executable memory, icache, ABI, signals, packaging, gameplay).
-- **WASM is a required frontier** for migrated projects, running the same dynarec-first runtime in
-  the browser, or recorded `blocked` with a migration action and acceptance criteria.
-
-## Game ports: structure and titles
-
-- **No project is the global template.** Each port's `docs/codemap.md` is its structure authority;
-  the `game-port-structure` skill is the guide. Entry points compose; lifecycle, guest execution,
-  platform, rendering, audio, input, UI, configuration, persistence, provisioning, diagnostics, and
-  title behavior are separate owners. C++ owners are focused RAII classes composed explicitly; C
-  uses opaque contexts, never global state.
-- **Engine migrations preserve the game source.** Adapt only engine-coupled APIs. Prefer direct
-  compilation, then a deterministic transpiler; a manual gameplay rewrite needs proof that neither
-  works and explicit user authorization.
-- **Multi-title repos follow the user's title priority**; a change for one title must not break
-  another title's gameplay.
-
-## Shared repositories
-
-`shared/` repos are consumed, never vendored: the resolver refuses by naming every path it tried.
-Put something a second project will want in `shared/` the first time. Land and push the shared
-change first, bump the consumer's pin, and build the consumer against that clean pinned revision.
-`shared/android-port` alone may vendor Lucent at a pinned, identifiable revision.
-
-| Repo | Holds |
-|---|---|
-| `shared/re-harness` | global instructions, categorized skills, shared tools |
-| `shared/port-assets` | scalable SVG controller glyphs and key caps, legibility-checked at size |
-| `shared/alchemy` | one Alchemy engine repo (X-Men 2, MUA): neutral core without CPU-framework dependency, plus separate `x86`/`x360` adapters over `x86port`/`x360port` pinned by each title. X-Men 2 first; MUA after X-Men 2's goals pass |
-| `shared/jit-common` | ISA-neutral executable memory and block cache, once two frameworks need it |
-| `shared/x86port` | x86-32 runtime JIT plus a separately built test-oracle interpreter |
-| `shared/x360port` | title-neutral Xbox 360 runtime over Xenia's dynarecs: XEX mapping, contexts, services, Xenos/XMA boundaries, typed imports, overrides, original calls, invalidation |
-| `shared/x360ue3` | UE3-on-360 contracts over `x360port`: engine ABI descriptions, RHI semantics, binding schemas, lifetimes; never title addresses, hashes, gameplay, or composition |
-| `shared/ue3` | developer reference only; never a source, build, runtime, or distribution dependency |
-| `shared/android-port` | Android Activity/SAF, build/package/signing plumbing, dependency prefix, emulator contract |
-| `shared/setup-ui` | in-window RmlUi first-run setup, picker hand-off, staged-set validator |
-| `shared/touch-ui` | touch overlay: safe-area/DPI layout, pointer ownership, glyph rasterization |
-| `shared/bug-report` | in-app bug reports for RmlUi C++ apps: report folder lifecycle, `report.json`/`README.md`, the modal form; the app supplies captures and reproduction |
-
-Dependency direction: UE3 360 titles `title -> x360ue3 -> x360port -> Xenia`; MUA uses `x360port`
-and `shared/alchemy` directly. Lucent is a helper library (logging, config, HTTP, paths, identity,
-ZIP, touch routing), not a port framework; the common host framework (lifecycle, input, audio,
-presentation, storage, packaging) is separate, with SDL3 as one adapter. Qualify each shipped host
-separately.
-
-## CI, releases, and platforms
-
-- **Hosted CI covers every applicable shipping platform** (Linux, Windows, macOS; Android for
-  Android-capable products and shared runtime components), or `project-state.md` records why one is
-  inapplicable. Jobs configure, build, lint, test, and package through the project's Python owners
-  and run runtime checks (JIT, executable memory, icache, ABI, invalidation, install) on the matching
-  host. Linux uses Clang, macOS AppleClang, Windows a documented MSVC/clang-cl setup.
-- **Workflows are deterministic and least-privileged:** actions pinned by SHA, downloads checksummed,
-  timeouts and permissions explicit, caches optional and free of game data. No green placeholder
-  jobs.
-- **Real-title conformance stays local.** Game files and derived caches never enter CI, secrets,
-  commits, or packages.
-- **Major updates publish a GitHub Release** with verified asset-free packages per platform (Windows
-  installer/app, macOS `.app` archive, Linux AppImage, signed APK). WASM deploys only through
-  `~/repo/pages/public/<slug>/`: import, run the Pages verifier, push, check the live URL. Every
-  release refreshes its Pages entry (links, media, state snapshot) and verifies the deployed page.
-- **Packaged builds have a no-terminal first-run setup** with a native Browse picker, validation,
-  and persistence in the platform's user-config store (env vars and CLI paths stay developer
-  overrides). Accept the primary ROM/EXE directly or from one bounded ZIP searched by content:
-  exactly one identity match; reject unsafe paths, duplicates, corrupt entries, and oversize
-  archives; keep the previous valid selection on failure. Lucent owns ZIP mechanics; the port owns
-  identity and install policy. AppImages use the desktop launcher; Android uses SAF with persisted
-  grants.
-- **Saves and settings live in the OS user-data location** (XDG, Application Support, app-data),
-  never the checkout, AppImage mount, cwd, or scratch; one shared resolver.
-- **Signing is agent-owned.** Discover secrets with `gh secret list`, use them through CI, and
-  generate and upload missing keys yourself (a test key for local builds; a stable shared key for
-  published artifacts, uploaded to every intended scope). Never print or commit key material, never
-  rotate a published identity to pass a build.
-
-## Android
-
-- **Platform mechanics belong in `shared/android-port`:** Activity/SAF adapters, persisted grants,
-  private staging, contact/inset handoff, pinned Gradle/AGP/NDK/JDK, the native dependency prefix,
-  SDL runtime staging, APK signing/inspection, and emulator policy. Titles own package identity,
-  install validation, native entry, JNI bridge, touch layout and art, orientation, and performance
-  evidence. PSX, X-Men 2, and LF2 consume it; never copy its mechanics.
-- **Toolchain:** pinned wrapper URL and checksum, a compatible AGP, one JDK for `java`/`javac`.
-  On JDK 26 the baseline is AGP 9.2 with Gradle 9.4.1; verify a real assembly.
-- **Minimum API 21** unless a concrete runtime dependency requires more; guard newer calls; build
-  prefixes per API and ABI.
-- **Release needs an authored touch layer** through the same action policy as controllers, with
-  multi-touch, pause, safe areas, scale-aware hit regions, and hiding when a controller is present.
-- **Release performance is measured on named Android devices** (frame-time percentiles, thermals,
-  memory, loading, correctness); desktop results are not evidence.
+- One branch, `main`; commit directly. A verified fix is standing authorization to commit and push.
+  Commit messages are one line, `type(scope): subject`, plus attribution trailers.
+- Every maintained repo has a GitHub `origin`; run the `go-public` audit before making one public.
+- Nothing machine-specific in tracked files (no home paths); game assets never enter git.
+- Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
+- Builds go under gitignored `build/`, run artifacts under gitignored `scratch/<activity>/`, never
+  `/tmp`. Clean with `tools/scratch_gc.py` or `tools/cleanup-files`, never raw `rm` of broad paths.
+  Large CMake builds use Ninja; an unchanged rebuild compiles nothing.
+- Account for every change in the tree before ending: land it, continue it, or remove it. Do not
+  revert another agent's work. Subagents never stage, commit or push; the operator reviews and lands.
+- Kill by PID, never `pkill` a shared name; put this in every brief that launches an app.

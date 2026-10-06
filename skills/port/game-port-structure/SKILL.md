@@ -32,6 +32,38 @@ module API. Avoid service locators and unrelated subsystems gathered into one cl
 8. Extend the project's structure gate for any new boundary and update its codemap in the same
    change. Record the concrete owner and dependency direction, not a generic template.
 
+## Title deltas
+
+Every title gets widescreen and loading removal; titles below 60 fps get interpolation. Each delta
+is its own item in `project-state.md`'s comparison baseline.
+
+- **Widescreen is a deterministic projection change.** Same vertex stream with topology, UVs, depth
+  and colours preserved; widen the horizontal projection/viewport and override the title's draw
+  area/scissor and every horizontal cull it owns (world, actors, particles, shadows), so the margins
+  show what the view would. The native renderer ignores the title's culls and draws from object
+  memory, animating margin-only objects itself, with guest memory untouched. Only where the camera
+  window decides whether objects exist (spawn/unload, side-scrollers) widen that guest window,
+  recorded as a gameplay delta. Edge HUD moves to the widened edges, centred UI stays centred,
+  nothing stretches. Never sample adjacent frames, infer geometry from pixels, or stretch the image.
+- **Interpolation** is a separate opt-in feature over matching source geometry only.
+- **Loading-only screens do not ship.** Keep loading asynchronous and go straight to the next real
+  presentation. Logo screens accept Start/confirm through a complete cancellation route. Authored
+  transition cutscenes stay; a title may give one a minimum duration (Tomba! 2's area transition:
+  five seconds).
+- **Skips are complete, owned transitions** through the title's recovered cancellation route or a
+  purpose-built skip with the same lifecycle, resource and state invariants. Never fast-forward
+  simulation, bypass lifecycle callbacks, or write a phase, timer or scene pointer.
+
+## Product shape
+
+- A control channel is built in and always open on loopback (an env var may move the port, never
+  close it) so agents can drive input, read state and capture frames. Automated runs are headless,
+  silent and never steal focus.
+- Engine migrations preserve the game source: adapt only engine-coupled APIs; prefer direct
+  compilation, then a deterministic transpiler; a manual gameplay rewrite needs proof neither works
+  and the user's authorization.
+- Multi-title repos follow the user's title priority; a change for one title must not break another.
+
 ## Asking the player for game files
 
 A port that needs the player's own ROM, disc image, or install owns the picker and the title's
@@ -104,5 +136,29 @@ numbered fragments, forwarding-only files, or a new container class that merely 
 Check that each new owner has a narrow interface, its dependencies point in the documented direction,
 and the host entry point only composes owners. Exercise the production interface with focused tests;
 prove the structure gate rejects a representative forbidden edge. The codemap must name the actual
-owners and locations. Use the canonical global instructions for launcher, release, Android, and
-platform-specific gates.
+owners and locations. Release, CI and Android rules are in the `port-release` skill.
+
+## Shared repositories
+
+`shared/` repos are consumed, never vendored; the resolver refuses by naming every path it tried.
+Put what a second project will want in `shared/` the first time; land it there first, then build the
+consumer against it. `shared/android-port` alone may vendor Lucent at a pinned revision.
+
+| Repo | Holds |
+|---|---|
+| `re-harness` | global instructions, skills, shared tools |
+| `port-assets` | SVG controller glyphs and key caps |
+| `alchemy` | Alchemy engine (X-Men 2, MUA): neutral core plus `x86`/`x360` adapters |
+| `jit-common` | ISA-neutral executable memory and block cache |
+| `x86port` | x86-32 runtime JIT plus a test-oracle interpreter |
+| `x360port` | Xbox 360 runtime over Xenia's dynarecs |
+| `x360ue3` | UE3-on-360 engine contracts over `x360port`; no title data |
+| `ue3` | developer reference only, never a dependency |
+| `android-port` | Android Activity/SAF, packaging, signing, emulator |
+| `setup-ui` | RmlUi first-run setup and picker |
+| `touch-ui` | touch overlay and glyph rasterization |
+| `bug-report` | in-app bug reports for RmlUi C++ apps |
+
+UE3 360 titles depend `title -> x360ue3 -> x360port -> Xenia`; MUA uses `x360port` and `alchemy`.
+Lucent is a helper library (logging, config, HTTP, paths, identity, ZIP, touch routing), not a port
+framework.
