@@ -10,12 +10,6 @@
   and the `~/repo/weblua` checkout (private `SomeoneIsWorking/weblua`, via `gh`) before calling a
   browser unavailable. Run headless on a dedicated loopback port with a project `scratch/weblua/`
   as `WEBLUA_DIR`; never attach a personal profile. DOM success does not prove WebGPU or WASM.
-- **Godot is agent-provisioned, never a blocker.** Read the version the project pins
-  (`Godot.NET.Sdk/<v>` in the `.csproj`, else `config/features` in `project.godot`) and use
-  `GODOT_BIN` or a `~/dev/Godot_v<v>-stable[_mono]_*/` that matches it (mono for C#). If none
-  matches, download that exact official build from `godotengine/godot` releases with `gh`, verify
-  it against the release's `SHA512-SUMS.txt`, unpack it into `~/dev/`, and continue. This is not a
-  substituted toolchain; a mismatched installed version is never a reason to stop.
 - **Provision missing tools yourself, without root.** The user often works remotely and cannot
   run `sudo`. In order: the project's own provisioning; an official release binary or archive
   verified by its published checksum, unpacked under `~/dev/` or `~/.local/`; a user-level package
@@ -52,19 +46,6 @@
   centred ones stay centred, nothing stretches. Never sample adjacent frames, infer geometry from
   pixels, or stretch the final image. Interpolation is a separate opt-in feature over matching
   source geometry only.
-
-## Work over process
-
-- **Product work dominates.** After two consecutive process-only actions, advance the product.
-  Collapse bookkeeping that costs more than the change.
-- **Build and run continuously.** Iterate with the smallest build and a short game run; look at
-  the result. No full or expensive gates: test only what you changed (build the touched targets,
-  run the unit tests and format/lint of the touched files, run the game for the touched behavior).
-- **No verification tooling, no write-ups.** Do not add verifiers, probes, instruments, claims,
-  censuses or selftests of tools, and do not write findings essays. Record a result as one line in
-  `docs/project-state.md`; open an issue only for a real bug you are not fixing now.
-- **A broad project `/goal` covers every success condition in `docs/project-goals.md`.** Keep it
-  active until each is verified against `docs/project-state.md`. A scoped goal stays scoped.
 
 ## Communication
 
@@ -106,19 +87,15 @@
   scoped targets. No tombstones, no broad deletion.
 - **The operator lands.** Subagents do not stage, commit, stash, or push. Review, gate, and land
   each finished batch promptly. Tell an active agent when a shared contract it depends on changes.
-- **Space Bunny does the heavy work; Claude usage is budgeted.** A Claude session writes short
-  product briefs, reviews, and lands. Implementation and RE go to Space Bunny (`pinest-agent` /
-  `opencode/space-bunny-free`). Spawn a Claude subagent only for work Space Bunny has demonstrably
-  failed at, and say so.
-- **No worktrees: one agent per repo**, working on `main` in the main checkout with its warm build.
-  Parallelize across repos. An agent blocked by a framework bug fixes it in the framework itself
-  (rebase, stage only its own files, its own build dir, commit locally; the operator pushes).
-- **Never run two game instances without explicit isolation.**
 - **Kill by PID, never `pkill` a shared binary name.** Capture `$!` at launch or find it with
   `ps -eo pid,etimes,args`; the `safekill` tool helps. Put this in every brief that launches an app.
 
 ## Code quality and architecture
 
+- **Write comments and docs like a developer.** A comment is one short line where the code cannot
+  speak: a reason, a hardware fact, a guest address. No paragraphs, no history or measurement
+  narration ("measured", "not guessed", dates, incident stories), no restating the code, no shouting
+  caps. Reading that prose makes agents worse, so delete it on sight.
 - **Quality is part of correctness.** Root-cause fixes; cohesive modules; one source of truth;
   precise names and explicit contracts; bounded lifetimes; no dead code, stale vocabulary, or
   warnings; formatter, linter, typechecker, and unit tests. Reduce scope rather than lower the bar. Review the combined diff as a product before landing.
@@ -228,9 +205,6 @@
 - **Build a control channel into the product**, always open on loopback (also under `./run.sh`
   and the bare executable; an env var may move the port, never close it), so agents can drive input,
   read state, and capture frames. Automated runs are headless and silent and never steal focus.
-- **Check work by running the game and looking at it.** Do not build verification tooling, probes,
-  instruments, censuses, ledgers or selftests of tools; spend the time changing the product. Unit
-  tests of function outputs are fine. Never re-test what you did not change.
 
 ## Game ports: guest execution
 
