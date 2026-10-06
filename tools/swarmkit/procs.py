@@ -13,8 +13,6 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-MIB = 1024 * 1024
-PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
 PROC = Path("/proc")
 # Fields of /proc/<pid>/stat after the comm field: state, ppid, pgrp, ...
 STATE_INDEX = 0

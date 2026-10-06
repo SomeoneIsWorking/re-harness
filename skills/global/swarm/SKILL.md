@@ -129,18 +129,3 @@ One JSON object per line:
 Read `report`, inspect each accepted `patch.diff` like any contributor's patch, `apply` the ones
 you keep, gate the combined tree with the project's normal verifier, and commit as the operator.
 Then `gc` the run and delete its directory with `tools/scratch_gc.py`.
-
-## Watchdog
-
-`watchdog.py [--kill] [--repo PATH ...] [--shared PATH ...]` checks the machine for the failure
-modes that stalled agent work, prints one line per alert, and appends them to
-`<lock-dir>/watchdog/alerts.log`. Run it from a systemd user timer every few minutes, and have the
-operator session act on the log. It alerts on:
-- a runaway process: 4 GiB or more, grown 256 MiB since the last check, and not a Claude or
-  desktop process. With `--kill` it is stopped by PID.
-- a swarm with no new verdict for 90 min;
-- a pinest agent idle for 15 min, meaning finished and unreviewed;
-- a `--repo` whose origin/main landed nothing for 90 min;
-- a `--shared` checkout with modified tracked files or a submodule uninitialised or off its commit;
-- a process in an agent worktree whose parent is init, meaning an agent detached it.
-
