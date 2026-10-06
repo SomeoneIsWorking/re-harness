@@ -28,6 +28,10 @@ class Backend(Protocol):
         self, task_file: Path, files: Sequence[str], model: str
     ) -> list[str]: ...
 
-    def environment(self, read_only: Sequence[Path]) -> Mapping[str, str]:
-        """Extra environment confining the worker: ``read_only`` readable, nothing else outside."""
+    def environment(
+        self, read_only: Sequence[Path], state_dir: Path
+    ) -> Mapping[str, str]:
+        """Extra environment confining the worker: ``read_only`` readable, nothing else outside.
+
+        ``state_dir`` is the job's own directory, for CLI state that must not be shared."""
         ...

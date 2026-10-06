@@ -116,9 +116,13 @@ One JSON object per line:
   where the command lives (under `swarm.py` that group is the worker's or the gate's). A worker's detached helper
   (opencode runs retry scripts from /tmp under `setsid`/`nohup`) is therefore reaped with the
   worker; one such script once kept re-running a gate for an hour after its swarm was killed.
-- Timeouts kill the worker's whole process group by its captured id. The opencode backend uses
-  `--standalone` so its model server is inside that group; through the shared `opencode serve`
-  service a timed-out session would keep editing the worktree.
+- Timeouts kill the worker's whole process group by its captured id. `opencode run` serves the
+  model in-process, so that kill stops the session. Each opencode job gets its own `OPENCODE_DB`
+  in its job directory; parallel workers on the default database fail with "database is locked".
+- `--backend pi` reaches only `opencode/space-bunny-free`; OpenCode's other free models
+  (mimo, nemotron, longcat, ling, fledge) refuse any client but the opencode CLI, so use
+  `--backend opencode` for them. One model per run: split a batch into runs to spread it
+  across models' rate limits.
 
 ## After the run
 

@@ -161,7 +161,7 @@ class JobRunner:
             lifetime,
             {
                 **tree.cache_environment(),
-                **self.settings.backend.environment([*job.read_only, job_dir]),
+                **self.settings.backend.environment([*job.read_only, job_dir], job_dir),
             },
         )
         if worker.timed_out:
