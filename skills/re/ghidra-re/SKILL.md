@@ -29,6 +29,10 @@ analyzeHeadless build/ghidra <project> -process <program> -noanalysis \
   -scriptPath <script-directory> -postScript <script-name.py> <script-args>
 ```
 
+`scripts/DecompileMatching.java` is a Java script, so it needs no extra runtime: `-postScript
+DecompileMatching.java <methods|callers> <regex> <out>` decompiles every function whose full name
+matches, or every caller of them. It also reads Dalvik (DEX) programs, where jadx fails on a method.
+
 Use the Jython extension for the bundled `decomp-port/DecompDump.py`; it is explicitly marked
 `#@runtime Jython` and uses Jython 2 syntax. Porting it to PyGhidra requires a separate code change
 and verification, not a launcher substitution.
