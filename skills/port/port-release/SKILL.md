@@ -44,6 +44,11 @@ description: Ship a game port — hosted CI, release packages, first-run setup, 
 - Toolchain: pinned wrapper URL and checksum, a compatible AGP, one JDK for `java`/`javac`. On JDK
   26 the baseline is AGP 9.2 with Gradle 9.4.1; verify a real assembly.
 - Minimum API 21 unless a runtime dependency needs more; guard newer calls; prefixes per API and ABI.
+- Launcher icons: Honor's MagicOS launcher draws some adaptive icons unmasked (seen with Godot's
+  adaptive icon, which always carries a monochrome layer), so the full 108dp canvas shows as a
+  square. Make the foreground the art alone with transparent corners, and bake the shape into the
+  background layer: a rounded plate inset 1/16 of the canvas, corner radius about 22% of the plate.
+  Masking launchers crop that margin away. Check it on a device beside other apps.
 - A release needs an authored touch layer through the same action policy as controllers:
   multi-touch, pause, safe areas, scale-aware hit regions, hidden when a controller is present.
 - Release performance is measured on named Android devices (frame-time percentiles, thermals,
