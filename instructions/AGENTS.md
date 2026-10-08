@@ -101,6 +101,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   release under `~/dev/` or `~/.local/`, then `uv`/`cargo`/`npm`/Homebrew, then `podman`. Only if
   none works, give the user the exact `sudo` command. Never substitute a different toolchain.
 - Browser automation uses WebLua (`weblua` skill), headless, never a personal profile.
+- Every windowed product has a hidden-window run mode for tests and maintainer runs: the window is
+  created unmapped on the user's own session, presents without vsync, and errors are logged, never
+  shown as dialogs. Tools use that mode; no Xvfb, offscreen video drivers or stripped
+  `DISPLAY`/`WAYLAND_DISPLAY` inside a tool. A headless CI job wraps the whole job, not the tool.
 
 ## Repository and worktree
 
