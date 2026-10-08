@@ -5,7 +5,8 @@ The first directory is an applicability boundary, not a project name:
 | Scope | Applies when | Skills |
 |---|---|---|
 | `global` | Any long-lived project or repository | codemap, go-public, issue-catalog, project-goals, project-info, project-state, safe-kill, swarm, weblua |
-| `port` | A game port needs host-side ownership and composition, regardless of guest execution strategy | game-port-structure, first-run-setup |
+| `ship` | Any product is built, packaged, released or put on Android, port or original game | release, android |
+| `port` | A game port needs host-side ownership and composition, regardless of guest execution strategy | game-port-structure, first-run-setup, port-release |
 | `re` | Work recovers ground truth from a binary, asset, emulator, or engine | decomp-port, ghidra-re, re-frontier, ue3-native-pass |
 | `dynarec` | A port interprets or dynamically translates guest code at runtime | dynarec-harness, dynarec-init, dynarec-overrides, dynarec-port, dynarec-runtime |
 

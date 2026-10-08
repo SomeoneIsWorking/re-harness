@@ -136,7 +136,7 @@ numbered fragments, forwarding-only files, or a new container class that merely 
 Check that each new owner has a narrow interface, its dependencies point in the documented direction,
 and the host entry point only composes owners. Exercise the production interface with focused tests;
 prove the structure gate rejects a representative forbidden edge. The codemap must name the actual
-owners and locations. Release, CI and Android rules are in the `port-release` skill.
+owners and locations. Release, CI and Android rules are in the `release` and `android` skills, plus `port-release`.
 
 ## Shared repositories
 
