@@ -31,8 +31,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 ## Docs
 
-- Each subsystem has one doc a new developer can work from: what it owns, inputs and outputs,
-  invariants, data flow, how to test it. Keep it accurate; it is what makes step 2 possible.
+- Each subsystem has one accurate doc: what it owns, inputs and outputs, invariants, data flow, how
+  to test it.
 - `docs/codemap.md` says where code lives. Read it before placing code; update it in the change that
   adds or moves an owner.
 - `docs/project-goals.md`: stable goal IDs, outcomes, success conditions, non-goals.
@@ -42,7 +42,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - `docs/issues/`: one bug, task or dead end per file. `docs/re-frontier.md`: what has and has not
   been reverse-engineered; update it in the same commit as the RE work.
 - Write what you learn into the owning doc in the same session; fix a wrong note rather than adding
-  another. Agent memory holds only cross-project preferences.
+  another.
 - Comments and docs read like a developer wrote them. A comment is one short line where the code
   cannot speak: a reason, a hardware fact, a guest address. No paragraphs, no history or measurement
   narration, no restating the code, no shouting caps. Delete such prose on sight.
@@ -53,8 +53,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   so plainly and proceed correctly.
 - The user's observation of the running product outranks your evidence. Treat a reported regression
   as a falsifier and reproduce from the last known-good state.
-- Report delivery state literally: subagent report, dirty tree, local commit and pushed commit are
-  different states. "Done" means integrated, gated, committed and pushed.
+- Report delivery state literally: dirty tree, local commit and pushed commit differ. "Done" means
+  integrated, gated, committed and pushed.
 - Do what was asked. Suggest a better idea; do not substitute it.
 - For an irreversible step, name the exact consequence. Do it if authorized; otherwise ask once.
 
@@ -79,8 +79,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Agents build with Clang and confirm `CMAKE_CXX_COMPILER_ID=Clang`; projects keep building with
   GCC, AppleClang and other supported compilers. If Clang cannot build a project, report it.
 - Tracked `.clang-format` (every body braced, one statement per line) and `.clang-tidy` (defaults plus
-  `clang-analyzer-*`, `bugprone-*`, `performance-*`, braces; warnings are errors), both checked by
-  the verifier; copy them from a maintained repo. Fix findings; never blanket-suppress.
+  `clang-analyzer-*`, `bugprone-*`, `performance-*`; warnings are errors), copied from a maintained
+  repo and checked by the verifier. Fix findings; never blanket-suppress.
 - State lives in classes in project namespaces with RAII; no project functions in the global
   namespace, no C facade over a class, no `extern` globals, no function-local `static`. Declarations
   live in the owning header; constants are `inline constexpr` there. `tools/cpp_policy.py` enforces
@@ -101,10 +101,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   release under `~/dev/` or `~/.local/`, then `uv`/`cargo`/`npm`/Homebrew, then `podman`. Only if
   none works, give the user the exact `sudo` command. Never substitute a different toolchain.
 - Browser automation uses WebLua (`weblua` skill), headless, never a personal profile.
-- Every windowed product has a hidden-window run mode for tests and maintainer runs: the window is
-  created unmapped on the user's own session, presents without vsync, and errors are logged, never
-  shown as dialogs. Tools use that mode; no Xvfb, offscreen video drivers or stripped
-  `DISPLAY`/`WAYLAND_DISPLAY` inside a tool. A headless CI job wraps the whole job, not the tool.
+- Every windowed product has a hidden-window mode for tests and tools: an unmapped window on the
+  user's session, no vsync, errors logged instead of shown as dialogs. No Xvfb, offscreen drivers or
+  stripped `DISPLAY` inside a tool; headless CI wraps the whole job.
 
 ## Repository and worktree
 
@@ -117,5 +116,5 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   `/tmp`. Clean with `tools/scratch_gc.py` or `tools/cleanup-files`, never raw `rm` of broad paths.
   Large CMake builds use Ninja; an unchanged rebuild compiles nothing.
 - Account for every change in the tree before ending: land it, continue it, or remove it. Do not
-  revert another agent's work. Subagents never stage, commit or push; the operator reviews and lands.
-- Kill by PID, never `pkill` a shared name; put this in every brief that launches an app.
+  revert another agent's work.
+- Kill by PID, never `pkill` a shared name.

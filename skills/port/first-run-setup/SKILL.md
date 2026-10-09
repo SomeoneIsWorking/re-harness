@@ -1,6 +1,6 @@
 ---
 name: first-run-setup
-description: Give a port a no-terminal first-run screen for the player's own game files — a ROM picker, disc-image picker, or install picker — using the shared setup-ui module instead of a system message box, terminal argument, or environment variable. Use when a port needs a ROM/BIOS/disc/install from the player, when an AppImage or APK must ask for game files without a terminal, or when replacing an existing SDL_ShowMessageBox, zenity, or argv-only selection path.
+description: Add a no-terminal first-run picker for the player's own ROM, disc image or install using the shared setup-ui module. Use when a port, AppImage or APK needs game files, or to replace a message-box, zenity or argv-only path.
 ---
 
 # First-run setup: asking a player for their game files

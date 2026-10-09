@@ -1,11 +1,6 @@
 ---
 name: safe-kill
-description: >-
-  Safely kill or clean up OS processes from a Bash command without the `pkill -f` / `pgrep -f`
-  self-match trap that SIGKILLs the shell running the command (truncating output, wasting context).
-  Use whenever you need to terminate a process you launched — a backgrounded test/server/game
-  instance, a stuck binary, leftover processes — or are tempted to reach for pkill/pgrep. Bundles a
-  `safekill` helper script. Global / project-agnostic.
+description: "Kill a process you launched by captured PID with the bundled `safekill` helper, avoiding the `pkill -f`/`pgrep -f` self-match that kills your own shell. Use for leftover test, server or game processes."
 ---
 
 # Safely killing processes by PID
