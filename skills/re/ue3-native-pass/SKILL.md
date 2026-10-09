@@ -1,13 +1,6 @@
 ---
 name: ue3-native-pass
-description: >-
-  Reimplementing an Unreal Engine 3 rendering pass natively in a console→PC port — identifying
-  which UE3 pass a draw belongs to, reading the title's Xenos/D3D9 microcode against UE3's own
-  sources, and writing a replacement shader that is verified rather than declared. Covers the
-  UE3 source layout, the pass taxonomy a frame decomposes into, the microcode reading traps
-  (rotating swizzles, dropped constant terms), and the evidence gates. Use when porting or
-  debugging UE3 rendering (base pass, post chain, bloom, motion blur, skinned materials), or
-  when a draw renders black/wrong and you need to know what it was SUPPOSED to do.
+description: "Reimplement an Unreal Engine 3 rendering pass natively in a port: identify the pass a draw belongs to, read the title's shader microcode against UE3 sources, and verify the replacement shader. Use when UE3 rendering is wrong or black."
 ---
 
 # Native UE3 passes

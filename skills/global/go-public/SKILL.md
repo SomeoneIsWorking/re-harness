@@ -1,6 +1,6 @@
 ---
 name: go-public
-description: Audit a git repo's FULL HISTORY for anything that must not ship publicly before flipping it to public — copyrighted assets (ROMs/disc images), machine-specific home paths and usernames, and committed docs that reference PRIVATE gitignored content. Ships a zero-dependency CLI (go_public.py) that scans, reports with commit provenance, and generates a git-filter-repo replace-text rules file (never rewrites on its own). Use when asked to "make this repo public", "go public", "publish this repo", "check the history is clean", "scrub personal paths from history", or before pushing a private repo to a public remote.
+description: "Audit a repo's full history before making it public: copyrighted assets, home paths and usernames, and docs pointing at private content. Bundles go_public.py, which reports with commit provenance and writes git-filter-repo rules without rewriting anything."
 ---
 
 # go-public — pre-publication history cleanliness gate

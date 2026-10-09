@@ -1,14 +1,6 @@
 ---
 name: decomp-port
-description: >-
-  Ghidra-headless decompilation pipeline for porting specific functions/behaviors out of a
-  console/game binary into your own C — turn a stripped ROM/executable into readable C, find
-  anchor functions, and (when the target is a remake/re-port of a game you already have
-  decompiled) use that source as a Rosetta stone to align + diff + port the divergences. Use
-  when reverse-engineering or porting a game's logic from its binary (any arch: ARM/MIPS/PPC/
-  x86), especially a remake whose original has a community decomp. Complements runtime guest
-  execution by selectively decompiling and re-implementing owned behavior. Bundles a reusable
-  headless decompile script (DecompDump.py).
+description: "Ghidra-headless decompilation for porting specific functions out of a game binary into your own C: find anchor functions, and for a remake with a community decomp, align and diff against it. Bundles DecompDump.py."
 ---
 
 # Ghidra decompilation & behavior-porting pipeline
