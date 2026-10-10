@@ -25,7 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -265,6 +265,28 @@ def main():
         clang_cl_args == ["clang-cl", "/TP", "unit.cpp", "-fsyntax-only", "-Xclang", "-ast-dump=json"],
         repr(clang_cl_args),
     )
+    fails += check(
+        "cpp_policy: an explicit ccache launcher is dropped",
+        cpp_policy.without_launcher(["ccache", "clang++", "-c", "unit.cpp"])
+        == ["clang++", "-c", "unit.cpp"],
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        masquerade = Path(tmp) / "ccache"
+        real = Path(tmp) / "bin"
+        masquerade.mkdir()
+        real.mkdir()
+        for directory in (masquerade, real):
+            (directory / "clang++").write_text("#!/bin/sh\n")
+            (directory / "clang++").chmod(0o755)
+        resolved = cpp_policy.without_launcher(
+            [str(masquerade / "clang++"), "-c", "unit.cpp"],
+            search_path=os.pathsep.join([str(masquerade), str(real)]),
+        )
+        fails += check(
+            "cpp_policy: a ccache masquerade link resolves to the compiler behind it",
+            resolved == [str(real / "clang++"), "-c", "unit.cpp"],
+            repr(resolved),
+        )
     if os.name == "nt":
         windows_command = (
             r'"C:\Program Files\LLVM\bin\clang-cl.exe" /TP /c -- '

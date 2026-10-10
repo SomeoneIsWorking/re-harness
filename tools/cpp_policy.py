@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -523,6 +524,29 @@ def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowe
     return recorder.findings, recorder.visited
 
 
+COMPILER_LAUNCHERS = frozenset({"ccache", "sccache"})
+
+
+def without_launcher(arguments, search_path=None):
+    """The compile arguments with a caching launcher replaced by the compiler it wraps.
+
+    A launcher buffers the compiler's whole stdout in its temp dir, which for an AST dump is
+    hundreds of megabytes per unit.
+    """
+    program = Path(arguments[0])
+    if program.stem in COMPILER_LAUNCHERS:
+        return arguments[1:]
+    if program.parent.name not in COMPILER_LAUNCHERS:
+        return arguments
+    # A masquerade link such as /usr/lib64/ccache/clang++: the same name on PATH, past the link.
+    directories = (search_path if search_path is not None else os.environ.get("PATH", "")).split(os.pathsep)
+    rest = os.pathsep.join(d for d in directories if d and Path(d).name not in COMPILER_LAUNCHERS)
+    compiler = shutil.which(program.name, path=rest)
+    if compiler is None:
+        raise ValueError(f"no {program.name} on PATH behind the launcher {program}")
+    return [compiler, *arguments[1:]]
+
+
 def compile_arguments(entry):
     if "arguments" in entry:
         arguments = list(entry["arguments"])
@@ -532,6 +556,9 @@ def compile_arguments(entry):
         raise ValueError("compile command has neither arguments nor command")
     if not arguments:
         raise ValueError("compile command is empty")
+    arguments = without_launcher(arguments)
+    if not arguments:
+        raise ValueError("compile command is only a launcher")
     filtered = [arguments[0]]
     skip_next = False
     for argument in arguments[1:]:
