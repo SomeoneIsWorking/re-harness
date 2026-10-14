@@ -68,6 +68,20 @@ def run_checks(check, scratch):
         json.dumps(body),
     )
 
+    fails += check("play_api: a price splits into whole units and nanos", play_api.money("2.49") == {"currencyCode": "USD", "units": "2", "nanos": 490000000}, json.dumps(play_api.money("2.49")))
+    converted = {
+        "convertedRegionPrices": {"TR": {"regionCode": "TR", "price": {"currencyCode": "TRY", "units": "149", "nanos": 990000000}}, "DE": {"regionCode": "DE", "price": {"currencyCode": "EUR", "units": "2", "nanos": 690000000}}},
+        "convertedOtherRegionsPrice": {"usdPrice": {"currencyCode": "USD", "units": "2"}, "eurPrice": {"currencyCode": "EUR", "units": "2"}},
+    }
+    option = play_api.product_body("com.example", "remove_ads", "Remove ads", "No ads.", converted)["purchaseOptions"][0]
+    fails += check(
+        "play_api: a product is one single-quantity buy option, available at Play's price in every converted region",
+        option["buyOption"] == {"legacyCompatible": True, "multiQuantityEnabled": False}
+        and [(r["regionCode"], r["price"]["currencyCode"], r["availability"]) for r in option["regionalPricingAndAvailabilityConfigs"]] == [("DE", "EUR", "AVAILABLE"), ("TR", "TRY", "AVAILABLE")]
+        and option["newRegionsConfig"]["availability"] == "AVAILABLE",
+        json.dumps(option),
+    )
+
     with tempfile.TemporaryDirectory(dir=scratch) as profile:
         with sqlite3.connect(os.path.join(profile, "cookies.sqlite")) as db:
             db.execute("CREATE TABLE moz_cookies (name, value, host, path, expiry, isSecure, isHttpOnly, sameSite)")
