@@ -31,7 +31,9 @@ FUNCTION_DECL, VAR_DECL = 8, 9
 CXX_METHOD, NAMESPACE, LINKAGE_SPEC = 21, 22, 23
 CONSTRUCTOR, DESTRUCTOR, CONVERSION_FUNCTION = 24, 25, 26
 FUNCTION_TEMPLATE, CLASS_TEMPLATE, CLASS_TEMPLATE_PARTIAL = 30, 31, 32
+DECL_REF_EXPR = 101
 LAMBDA_EXPR = 144
+TRANSLATION_UNIT = 350
 STORAGE_CLASSES = {2: "extern", 3: "static"}
 
 #: Scope a cursor opens for everything beneath it.
@@ -62,6 +64,8 @@ CONTAINERS = {NAMESPACE, LINKAGE_SPEC}
 OWNERS = {kind for kind, opens in OPENS.items() if opens & IN_NAMESPACE_OR_RECORD}
 #: Declarations whose name and storage class the rules read.
 NAMED = {FUNCTION_DECL, VAR_DECL, FUNCTION_TEMPLATE}
+#: Where a global-namespace function is declared: file scope, or an `extern "C"` block at it.
+GLOBAL_PARENTS = {TRANSLATION_UNIT, LINKAGE_SPEC}
 
 CHILD_BREAK, CHILD_CONTINUE, CHILD_RECURSE = 0, 1, 2
 DECLARATION, CODE, OTHER = "declaration", "code", "other"
@@ -112,6 +116,7 @@ SIGNATURES = {
     "clang_Cursor_getStorageClass": ([Cursor], ctypes.c_int),
     "clang_getTemplateCursorKind": ([Cursor], ctypes.c_int),
     "clang_getCursorSemanticParent": ([Cursor], Cursor),
+    "clang_getCursorReferenced": ([Cursor], Cursor),
     "clang_getSpellingLocation": (
         [Location, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_uint),
          ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)],
@@ -145,11 +150,23 @@ class Declaration:
         self.scope = scope
 
 
-class ParsedUnit:
-    """What a walk found: first-party declarations, the first-party files and every file read."""
+class Reference:
+    """One first-party use of a global-namespace function the caller asked about."""
 
-    def __init__(self, declarations, visited, inclusions):
+    __slots__ = ("name", "source", "line")
+
+    def __init__(self, name, source, line):
+        self.name = name
+        self.source = source
+        self.line = line
+
+
+class ParsedUnit:
+    """What a walk found: first-party declarations and watched uses, the first-party files, every file read."""
+
+    def __init__(self, declarations, references, visited, inclusions):
         self.declarations = declarations
+        self.references = references
         self.visited = visited
         self.inclusions = inclusions
 
@@ -238,13 +255,15 @@ def library_for(driver):
 class Walk:
     """One depth-first pass over the unit, collecting first-party declarations."""
 
-    def __init__(self, library, directory, ours):
+    def __init__(self, library, directory, ours, watched=frozenset()):
         self.library = library
         self.api = library.handle
         self.directory = directory
         self.ours = ours
+        self.watched = watched
         self.files = {}
         self.declarations = []
+        self.references = []
         self.visited = set()
         self.stack = []
         self.error = None
@@ -306,6 +325,8 @@ class Walk:
                 self.visited.add(source)
                 if kind in NAMED:
                     self.record(cursor, kind, source, line, scope)
+        elif kind == DECL_REF_EXPR and self.watched:
+            self.reference(cursor)
         self.stack.append((self.identity(cursor), (scope & ~FILE_SCOPE) | OPENS.get(kind, 0)))
         return CHILD_RECURSE
 
@@ -322,6 +343,17 @@ class Walk:
             "function" if kind == FUNCTION_DECL else "variable", name, storage, source, line,
             scope & ~FILE_SCOPE,
         ))
+
+    def reference(self, cursor):
+        name = self.library.text(self.api.clang_getCursorSpelling(cursor))
+        if name not in self.watched:
+            return
+        target = self.api.clang_getCursorReferenced(cursor)
+        if target.kind != FUNCTION_DECL or self.api.clang_getCursorSemanticParent(target).kind not in GLOBAL_PARENTS:
+            return
+        source, ours, line = self.locate(self.api.clang_getSpellingLocation, cursor)
+        if ours:
+            self.references.append(Reference(name, source, line))
 
     def run(self, unit):
         root = self.api.clang_getTranslationUnitCursor(unit)
@@ -357,10 +389,11 @@ def errors(library, unit):
     return found
 
 
-def parse(arguments, directory, source, ours):
+def parse(arguments, directory, source, ours, watched=frozenset()):
     """Parse one unit with its compile arguments and walk its first-party declarations.
 
-    `arguments[0]` is the Clang driver; `ours(path)` says whether a file is first-party.
+    `arguments[0]` is the Clang driver; `ours(path)` says whether a file is first-party; uses of a
+    global-namespace function named in `watched` are collected as references.
     """
     if not source.is_file():
         raise RuntimeError(f"{source} is in the compile database but does not exist; reconfigure the build")
@@ -381,9 +414,9 @@ def parse(arguments, directory, source, ours):
             if failures:
                 shown = "\n".join(failures[:SHOWN_DIAGNOSTICS])
                 raise RuntimeError(f"AST compile failed for {source}:\n{shown}")
-            walk = Walk(library, directory, ours)
+            walk = Walk(library, directory, ours, frozenset(watched))
             walk.run(unit)
-            return ParsedUnit(walk.declarations, walk.visited, inclusions(library, unit, directory))
+            return ParsedUnit(walk.declarations, walk.references, walk.visited, inclusions(library, unit, directory))
         finally:
             api.clang_disposeTranslationUnit(unit)
     finally:

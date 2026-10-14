@@ -110,6 +110,12 @@ hand-written `main` in its `--accept` file until it is folded in. Without
 `--entry-root`, `main` is an entry point wherever it is. The tool reports the translation-unit
 and first-party file counts even when it finds no violations.
 
+`--retired-name NAME` (repeatable) reports every first-party reference to the named function outside
+the entry roots as `path:retired name:NAME`. References are resolved from the AST, so a comment, a
+string or a same-named member does not count, and a declaration in an excluded header still does. It is
+for a framework step a project now composes once, so a title that re-adds the call fails; harnesses
+under the entry roots may still drive it.
+
 Claim staleness needs complete Git history because its symbol evidence comes from `git log -L`.
 `tools/info.py claim check` refuses shallow repositories; CI checkouts must fetch full history (for
 `actions/checkout`, use `fetch-depth: 0`) rather than treating a shallow boundary as a code change.
