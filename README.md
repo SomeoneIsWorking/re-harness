@@ -50,6 +50,8 @@ no second mutable copy to drift.
 | `tools/go_public.py` | Which history entries contain material that must not ship publicly |
 | `tools/cleanup-files` | How to remove an explicit set of in-tree files without partial cleanup |
 | `tools/safekill` | How to terminate an exact process without matching the calling shell |
+| `tools/play_api.py` | What is on each Play track, and uploading a bundle to one, through a service account |
+| `tools/play_console.py` | What the Play Console web UI shows and does where the API cannot, through one shared headless WebLua session |
 | `tools/swarm.py` | Which bounded jobs a free LLM worker completed that a scripted gate accepted (`swarmkit/` owns worktrees, backends, slots, verdicts) |
 
 `tools/cpp_policy.py` checks first-party C++ global functions, `extern`
