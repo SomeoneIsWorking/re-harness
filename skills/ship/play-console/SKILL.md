@@ -12,6 +12,7 @@ one shared headless WebLua session for the rest.
 |---|---|
 | Upload a bundle to a track, with release notes | `play_api.py upload` |
 | Read tracks and releases, a store listing, one-time products | `play_api.py tracks`, `listing`, `products` |
+| Create a non-consumable one-time product and activate it | `play_api.py product`; console form on an unreviewed app |
 | Internal-test join link, testers list | `play_console.py join-link`, `open <pkg> tracks/internal-testing` |
 | Whether changes can be sent for review, and sending them | `play_console.py review`, then `click` |
 | App content declarations, store settings (category, contact), store listing assets | `play_console.py` |
@@ -42,6 +43,12 @@ play_api.py tracks <package>
   automatic send.
 - The version code comes from the bundle; it must be higher than every code already uploaded.
 - Verify with `tracks` afterwards; record the version in the project's state doc.
+- `product <package> <id> --price 2.49 --title ... --description ...` converts the USD price to every
+  region with Play's own rounding, creates the product with one backwards-compatible "buy" option and
+  activates it; rerunning updates it. On an app that has never passed review the API answers 403;
+  create it in the console instead (`open <pkg> one-time-products`, "Create one-time product",
+  option id `buy`, "Set prices" > "Bulk edit pricing", "Select all rows", USD, Apply, Activate) and
+  check it with `products`.
 
 ## Browser route: `play_console.py`
 

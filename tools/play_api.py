@@ -8,6 +8,7 @@ signature: openssl signs the token request through a pipe.
     play_api.py tracks com.example.app
     play_api.py listing com.example.app [--language en-US]
     play_api.py products com.example.app
+    play_api.py product com.example.app remove_ads --price 2.49 --title "Remove ads" --description "..."
     play_api.py upload com.example.app build/app.aab --track internal --notes "Fixes."
 """
 
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import decimal
 import json
 import os
 import subprocess
@@ -99,6 +101,34 @@ def release_body(track: str, version_code: int, notes: str, status: str, name: s
     return {"track": track, "releases": [release]}
 
 
+def money(amount: str, currency: str = "USD") -> dict:
+    """A decimal amount as Play's Money: whole units as a string, the fraction in nanos."""
+    value = decimal.Decimal(amount)
+    units = int(value)
+    return {"currencyCode": currency, "units": str(units), "nanos": int((value - units) * 10**9)}
+
+
+def product_body(package: str, product: str, title: str, description: str, converted: dict) -> dict:
+    """A non-consumable one-time product: one buy option at Play's converted price in every region."""
+    regions = [
+        {"regionCode": code, "price": region["price"], "availability": "AVAILABLE"}
+        for code, region in sorted(converted["convertedRegionPrices"].items())
+    ]
+    other = converted["convertedOtherRegionsPrice"]
+    option = {
+        "purchaseOptionId": "buy",
+        "buyOption": {"legacyCompatible": True, "multiQuantityEnabled": False},
+        "regionalPricingAndAvailabilityConfigs": regions,
+        "newRegionsConfig": {"usdPrice": other["usdPrice"], "eurPrice": other["eurPrice"], "availability": "AVAILABLE"},
+    }
+    return {
+        "packageName": package,
+        "productId": product,
+        "listings": [{"languageCode": "en-US", "title": title, "description": description}],
+        "purchaseOptions": [option],
+    }
+
+
 class Client:
     def __init__(self, account: dict):
         self._token = access_token(account)
@@ -151,6 +181,12 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("package")
         if name == "listing":
             command.add_argument("--language", default="en-US")
+    product = commands.add_parser("product", help="create or update a non-consumable one-time product and activate it")
+    product.add_argument("package")
+    product.add_argument("product")
+    product.add_argument("--price", required=True, help="in USD; Play converts it for every other region")
+    product.add_argument("--title", required=True)
+    product.add_argument("--description", required=True)
     upload = commands.add_parser("upload")
     upload.add_argument("package")
     upload.add_argument("bundle", type=Path)
@@ -175,6 +211,20 @@ def main(argv: list[str] | None = None) -> int:
                 show(client.request("GET", edit.url(f"listings/{args.language}")))
         elif args.command == "products":
             show(client.request("GET", f"{API}/{args.package}/oneTimeProducts"))
+        elif args.command == "product":
+            app = f"{API}/{args.package}"
+            converted = client.request("POST", f"{app}/pricing:convertRegionPrices", body={"price": money(args.price)})
+            body = product_body(args.package, args.product, args.title, args.description, converted)
+            query = urllib.parse.urlencode({
+                "allowMissing": "true",
+                "updateMask": "listings,purchaseOptions",
+                "regionsVersion.version": converted["regionVersion"]["version"],
+            })
+            # patch alone is routed at lowercase onetimeproducts (discovery document)
+            client.request("PATCH", f"{app}/onetimeproducts/{args.product}?{query}", body=body)
+            activate = {"activatePurchaseOptionRequest": {"packageName": args.package, "productId": args.product, "purchaseOptionId": "buy"}}
+            client.request("POST", f"{app}/oneTimeProducts/{args.product}/purchaseOptions:batchUpdateStates", body={"requests": [activate]})
+            print(f"{args.package}: {args.product} active at {args.price} USD in {len(body['purchaseOptions'][0]['regionalPricingAndAvailabilityConfigs'])} regions")
         else:
             with Edit(client, args.package, commit=True, not_for_review=args.not_for_review) as edit:
                 bundle = client.request("POST", edit.url("bundles?uploadType=media", upload=True), data=args.bundle.read_bytes(), timeout=900)
