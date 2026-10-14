@@ -47,6 +47,7 @@ play_api.py tracks <package>
 
 ```sh
 play_console.py start                       # headless; status / stop
+play_console.py import-cookies <firefox profile dir>   # when the console asks to sign in
 play_console.py open <package> app-content/overview
 play_console.py text                        # the page as one line, to find what to click
 play_console.py click "Save and publish"    # visible button, link, tab or menu item, exact text
@@ -66,8 +67,12 @@ play_console.py ctl type 'textarea' '...'   # any weblua-ctl command against the
 - Material checkboxes hide their input; `check` clicks the visible box and confirms it took. A
   checkbox another permission implies is disabled and stays ticked.
 - Store listing saves ask for an AI-content declaration: choose "Don't label assets", then Save.
-- If the session is signed out, `start --headed` opens a visible window on the same profile for the
-  user to sign in once, then `stop` and `start` headless again. Never sign in on the user's behalf.
+- Google refuses sign-in inside an automated browser. When a page lands on accounts.google.com
+  ("Choose an account", "Signed out"), copy the user's session in from their own Firefox-family
+  browser with `import-cookies <profile dir>` (the directory holding `cookies.sqlite`; for Zen under
+  Flatpak, `~/.var/app/app.zen_browser.zen/.zen/<profile>/`). It reads a private copy, imports only
+  Google's cookies and deletes its files; never print cookie values. If the user is signed out there
+  too, ask them to sign in in their browser. Never type their password.
 
 ## Review and testers
 
