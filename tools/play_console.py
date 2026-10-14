@@ -7,13 +7,14 @@ the dashboard's setup steps, sending changes for review. Pages are addressed by
 package name; account facts live in ~/.config/play-console/account.json:
 {"developer": "<account id>", "apps": {"<package>": "<app id>"}}.
 
-    play_console.py start [--headed]          # --headed once, for the user to sign in
+    play_console.py start [--headed]          # --headed shows the window, to watch a flow
     play_console.py open <package|-> <page>   # e.g. tracks/internal-testing, publishing, users-and-permissions
     play_console.py text
     play_console.py click "Save and publish" [--dialog]
     play_console.py check "Manage store presence"
     play_console.py join-link <package>
     play_console.py review <package>
+    play_console.py import-cookies <firefox profile dir>   # signed out: copy the user's Google session in
     play_console.py ctl <weblua-ctl args...>   # type, upload, screenshot, eval, ...
 """
 
@@ -24,8 +25,10 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -173,11 +176,36 @@ class Session:
         return "unknown: " + text[:300]
 
 
+SAME_SITE = {0: "None", 1: "Lax", 2: "Strict"}
+
+
+def google_cookies(profile: Path) -> list[dict]:
+    """The Google cookies of a Firefox-family profile as CDP CookieParams, read from a private copy."""
+    with tempfile.TemporaryDirectory() as copy:
+        for name in ("cookies.sqlite", "cookies.sqlite-wal"):
+            if (profile / name).is_file():
+                shutil.copy2(profile / name, Path(copy) / name)
+        with sqlite3.connect(Path(copy) / "cookies.sqlite") as db:
+            rows = db.execute(
+                "SELECT name, value, host, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies "
+                "WHERE host = 'google.com' OR host LIKE '%.google.com'"
+            ).fetchall()
+    cookies = []
+    for name, value, host, path, expiry, secure, http_only, same_site in rows:
+        cookie = {"name": name, "value": value, "domain": host, "path": path, "secure": bool(secure), "httpOnly": bool(http_only)}
+        if expiry:
+            cookie["expires"] = expiry / 1000 if expiry > 10**11 else expiry  # newer profiles store milliseconds
+        if same_site in SAME_SITE:
+            cookie["sameSite"] = SAME_SITE[same_site]
+        cookies.append(cookie)
+    return cookies
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
     start = commands.add_parser("start")
-    start.add_argument("--headed", action="store_true", help="a visible window, for the user to sign in once")
+    start.add_argument("--headed", action="store_true", help="a visible window, to watch a flow")
     commands.add_parser("stop")
     commands.add_parser("status")
     page = commands.add_parser("open")
@@ -191,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     tick.add_argument("label")
     for name in ("join-link", "review"):
         commands.add_parser(name).add_argument("package")
+    commands.add_parser("import-cookies").add_argument("profile", type=Path)
     passthrough = commands.add_parser("ctl")
     passthrough.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
@@ -219,6 +248,17 @@ def main(argv: list[str] | None = None) -> int:
             print(session.eval(JOIN_LINK))
         elif args.command == "review":
             print(session.review(args.package))
+        elif args.command == "import-cookies":
+            cookies = google_cookies(args.profile)
+            if not cookies:
+                raise ConsoleError(f"no Google cookies in {args.profile}; is the user signed in there?")
+            with tempfile.NamedTemporaryFile("w", suffix=".json", dir=session.state, delete=False) as out:
+                os.chmod(out.name, 0o600)
+                json.dump(cookies, out)
+            try:
+                print(session.ctl("cookies", "import", out.name))
+            finally:
+                os.unlink(out.name)
         else:
             print(session.ctl(*args.args))
     except ConsoleError as error:

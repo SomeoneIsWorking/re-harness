@@ -3,9 +3,11 @@
 import base64
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOOLS = os.path.join(os.path.dirname(HERE), "tools")
@@ -64,6 +66,21 @@ def run_checks(check, scratch):
         "play_api: a release holds one version code with its notes",
         body == {"track": "internal", "releases": [{"versionCodes": ["12"], "status": "completed", "name": "12 (1.2.0)", "releaseNotes": [{"language": "en-US", "text": "Fixes."}]}]},
         json.dumps(body),
+    )
+
+    with tempfile.TemporaryDirectory(dir=scratch) as profile:
+        with sqlite3.connect(os.path.join(profile, "cookies.sqlite")) as db:
+            db.execute("CREATE TABLE moz_cookies (name, value, host, path, expiry, isSecure, isHttpOnly, sameSite)")
+            db.executemany("INSERT INTO moz_cookies VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+                ("SID", "a", ".google.com", "/", 1900000000000, 1, 1, 1),
+                ("NID", "b", "google.com", "/", 1900000000, 0, 0, 0),
+                ("other", "c", ".example.com", "/", 1900000000, 0, 0, 2),
+            ])
+        cookies = play_console.google_cookies(Path(profile))
+    fails += check(
+        "play_console: only Google's cookies come over, expiry in seconds and sameSite named",
+        [(c["name"], c["expires"], c.get("sameSite"), c["secure"]) for c in cookies] == [("SID", 1900000000, "Lax", True), ("NID", 1900000000, "None", False)],
+        json.dumps([{k: v for k, v in c.items() if k != "value"} for c in cookies]),
     )
 
     session = play_console.Session(scratch, 1, {"developer": "42", "apps": {"com.example": "7"}})
