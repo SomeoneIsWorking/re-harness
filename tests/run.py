@@ -438,6 +438,53 @@ def main():
             fails += check("cpp_policy: main is an entry point anywhere without entry roots",
                            rc == 0 and "0 violations" in output, output)
 
+            # Retired names: a use of a named global function outside the entry roots is a finding,
+            # resolved through the AST, so a namespaced function of the same name and a comment are not.
+            with open(header, "w", encoding="utf-8") as target:
+                target.write('extern "C" void old_bind(int* core);\n'
+                             "namespace demo { inline void old_bind(int*) {} }\n")
+            # A framework header outside the root declares a C++-linkage one.
+            framework = os.path.join(project, "framework")
+            os.makedirs(framework)
+            with open(os.path.join(framework, "legacy.h"), "w", encoding="utf-8") as target:
+                target.write("void old_init();\n")
+            product = os.path.join(project, "product.cpp")
+            harness_use = os.path.join(entry_dir, "test_bind.cpp")
+            with open(product, "w", encoding="utf-8") as target:
+                target.write('#include "api.h"\n'
+                             '#include "framework/legacy.h"\n'
+                             "namespace demo { void boot(int* core) {\n"
+                             "  // old_bind(core) is what this used to call\n"
+                             "  demo::old_bind(core);\n"
+                             "  ::old_bind(core);\n"
+                             "  old_init(); } }\n")
+            with open(harness_use, "w", encoding="utf-8") as target:
+                target.write('#include "../api.h"\n'
+                             "namespace demo { void fixture(int* core) { ::old_bind(core); } }\n")
+            with open(database, "w", encoding="utf-8") as target:
+                json.dump([
+                    {"directory": project, "file": path,
+                     "arguments": [clang, "-std=c++20", "-c", path, "-o", "unit.o"]}
+                    for path in (product, harness_use)
+                ], target)
+            retired_command = command + ["--entry-root", "tests", "--exclude", "framework",
+                                         "--retired-name", "old_bind", "--retired-name", "old_init"]
+            rc, output = run(retired_command, project)
+            fails += check("cpp_policy: rejects a retired name outside the entry roots",
+                           rc == 1 and "product.cpp:6: retired name: old_bind" in output
+                           and "product.cpp:7: retired name: old_init" in output
+                           and "product.cpp:5" not in output and "product.cpp:4" not in output
+                           and "test_bind.cpp" not in output, output)
+            rc, output = run(command + ["--entry-root", "tests", "--exclude", "framework"], project)
+            fails += check("cpp_policy: a name nobody retired is not a finding",
+                           rc == 0 and "0 violations" in output, output)
+            with open(accepted, "w", encoding="utf-8") as target:
+                target.write("# a title still on its own boot\nproduct.cpp:retired name:old_bind\n"
+                             "product.cpp:retired name:old_init\n")
+            rc, output = run(retired_command + ["--accept", accepted], project)
+            fails += check("cpp_policy: accepts a named retired-name site",
+                           rc == 0 and "2 accepted sites" in output, output)
+
             # Sites through macro arguments, templates and lambdas; a using-declaration of a
             # namespaced function, or its qualified definition at file scope, is not a global function.
             with open(header, "w", encoding="utf-8") as target:

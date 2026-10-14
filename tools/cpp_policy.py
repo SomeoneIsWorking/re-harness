@@ -136,10 +136,14 @@ def first_party(source, root, excluded):
     return not within(source, excluded)
 
 
-def unit_findings(declarations, allowed_globals=(), entry_roots=()):
-    """The ownership rules over one unit's first-party declarations."""
+def unit_findings(declarations, allowed_globals=(), entry_roots=(), references=(), retired=()):
+    """The ownership rules over one unit's first-party declarations and references."""
     entry_points = ENTRY_POINTS | set(allowed_globals)
     findings = set()
+    # A retired name has an owner that composes it; a harness under an entry root may still drive it.
+    for item in references:
+        if item.name in retired and not within(item.source, entry_roots):
+            findings.add((item.source, item.line, "retired name", item.name))
     for item in declarations:
         c_boundary = bool(item.scope & libclang_ast.IN_LINKAGE_SPEC)
         if item.storage == "extern" and not (c_boundary and item.kind == "function"):
@@ -282,11 +286,11 @@ def unit_source(entry):
     return directory, (source if source.is_absolute() else directory / source).resolve()
 
 
-def check_unit(arguments, directory, source, root, excluded, allowed_globals=(), entry_roots=()):
+def check_unit(arguments, directory, source, root, excluded, allowed_globals=(), entry_roots=(), retired=()):
     """Scan one translation unit: its findings, first-party files, every file read, and when."""
     started = time.time_ns()
-    parsed = libclang_ast.parse(arguments, directory, source, lambda path: first_party(path, root, excluded))
-    findings = unit_findings(parsed.declarations, allowed_globals, entry_roots)
+    parsed = libclang_ast.parse(arguments, directory, source, lambda path: first_party(path, root, excluded), retired)
+    findings = unit_findings(parsed.declarations, allowed_globals, entry_roots, parsed.references, retired)
     return findings, parsed.visited | {source}, parsed.inclusions, started
 
 
@@ -308,10 +312,11 @@ def scan_workers(units):
     return max(1, min(units, os.cpu_count() or 1))
 
 
-def policy_salt(root, excluded, allowed_globals, entry_roots):
+def policy_salt(root, excluded, allowed_globals, entry_roots, retired=()):
     """Everything besides the unit itself that a cached result depends on."""
     tools = hashlib.sha256(b"".join(path.read_bytes() for path in TOOL_SOURCES)).hexdigest()
-    return [tools, str(root), sorted(map(str, excluded)), sorted(allowed_globals), sorted(map(str, entry_roots))]
+    return [tools, str(root), sorted(map(str, excluded)), sorted(allowed_globals), sorted(map(str, entry_roots)),
+            sorted(retired)]
 
 
 def encode_result(findings, visited):
@@ -321,7 +326,7 @@ def encode_result(findings, visited):
     }
 
 
-def check_database(database, root, excluded=(), allowed_globals=(), entry_roots=()):
+def check_database(database, root, excluded=(), allowed_globals=(), entry_roots=(), retired=()):
     """Scan every first-party unit, reusing cached results; (units, reused, findings, visited)."""
     entries = json.loads(database.read_text(encoding="utf-8"))
     if not isinstance(entries, list) or not entries:
@@ -336,7 +341,7 @@ def check_database(database, root, excluded=(), allowed_globals=(), entry_roots=
     cache_directory = database.parent / CACHE_DIRECTORY
     cache = UnitCache(
         cache_directory,
-        policy_salt(root, excluded, allowed_globals, entry_roots),
+        policy_salt(root, excluded, allowed_globals, entry_roots, retired),
         lambda path: path.name != ".git" and path != cache_directory and first_party(path, root, excluded),
     )
     results = []
@@ -356,7 +361,8 @@ def check_database(database, root, excluded=(), allowed_globals=(), entry_roots=
     if pending:
         with concurrent.futures.ProcessPoolExecutor(max_workers=scan_workers(len(pending))) as pool:
             futures = [
-                (item, pool.submit(check_unit, item[2], item[3], item[4], root, excluded, allowed_globals, entry_roots))
+                (item, pool.submit(check_unit, item[2], item[3], item[4], root, excluded, allowed_globals, entry_roots,
+                                   retired))
                 for item in pending
             ]
             try:
@@ -427,6 +433,8 @@ def main(argv=None):
     parser.add_argument("--allow-global", action="append", default=[], help="exact required platform/ABI entry point")
     parser.add_argument("--entry-root", action="append", type=Path, default=[],
                         help="file or subtree where `main` may live; once given, `main` anywhere else is a finding")
+    parser.add_argument("--retired-name", action="append", default=[],
+                        help="global function a first-party file outside the entry roots may no longer use")
     parser.add_argument("--accept", type=Path, help="file listing accepted 'path:rule:symbol' ownership sites")
     arguments = parser.parse_args(argv)
     if arguments.audit_config:
@@ -450,7 +458,8 @@ def main(argv=None):
     entry_roots = [(item if item.is_absolute() else root / item).resolve() for item in arguments.entry_root]
     try:
         units, reused, findings, visited = check_database(
-            arguments.compile_commands.resolve(), root, excluded, arguments.allow_global, entry_roots
+            arguments.compile_commands.resolve(), root, excluded, arguments.allow_global, entry_roots,
+            arguments.retired_name
         )
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         print(f"cpp_policy: {error}", file=sys.stderr)
