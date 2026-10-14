@@ -27,6 +27,8 @@ TOOL_NAMES = (
     "heavy.py",
     "info.py",
     "piagent.py",
+    "play_api.py",
+    "play_console.py",
     "project_state.py",
     "re_frontier.py",
     "safekill",

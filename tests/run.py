@@ -908,6 +908,10 @@ def main():
         rc, out = run([os.path.join(TOOLS, "swarm.py"), "report", SCRATCH], ROOT)
         fails += check("swarm: refuses by name off Linux", rc == 1 and "Linux-only" in out, out)
 
+    sys.path.insert(0, HERE)
+    import play_checks
+    fails += play_checks.run_checks(check, SCRATCH)
+
     fails += scratch_gc_checks()
 
     print("shared-skills selftest: %s (%d check(s) failed)"
