@@ -7,22 +7,28 @@ checks cannot reliably prohibit.
 """
 
 import argparse
-import bisect
 import concurrent.futures
+import concurrent.futures.process
 import ctypes
+import hashlib
 import json
 import os
 import re
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
-import threading
+import time
 from pathlib import Path
 
+import libclang_ast
+from unit_cache import UnitCache
 
-FUNCTION_KINDS = {"FunctionDecl", "CXXMethodDecl", "CXXConstructorDecl", "CXXDestructorDecl"}
+
+TOOL_SOURCES = tuple(Path(__file__).resolve().parent / name
+                     for name in ("cpp_policy.py", "libclang_ast.py", "unit_cache.py"))
+#: Per-unit results live beside the compile database, inside the build directory.
+CACHE_DIRECTORY = "cpp_policy_cache"
 ENTRY_POINTS = {"main"}
 CPP_SUFFIXES = {".C", ".cc", ".cpp", ".cxx", ".c++", ".mm"}
 REQUIRED_TIDY_CHECKS = {
@@ -37,14 +43,6 @@ REQUIRED_FORMAT_SETTINGS = {
     "AllowShortLambdasOnASingleLine": "None",
     "InsertBraces": "true",
 }
-#: The keys a rule reads. Everything else in a node is stepped over unparsed,
-#: which is most of the document: a `type` or `range` object costs nothing here.
-RECORDED_KEYS = {"kind", "loc", "name", "storageClass", "isImplicit"}
-JSON_SPACE = re.compile(r"\s+")
-JSON_KEY = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:')
-JSON_MARKER = re.compile(r'["{}\[\]]')
-JSON_STRING_MARKER = re.compile(r'["\\]')
-JSON_SCALAR = re.compile(r"[^,\]}\s]+")
 
 
 def settings(text):
@@ -128,410 +126,45 @@ def audit_configs(project):
     return inspect_configs(*outputs)
 
 
-def source_path(location, directory, previous, resolved):
-    """The file a node sits in, carried forward when Clang omits an unchanged one.
-
-    `resolved` memoizes the path work. Resolving a name touches the filesystem
-    and a translation unit names the same few hundred files tens of millions of
-    times, so doing it once per name rather than once per node is most of what
-    makes this scan finish.
-    """
-    if not isinstance(location, dict):
-        return previous, {}
-    position = location.get("spellingLoc", location)
-    if not isinstance(position, dict):
-        return previous, {}
-    name = position.get("file")
-    if name:
-        if name not in resolved:
-            candidate = Path(name)
-            resolved[name] = (candidate if candidate.is_absolute() else directory / candidate).resolve()
-        previous = resolved[name]
-    return previous, position
-
-
-def line_number(location, source, line_cache):
-    if location.get("line"):
-        return location["line"]
-    offset = location.get("offset")
-    if offset is None or source is None:
-        return 0
-    if source not in line_cache:
-        try:
-            content = source.read_bytes()
-        except OSError:
-            return 0
-        line_cache[source] = [index for index, char in enumerate(content) if char == 10]
-    return bisect.bisect_left(line_cache[source], offset) + 1
+def within(source, paths):
+    return any(source == item or source.is_relative_to(item) for item in paths)
 
 
 def first_party(source, root, excluded):
     if source is None or not source.is_relative_to(root):
         return False
-    return not any(source == item or source.is_relative_to(item) for item in excluded)
+    return not within(source, excluded)
 
 
-class AstRecorder:
-    """Keep only rule findings and source provenance while visiting AST nodes."""
-
-    def __init__(self, main_source, directory, root, excluded, allowed_globals):
-        self.findings = set()
-        self.visited = set()
-        self.last_file = main_source
-        self.directory = directory
-        self.root = root
-        self.excluded = excluded
-        self.entry_points = ENTRY_POINTS | set(allowed_globals)
-        self.line_cache = {}
-        self.resolved = {}
-        self.ours = {}
-
-    def record(self, node, ancestors):
-        self.last_file, location = source_path(
-            node.get("loc"), self.directory, self.last_file, self.resolved
-        )
-        source = self.last_file
-        kind = node.get("kind", "")
-        if source not in self.ours:
-            self.ours[source] = first_party(source, self.root, self.excluded)
-        if self.ours[source] and location.get("offset") is not None:
-            self.visited.add(source)
-            line = line_number(location, source, self.line_cache)
-            symbol = node.get("name", "")
-            c_boundary = "LinkageSpecDecl" in ancestors
-            if not node.get("isImplicit"):
-                if node.get("storageClass") == "extern" and not (c_boundary and kind == "FunctionDecl"):
-                    self.findings.add((source, line, "extern declaration", symbol))
-                if kind == "FunctionDecl" and not c_boundary and symbol not in self.entry_points:
-                    if not ancestors.intersection({"NamespaceDecl", "CXXRecordDecl", "ClassTemplateDecl", "RecordDecl"}):
-                        self.findings.add((source, line, "global-namespace function", symbol))
-                # A function-local `static` is hidden state with an owner nobody
-                # named: its lifetime, its initialization order, and its sharing
-                # between callers are all invisible at the call site. An ordinary
-                # local `const` or `constexpr` is none of those things — it is the
-                # recommended way to write a local — so only the storage class is
-                # a finding here.
-                if kind == "VarDecl" and ancestors.intersection(FUNCTION_KINDS | {"LambdaExpr"}):
-                    if node.get("storageClass") == "static":
-                        self.findings.add((source, line, "block-scope static", symbol))
-
-
-class TruncatedAst(ValueError):
-    """The child stopped printing before the AST document ended.
-
-    `bytes_read` is how much of the AST the child managed to print, which is the
-    difference between "the compiler died" and "the tool misread a whole AST".
-    """
-
-    def __init__(self, message, bytes_read=0):
-        super().__init__(message)
-        self.bytes_read = bytes_read
-
-
-def describe_returncode(code):
-    """A child that died by signal, named the way an operator would name it."""
-    if code < 0:
-        try:
-            name = signal.Signals(-code).name
-        except ValueError:
-            return f"was killed by signal {-code}"
-        return f"was killed by {name}"
-    return f"exited {code}"
-
-
-class JsonStream:
-    """Read Clang's AST as tokens, holding only the bytes a rule asks for.
-
-    One translation unit's JSON runs to hundreds of megabytes, so nothing here
-    loops over characters: every scan is a single regular-expression search
-    across a whole buffer, and the interpreter is asked to act once per token
-    instead of once per byte. Measured on a real port, that is the difference
-    between reading a unit in seconds and in minutes. Only the current buffer is
-    held, so a unit of any size still fits in memory.
-    """
-
-    CHUNK = 1 << 20
-
-    def __init__(self, source):
-        self.source = source
-        self.buffer = ""
-        self.position = 0
-        #: While a value is being captured, consumed text stays in the buffer so
-        #: the whole span can be handed to the C JSON parser in one piece.
-        self.holding = False
-        #: How much of the AST the child has actually printed. A failure that
-        #: reports this says whether the child wrote nothing, half, or all.
-        self.bytes_read = 0
-        #: Set once the source has no more input. The walk hitting the end of a
-        #: document it has not finished is a TRUNCATED child, not malformed JSON:
-        #: the JSON a child was going to print was cut short (a killed or aborted
-        #: compiler), and saying "malformed" sends the reader hunting a parser bug
-        #: that is not there.
-        self.exhausted = False
-
-    def refill(self):
-        chunk = self.source.read(self.CHUNK)
-        if not chunk:
-            self.exhausted = True
-            return False
-        self.bytes_read += len(chunk)
-        if self.holding:
-            self.buffer += chunk
-        else:
-            self.buffer = self.buffer[self.position:] + chunk
-            self.position = 0
-        return True
-
-    def ensure(self, count):
-        """Hold at least `count` characters, so a short token cannot straddle."""
-        while len(self.buffer) - self.position < count:
-            if not self.refill():
-                return
-
-    def find(self, pattern):
-        """The next match of `pattern`, reading more input until one appears."""
-        while True:
-            match = pattern.search(self.buffer, self.position)
-            if match is not None:
-                return match
-            self.position = len(self.buffer)
-            if not self.refill():
-                return None
-
-    def peek(self):
-        while self.position == len(self.buffer):
-            if not self.refill():
-                return ""
-        return self.buffer[self.position]
-
-    def take(self):
-        char = self.peek()
-        if char:
-            self.position += 1
-        return char
-
-    def space(self):
-        while True:
-            if self.position == len(self.buffer) and not self.refill():
-                return
-            match = JSON_SPACE.match(self.buffer, self.position)
-            if match is None:
-                return
-            self.position = match.end()
-
-    def expect(self, expected):
-        self.space()
-        actual = self.take()
-        if actual != expected:
-            raise ValueError(f"malformed Clang AST JSON: expected {expected!r}, got {actual!r}")
-
-    def string_body(self):
-        """Consume a string whose opening quote is already taken."""
-        while True:
-            match = self.find(JSON_STRING_MARKER)
-            if match is None:
-                raise ValueError("truncated Clang AST JSON string")
-            self.position = match.end()
-            if match.group() == '"':
-                return
-            if not self.take():
-                raise ValueError("truncated Clang AST JSON escape")
-
-    def container(self):
-        """Consume an object or array whose opening bracket is still ahead."""
-        depth = 0
-        while True:
-            match = self.find(JSON_MARKER)
-            if match is None:
-                raise ValueError("unterminated Clang AST JSON container")
-            marker = match.group()
-            self.position = match.end()
-            if marker == '"':
-                self.string_body()
-            elif marker in "{[":
-                depth += 1
-            else:
-                depth -= 1
-                if depth == 0:
-                    return
-
-    def scalar_body(self):
-        while True:
-            self.ensure(64)
-            match = JSON_SCALAR.match(self.buffer, self.position)
-            if match is None or match.end() < len(self.buffer):
-                if match is not None:
-                    self.position = match.end()
-                return
-            self.position = match.end()
-            if not self.refill():
-                return
-
-    def skip(self):
-        """Step over one value without building anything from it."""
-        self.space()
-        marker = self.peek()
-        if marker == '"':
-            self.take()
-            self.string_body()
-        elif marker and marker in "{[":
-            self.container()
-        elif marker:
-            self.scalar_body()
-
-    def value(self):
-        """The next value, parsed from its own text by the C JSON decoder."""
-        self.space()
-        start = self.position
-        self.holding = True
-        try:
-            self.skip()
-            text = self.buffer[start:self.position]
-        finally:
-            self.holding = False
-        if not text:
-            raise ValueError("malformed Clang AST JSON value")
-        return json.loads(text)
-
-    def key(self):
-        """The next object key and its colon.
-
-        Clang writes plain identifiers, so one anchored match takes the key and
-        the colon together; anything else falls back to a full string read.
-        """
-        self.space()
-        self.ensure(256)
-        match = JSON_KEY.match(self.buffer, self.position)
-        if match is not None:
-            self.position = match.end()
-            return match.group(1)
-        self.expect('"')
-        start = self.position - 1
-        self.holding = True
-        try:
-            self.string_body()
-            text = self.buffer[start:self.position]
-        finally:
-            self.holding = False
-        self.expect(":")
-        return json.loads(text)
-
-
-#: Exactly the wordings `JsonStream` uses when the INPUT RAN OUT, and no others:
-#: a grammar violation with text still to read ("malformed Clang AST JSON node")
-#: is a different failure and must keep its own name.
-INPUT_END_WORDINGS = (
-    "malformed Clang AST JSON value",
-    "truncated Clang AST JSON string",
-    "truncated Clang AST JSON escape",
-    "unterminated Clang AST JSON container",
-)
-EXPECTED_TOKEN_ENDING = "malformed Clang AST JSON: expected "
-
-
-def looks_truncated(error):
-    """True when the walk failed asking for a token the document never supplied.
-
-    Reaching the end of the input is normal for a small AST, so "the stream is
-    over" proves nothing by itself: what proves truncation is that the token that
-    was REQUIRED is the one missing, where a grammar violation is a token that
-    arrived where another was required.
-    """
-    text = str(error)
-    return text in INPUT_END_WORDINGS or text.endswith("got ''")
-
-
-def truncation_detail(error):
-    """The part of the message worth keeping: what was expected, not the accusation."""
-    text = str(error)
-    for wording in INPUT_END_WORDINGS:
-        if text.startswith(wording):
-            return ""
-    if text.startswith(EXPECTED_TOKEN_ENDING):
-        return text[len(EXPECTED_TOKEN_ENDING):]
-    return text
-
-
-def inspect_ast_stream(source, main_source, directory, root, excluded=(), allowed_globals=()):
-    """Return findings and visited files from a bounded-memory Clang JSON stream."""
-    stream = JsonStream(source)
-    recorder = AstRecorder(main_source, directory, root, excluded, allowed_globals)
-
-    def walk(ancestors):
-        stream.expect("{")
-        node = {}
-        recorded = False
-        stream.space()
-        if stream.peek() == "}":
-            stream.take()
-            recorder.record(node, ancestors)
-            return
-        while True:
-            key = stream.key()
-            if key == "inner":
-                recorder.record(node, ancestors)
-                recorded = True
-                stream.expect("[")
-                stream.space()
-                if stream.peek() != "]":
-                    child_ancestors = ancestors | {node.get("kind", "")}
-                    while True:
-                        stream.space()
-                        if stream.peek() == "{":
-                            walk(child_ancestors)
-                        else:
-                            stream.skip()
-                        stream.space()
-                        if stream.peek() != ",":
-                            break
-                        stream.take()
-                stream.expect("]")
-            elif key in RECORDED_KEYS:
-                if recorded:
-                    raise ValueError("Clang AST metadata followed child nodes")
-                node[key] = stream.value()
-            else:
-                stream.skip()
-            stream.space()
-            marker = stream.take()
-            if marker == "}":
-                if not recorded:
-                    recorder.record(node, ancestors)
-                return
-            if marker != ",":
-                raise ValueError("malformed Clang AST JSON node")
-
-    try:
-        walk(frozenset())
-    except ValueError as error:
-        # Input that ran out mid-document is a child that stopped printing, not a
-        # parser that lost sync: say which, because the two send the reader to
-        # completely different places.
-        if looks_truncated(error):
-            # The inner message says "malformed Clang AST JSON", which is precisely the
-            # wrong word here and the reason this read as a parser bug; keep the useful
-            # part (what was expected) and drop the accusation.
-            detail = truncation_detail(error)
-            raise TruncatedAst(
-                f"the AST ended after {stream.bytes_read} byte(s) without finishing "
-                f"the document{f': {detail}' if detail else ''}",
-                stream.bytes_read,
-            ) from error
-        raise
-    stream.space()
-    if stream.peek():
-        raise ValueError("Clang AST JSON has trailing content")
-    return recorder.findings, recorder.visited
+def unit_findings(declarations, allowed_globals=(), entry_roots=()):
+    """The ownership rules over one unit's first-party declarations."""
+    entry_points = ENTRY_POINTS | set(allowed_globals)
+    findings = set()
+    for item in declarations:
+        c_boundary = bool(item.scope & libclang_ast.IN_LINKAGE_SPEC)
+        if item.storage == "extern" and not (c_boundary and item.kind == "function"):
+            findings.add((item.source, item.line, "extern declaration", item.name))
+        if item.kind == "function" and not c_boundary and not item.scope & libclang_ast.IN_NAMESPACE_OR_RECORD:
+            if item.name in ENTRY_POINTS and entry_roots and not within(item.source, entry_roots):
+                findings.add((item.source, item.line, "entry point", item.name))
+            elif item.name not in entry_points:
+                findings.add((item.source, item.line, "global-namespace function", item.name))
+        # A function-local `static` is hidden state with an owner nobody named; a
+        # local `const` or `constexpr` is not, so only the storage class is a finding.
+        if item.kind == "variable" and item.scope & libclang_ast.IN_FUNCTION and item.storage == "static":
+            findings.add((item.source, item.line, "block-scope static", item.name))
+    return findings
 
 
 COMPILER_LAUNCHERS = frozenset({"ccache", "sccache"})
+#: A GCC command is parsed by the libclang of the matching Clang driver.
+GCC_DRIVER = re.compile(r"^(?:[\w.]+-)?(?P<name>g\+\+|gcc|c\+\+|cc)(?:-[\d.]+)?$")
 
 
 def without_launcher(arguments, search_path=None):
     """The compile arguments with a caching launcher replaced by the compiler it wraps.
 
-    A launcher buffers the compiler's whole stdout in its temp dir, which for an AST dump is
-    hundreds of megabytes per unit.
+    libclang parses the command in-process, so it needs the compiler itself, not its wrapper.
     """
     program = Path(arguments[0])
     if program.stem in COMPILER_LAUNCHERS:
@@ -547,6 +180,18 @@ def without_launcher(arguments, search_path=None):
     return [compiler, *arguments[1:]]
 
 
+def clang_driver(arguments, search_path=None):
+    """The compile arguments with a GCC driver replaced by the matching Clang driver."""
+    match = GCC_DRIVER.match(Path(arguments[0]).name)
+    if match is None:
+        return arguments
+    name = "clang" if match.group("name") in {"gcc", "cc"} else "clang++"
+    compiler = shutil.which(name, path=search_path)
+    if compiler is None:
+        raise ValueError(f"no {name} on PATH to parse a {arguments[0]} compile command")
+    return [compiler, *arguments[1:]]
+
+
 def compile_arguments(entry):
     if "arguments" in entry:
         arguments = list(entry["arguments"])
@@ -559,6 +204,7 @@ def compile_arguments(entry):
     arguments = without_launcher(arguments)
     if not arguments:
         raise ValueError("compile command is only a launcher")
+    arguments = clang_driver(arguments)
     filtered = [arguments[0]]
     skip_next = False
     for argument in arguments[1:]:
@@ -572,7 +218,7 @@ def compile_arguments(entry):
             filtered.append(argument)
     if skip_next:
         raise ValueError("compile command ends in an output or dependency option")
-    return [*filtered, "-fsyntax-only", "-Xclang", "-ast-dump=json"]
+    return filtered
 
 
 def split_compile_command(command):
@@ -595,69 +241,60 @@ def split_compile_command(command):
         kernel32.LocalFree(ctypes.cast(arguments, ctypes.c_void_p))
 
 
-def check_unit(entry, root, excluded, allowed_globals):
-    """Scan one translation unit, returning its findings and the files it saw."""
+#: Options naming an include search directory, joined (`-Idir`) or as the next argument.
+SEARCH_OPTIONS = ("-iquote", "-isystem", "-idirafter", "-I", "/I")
+
+
+def search_directories(arguments, directory):
+    """Every include search directory a compile command names, resolved against its directory."""
+    found = []
+    pending = False
+    for argument in arguments[1:]:
+        if pending:
+            found.append(argument)
+            pending = False
+        elif argument in SEARCH_OPTIONS:
+            pending = True
+        else:
+            found.extend(argument[len(option):] for option in SEARCH_OPTIONS[:4]
+                         if argument.startswith(option) and len(argument) > len(option))
+    return {(directory / path).resolve() for path in found}
+
+
+def watched_directories(arguments, directory, read, root, excluded):
+    """The first-party directories where a new file can change what a unit's parse finds.
+
+    Its include search directories, and the directory of every first-party file it read, which
+    quoted includes search first. A directory inside another watched one is covered by it.
+    """
+    candidates = {path for path in search_directories(arguments, directory) if first_party(path, root, excluded)}
+    candidates.update(path.parent for path in read if first_party(path, root, excluded))
+    watched = []
+    for path in sorted(candidates):
+        if not within(path, watched):
+            watched.append(path)
+    return watched
+
+
+def unit_source(entry):
     directory = Path(entry["directory"]).resolve()
     source = Path(entry["file"])
-    source = (source if source.is_absolute() else directory / source).resolve()
-    command = compile_arguments(entry)
-    process = subprocess.Popen(
-        command, cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, encoding="utf-8", errors="replace",
-    )
-    stderr_tail = []
+    return directory, (source if source.is_absolute() else directory / source).resolve()
 
-    def drain_stderr():
-        while chunk := process.stderr.read(65536):
-            stderr_tail.append(chunk)
-            if len(stderr_tail) > 2:
-                stderr_tail.pop(0)
 
-    stderr_reader = threading.Thread(target=drain_stderr)
-    stderr_reader.start()
-    try:
-        findings, files = inspect_ast_stream(
-            process.stdout, source, directory, root, excluded, allowed_globals
-        )
-    except (ValueError, json.JSONDecodeError) as error:
-        if process.poll() is None:
-            process.kill()
-        returncode = process.wait()
-        stderr_reader.join()
-        diagnostics = ''.join(stderr_tail).strip()
-        # The child's own ending is the first thing a reader needs: a compiler the
-        # kernel killed mid-print (memory pressure, a concurrent build) and a
-        # compiler that failed both leave a SHORT stream here, and reporting that
-        # as "malformed Clang AST JSON" points at this tool's parser instead.
-        if returncode:
-            raise RuntimeError(
-                f"the AST child for {source} {describe_returncode(returncode)} while printing "
-                f"{getattr(error, 'bytes_read', 0)} AST byte(s): {error}\n"
-                f"{diagnostics or '(no diagnostics)'}"
-            ) from error
-        raise RuntimeError(
-            f"Clang emitted no readable AST for {source}: {error}"
-            + (f"\n{diagnostics}" if diagnostics else "")
-        ) from error
-    finally:
-        process.stdout.close()
-    returncode = process.wait()
-    stderr_reader.join()
-    if returncode:
-        raise RuntimeError(f"AST compile failed for {source}:\n{''.join(stderr_tail).strip()}")
-    return findings, files | {source}
+def check_unit(arguments, directory, source, root, excluded, allowed_globals=(), entry_roots=()):
+    """Scan one translation unit: its findings, first-party files, every file read, and when."""
+    started = time.time_ns()
+    parsed = libclang_ast.parse(arguments, directory, source, lambda path: first_party(path, root, excluded))
+    findings = unit_findings(parsed.declarations, allowed_globals, entry_roots)
+    return findings, parsed.visited | {source}, parsed.inclusions, started
 
 
 def scan_workers(units):
     """How many units to scan at once.
 
-    Clang parses each unit in a child process, but reading the AST it prints is
-    this tool's real cost: measured on a real port, the Python side held one core
-    at full tilt while every clang child sat blocked on a full pipe. So the units
-    are scanned in separate *processes* rather than threads — threads share one
-    interpreter and would take turns on exactly the work that is slow. A project's
-    verifier runs this on every change, and one core turned that port's seventeen
-    units into ten minutes.
+    Each unit is parsed and walked in its own worker process: the walk runs
+    Python per declaration, so threads would take turns on one interpreter.
     """
     override = os.environ.get("CPP_POLICY_JOBS")
     if override:
@@ -671,30 +308,76 @@ def scan_workers(units):
     return max(1, min(units, os.cpu_count() or 1))
 
 
-def check_database(database, root, excluded=(), allowed_globals=()):
+def policy_salt(root, excluded, allowed_globals, entry_roots):
+    """Everything besides the unit itself that a cached result depends on."""
+    tools = hashlib.sha256(b"".join(path.read_bytes() for path in TOOL_SOURCES)).hexdigest()
+    return [tools, str(root), sorted(map(str, excluded)), sorted(allowed_globals), sorted(map(str, entry_roots))]
+
+
+def encode_result(findings, visited):
+    return {
+        "findings": sorted([str(source), line, rule, symbol] for source, line, rule, symbol in findings),
+        "visited": sorted(str(path) for path in visited),
+    }
+
+
+def check_database(database, root, excluded=(), allowed_globals=(), entry_roots=()):
+    """Scan every first-party unit, reusing cached results; (units, reused, findings, visited)."""
     entries = json.loads(database.read_text(encoding="utf-8"))
     if not isinstance(entries, list) or not entries:
         raise ValueError("compile database has no translation units")
     wanted = []
     for entry in entries:
-        directory = Path(entry["directory"]).resolve()
-        source = Path(entry["file"])
-        source = (source if source.is_absolute() else directory / source).resolve()
+        _, source = unit_source(entry)
         if source.suffix in CPP_SUFFIXES and first_party(source, root, excluded):
             wanted.append(entry)
     if not wanted:
         raise ValueError("compile database has no first-party C++ translation units")
+    cache_directory = database.parent / CACHE_DIRECTORY
+    cache = UnitCache(
+        cache_directory,
+        policy_salt(root, excluded, allowed_globals, entry_roots),
+        lambda path: path.name != ".git" and path != cache_directory and first_party(path, root, excluded),
+    )
+    results = []
+    pending = []
+    for entry in wanted:
+        directory, source = unit_source(entry)
+        arguments = compile_arguments(entry)
+        library = libclang_ast.library_for(arguments[0])
+        # One source can be compiled into several targets with different flags.
+        unit = [str(directory), str(source), entry.get("output") or arguments]
+        key = cache.key(unit, arguments, str(library.path), library.version)
+        cached = cache.load(unit, key)
+        if cached is None:
+            pending.append((unit, key, arguments, directory, source))
+        else:
+            results.append(cached)
+    if pending:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=scan_workers(len(pending))) as pool:
+            futures = [
+                (item, pool.submit(check_unit, item[2], item[3], item[4], root, excluded, allowed_globals, entry_roots))
+                for item in pending
+            ]
+            try:
+                for (unit, key, arguments, directory, source), future in futures:
+                    try:
+                        findings, visited, read, started = future.result()
+                    except concurrent.futures.process.BrokenProcessPool as error:
+                        raise RuntimeError(f"the scan process for {source} died: {error}") from error
+                    result = encode_result(findings, visited)
+                    watched = watched_directories(arguments, directory, read, root, excluded)
+                    cache.store(unit, key, result, read, watched, started)
+                    results.append(result)
+            except BaseException:
+                pool.shutdown(cancel_futures=True)
+                raise
     findings = set()
     visited = set()
-    with concurrent.futures.ProcessPoolExecutor(max_workers=scan_workers(len(wanted))) as pool:
-        futures = [
-            pool.submit(check_unit, entry, root, excluded, allowed_globals) for entry in wanted
-        ]
-        for future in futures:
-            current, files = future.result()
-            findings.update(current)
-            visited.update(files)
-    return len(wanted), findings, visited
+    for result in results:
+        findings.update((Path(source), line, rule, symbol) for source, line, rule, symbol in result["findings"])
+        visited.update(Path(path) for path in result["visited"])
+    return len(wanted), len(wanted) - len(pending), findings, visited
 
 
 def accepted_sites(path):
@@ -742,6 +425,8 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, help="first-party source root for AST mode")
     parser.add_argument("--exclude", action="append", type=Path, default=[], help="exact vendored/generated subtree")
     parser.add_argument("--allow-global", action="append", default=[], help="exact required platform/ABI entry point")
+    parser.add_argument("--entry-root", action="append", type=Path, default=[],
+                        help="file or subtree where `main` may live; once given, `main` anywhere else is a finding")
     parser.add_argument("--accept", type=Path, help="file listing accepted 'path:rule:symbol' ownership sites")
     arguments = parser.parse_args(argv)
     if arguments.audit_config:
@@ -762,9 +447,10 @@ def main(argv=None):
     excluded.extend(
         (item if item.is_absolute() else root / item).resolve() for item in arguments.exclude
     )
+    entry_roots = [(item if item.is_absolute() else root / item).resolve() for item in arguments.entry_root]
     try:
-        units, findings, visited = check_database(
-            arguments.compile_commands.resolve(), root, excluded, arguments.allow_global
+        units, reused, findings, visited = check_database(
+            arguments.compile_commands.resolve(), root, excluded, arguments.allow_global, entry_roots
         )
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         print(f"cpp_policy: {error}", file=sys.stderr)
@@ -780,7 +466,8 @@ def main(argv=None):
         remaining, stale = apply_accepted(findings, root, sites)
         accepted = len(findings) - len(remaining)
         findings = remaining
-    summary = f"cpp_policy: scanned {units} translation units, {len(visited)} first-party files"
+    summary = (f"cpp_policy: scanned {units} translation units ({reused} unchanged since the last scan), "
+               f"{len(visited)} first-party files")
     if arguments.accept:
         summary += f", {accepted} accepted sites"
     print(f"{summary}, {len(findings) + len(stale)} violations")

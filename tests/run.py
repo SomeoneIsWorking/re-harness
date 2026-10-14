@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,7 @@ sys.path.insert(0, TOOLS)
 import source_boundary  # noqa: E402
 import install_skills  # noqa: E402
 import cpp_policy  # noqa: E402
+import libclang_ast  # noqa: E402
 
 
 @contextlib.contextmanager
@@ -262,7 +264,7 @@ def main():
     ]})
     fails += check(
         "cpp_policy: clang-cl AST scan drops output flags",
-        clang_cl_args == ["clang-cl", "/TP", "unit.cpp", "-fsyntax-only", "-Xclang", "-ast-dump=json"],
+        clang_cl_args == ["clang-cl", "/TP", "unit.cpp"],
         repr(clang_cl_args),
     )
     fails += check(
@@ -299,6 +301,12 @@ def main():
                 r"D:\a\jit-common\src\block_cache.cpp",
             ],
         )
+    gcc_args = cpp_policy.compile_arguments({"arguments": ["/usr/bin/g++-14", "-c", "unit.cpp"]})
+    fails += check(
+        "cpp_policy: a GCC compile command is read through Clang",
+        shutil.which("clang++") is None or Path(gcc_args[0]).name.startswith("clang++"),
+        repr(gcc_args),
+    )
     jobs_default = cpp_policy.scan_workers(64)
     with environment(CPP_POLICY_JOBS="3"):
         jobs_named = cpp_policy.scan_workers(64)
@@ -395,121 +403,159 @@ def main():
                            rc == 1 and "no longer occurs" in output
                            and "long_gone" in output, output)
 
-        # The ignored payload is deliberately hostile to a bracket-counting
-        # reader: braces, brackets, escaped quotes and a trailing backslash all
-        # inside strings, and long enough to straddle the reader's read size.
-        noise = ('{[\\"}] ' * 4) + ("x" * (2 << 20)) + '\\\\'
-        streamed_ast = (
-            '{"kind":"TranslationUnitDecl","inner":['
-            '{"kind":"FunctionDecl","name":"sample","loc":{"file":"sample.cpp","offset":0},'
-            '"inner":[{"kind":"VarDecl","name":"value","storageClass":"static",'
-            '"loc":{"offset":16},"type":{"qualType":"int"},'
-            '"ignored":{"deep":["' + noise + '",{"deeper":"' + noise + '"}]}}]}]}'
-        )
-        with tempdir() as project:
-            source = os.path.join(project, "sample.cpp")
-            with open(source, "w", encoding="utf-8") as target:
-                target.write("void sample() { static int value = 1; }\n")
-            stream_findings, stream_files = cpp_policy.inspect_ast_stream(
-                io.StringIO(streamed_ast),
-                cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
-            )
-            fails += check(
-                "cpp_policy: streams large ignored AST fields with source ancestry",
-                any(rule == "block-scope static" and symbol == "value"
-                    for _, _, rule, symbol in stream_findings)
-                and cpp_policy.Path(source) in stream_files,
-                repr(stream_findings),
-            )
-            try:
-                cpp_policy.inspect_ast_stream(
-                    io.StringIO('{"kind":"TranslationUnitDecl","inner":['),
-                    cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
-                )
-            except cpp_policy.TruncatedAst as error:
-                truncated_error = str(error)
-            except ValueError as error:
-                truncated_error = f"wrongly reported as {error!r}"
-            else:
-                truncated_error = ""
-            fails += check(
-                "cpp_policy: names a truncated AST as truncated, not as malformed JSON",
-                truncated_error != ""
-                and "the AST ended after" in truncated_error
-                and "malformed Clang AST JSON" not in truncated_error,
-                truncated_error,
-            )
-            # The other side of the same distinction: input that is STILL there and
-            # does not fit the grammar really is malformed, and must keep saying so.
-            try:
-                cpp_policy.inspect_ast_stream(
-                    io.StringIO('{"kind":"TranslationUnitDecl" "inner":[]} trailing'),
-                    cpp_policy.Path(source), cpp_policy.Path(project), cpp_policy.Path(project),
-                )
-            except ValueError as error:
-                malformed_error = str(error)
-            else:
-                malformed_error = ""
-            fails += check(
-                "cpp_policy: still calls misaligned input with input left malformed",
-                "malformed Clang AST JSON" in malformed_error,
-                malformed_error,
-            )
-            failed_compiler = os.path.join(project, "failed_compiler.py")
-            with open(failed_compiler, "w", encoding="utf-8") as target:
-                target.write('import sys\nprint("synthetic Clang failure", file=sys.stderr)\nsys.exit(2)\n')
-            failed_database = os.path.join(project, "compile_commands.json")
-            with open(failed_database, "w", encoding="utf-8") as target:
-                json.dump([{
-                    "directory": project,
-                    "file": source,
-                    "arguments": [sys.executable, failed_compiler, source],
-                }], target)
-            try:
-                cpp_policy.check_database(cpp_policy.Path(failed_database), cpp_policy.Path(project))
-            except RuntimeError as error:
-                compiler_error = str(error)
-            else:
-                compiler_error = ""
-            fails += check(
-                "cpp_policy: reports the child that failed, with its stderr",
-                "exited 2" in compiler_error and "synthetic Clang failure" in compiler_error,
-                compiler_error,
-            )
+            # Entry points: with entry roots named, `main` is a finding anywhere else.
+            entry_dir = os.path.join(project, "tests")
+            os.makedirs(entry_dir)
+            in_root = os.path.join(entry_dir, "test_unit.cpp")
+            launcher = os.path.join(project, "launcher.cpp")
+            for path in (in_root, launcher):
+                with open(path, "w", encoding="utf-8") as target:
+                    target.write("int main() { return 0; }\n")
+            with open(database, "w", encoding="utf-8") as target:
+                json.dump([
+                    {"directory": project, "file": path,
+                     "arguments": [clang, "-std=c++20", "-c", path, "-o", "unit.o"]}
+                    for path in (in_root, launcher)
+                ], target)
+            entry_command = command + ["--entry-root", "tests"]
+            rc, output = run(entry_command, project)
+            fails += check("cpp_policy: rejects main outside the entry roots",
+                           rc == 1 and "launcher.cpp:1: entry point: main" in output
+                           and "test_unit.cpp" not in output, output)
+            with open(accepted, "w", encoding="utf-8") as target:
+                target.write("# packaging launcher, folded into the product later\n"
+                             "launcher.cpp:entry point:main\n")
+            rc, output = run(entry_command + ["--accept", accepted], project)
+            fails += check("cpp_policy: accepts a named hand-written main",
+                           rc == 0 and "1 accepted sites" in output
+                           and "0 violations" in output, output)
+            rc, output = run(entry_command + ["--entry-root", "launcher.cpp", "--accept", accepted],
+                             project)
+            fails += check("cpp_policy: an accepted main inside an entry root no longer occurs",
+                           rc == 1 and "no longer occurs: launcher.cpp:entry point:main" in output,
+                           output)
+            rc, output = run(command, project)
+            fails += check("cpp_policy: main is an entry point anywhere without entry roots",
+                           rc == 0 and "0 violations" in output, output)
 
-            # A child the kernel killed part-way through its AST is the case that
-            # cost a port an hour: the stream stops mid-document, and reporting
-            # that as malformed JSON points at this tool's parser instead of at the
-            # process that died printing it.
-            killed_compiler = os.path.join(project, "killed_compiler.py")
-            with open(killed_compiler, "w", encoding="utf-8") as target:
+            # Sites through macro arguments, templates and lambdas; a using-declaration of a
+            # namespaced function, or its qualified definition at file scope, is not a global function.
+            with open(header, "w", encoding="utf-8") as target:
                 target.write(
-                    "import os, signal, sys\n"
-                    "sys.stdout.write('{\"kind\":\"TranslationUnitDecl\",\"inner\":[{\"kind\":')\n"
-                    "sys.stdout.flush()\n"
-                    "os.kill(os.getpid(), signal.SIGKILL)\n"
+                    "#define KEEP(name) static int name = 0\n"
+                    "#define CHECK(x) (void)(x)\n"
+                    "namespace demo { inline int helper() { return 1; } }\n"
                 )
-            killed_database = os.path.join(project, "compile_commands.json")
-            with open(killed_database, "w", encoding="utf-8") as target:
+            shapes = os.path.join(project, "shapes.cpp")
+            with open(shapes, "w", encoding="utf-8") as target:
+                target.write(
+                    '#include "api.h"\n'
+                    "using demo::helper;\n"
+                    "namespace demo { int outer() { CHECK(helper()); KEEP(kept); return kept; } }\n"
+                    "template <class T> T twice(T value) { return value + value; }\n"
+                    "namespace demo { int lambda() { auto make = [] { static int inner = 0; return inner; };"
+                    " return make(); } }\n"
+                    "namespace demo { int qualified(); }\n"
+                    "int demo::qualified() { return 0; }\n"
+                )
+            with open(database, "w", encoding="utf-8") as target:
                 json.dump([{
                     "directory": project,
-                    "file": source,
-                    "arguments": [sys.executable, killed_compiler, source],
+                    "file": shapes,
+                    "arguments": [clang, "-std=c++20", "-c", shapes, "-o", "shapes.o"],
                 }], target)
+            rc, output = run(command, project)
+            expected = ("shapes.cpp:3: block-scope static: kept", "shapes.cpp:4: global-namespace function: twice",
+                        "shapes.cpp:5: block-scope static: inner")
+            fails += check("cpp_policy: finds sites through macros, templates and lambdas",
+                           rc == 1 and all(item in output for item in expected)
+                           and "helper" not in output and "qualified" not in output
+                           and "3 violations" in output, output)
+
+            # The cache: an unchanged unit is reused, and a header edit rescans only its includers.
+            other = os.path.join(project, "other.cpp")
+            with open(other, "w", encoding="utf-8") as target:
+                target.write('#include "lib.h"\n#if __has_include("late.h")\n#include "late.h"\n#endif\n'
+                             "namespace demo { int other() { return 0; } }\n")
+            for name in ("early", "late"):
+                os.makedirs(os.path.join(project, name))
+            with open(os.path.join(project, "late", "lib.h"), "w", encoding="utf-8") as target:
+                target.write("namespace demo { inline int lib() { return 0; } }\n")
+            with open(database, "w", encoding="utf-8") as target:
+                json.dump([
+                    {"directory": project, "file": path,
+                     "arguments": [clang, "-std=c++20", "-Iearly", "-Ilate", "-c", path, "-o", Path(path).stem + ".o"]}
+                    for path in (shapes, other)
+                ], target)
+
+            def settle():
+                # Sources older than the scan, as an edited tree is by the time a gate runs.
+                settled = time.time() - 60
+                for base, _, names in os.walk(project):
+                    for path in [base, *(os.path.join(base, name) for name in names)]:
+                        os.utime(path, (settled, settled))
+
+            settle()
+            rc, first = run(command, project)
+            rc, second = run(command, project)
+            cache_dir = os.path.join(project, cpp_policy.CACHE_DIRECTORY)
+            fails += check("cpp_policy: reuses every unchanged unit from the cache",
+                           "(0 unchanged since the last scan)" in first
+                           and "(2 unchanged since the last scan)" in second
+                           and first.splitlines()[1:] == second.splitlines()[1:]
+                           and len(os.listdir(cache_dir)) == 2, first + second)
+            with open(header, "a", encoding="utf-8") as target:
+                target.write("extern int added;\n")
+            rc, edited = run(command, project)
+            fails += check("cpp_policy: a header edit rescans only the units that include it",
+                           "(1 unchanged since the last scan)" in edited
+                           and "api.h:4: extern declaration: added" in edited, edited)
+            settle()
+            run(command, project)
+            with open(os.path.join(project, "early", "lib.h"), "w", encoding="utf-8") as target:
+                target.write("int shadowing() { return 0; }\n")
+            rc, shadowed = run(command, project)
+            fails += check("cpp_policy: a header that shadows an included one rescans its includers",
+                           "lib.h:1: global-namespace function: shadowing" in shadowed, shadowed)
+            settle()
+            run(command, project)
+            with open(os.path.join(project, "late.h"), "w", encoding="utf-8") as target:
+                target.write("int arrived() { return 0; }\n")
+            rc, arrived = run(command, project)
+            fails += check("cpp_policy: a header a __has_include now finds rescans the unit asking",
+                           "late.h:1: global-namespace function: arrived" in arrived, arrived)
+
+            # A unit Clang cannot compile fails the scan with Clang's own diagnostics.
+            with open(other, "w", encoding="utf-8") as target:
+                target.write("namespace demo { int broken( }\n")
             try:
-                cpp_policy.check_database(cpp_policy.Path(killed_database), cpp_policy.Path(project))
+                cpp_policy.check_database(cpp_policy.Path(database), cpp_policy.Path(project))
             except RuntimeError as error:
-                killed_error = str(error)
+                compile_error = str(error)
             else:
-                killed_error = ""
-            killed_expected = "SIGKILL" if os.name != "nt" else "killed"
-            fails += check(
-                "cpp_policy: names a child killed mid-AST instead of blaming its own parser",
-                killed_expected in killed_error
-                and "AST byte(s)" in killed_error
-                and "malformed Clang AST JSON" not in killed_error,
-                killed_error,
-            )
+                compile_error = ""
+            fails += check("cpp_policy: reports a unit Clang cannot compile, with its diagnostics",
+                           "AST compile failed for" in compile_error and "other.cpp" in compile_error
+                           and "error:" in compile_error, compile_error)
+
+        # A Clang without its matching libclang is refused with the install command, never
+        # parsed by some other libclang that happens to be on the system.
+        if os.name != "nt":
+            with tempdir() as toolchain:
+                fake = os.path.join(toolchain, "bin", "clang++")
+                os.makedirs(os.path.dirname(fake))
+                with open(fake, "w", encoding="utf-8") as target:
+                    target.write("#!/bin/sh\necho 'clang version 999.1.0'\n")
+                os.chmod(fake, 0o755)
+                try:
+                    libclang_ast.library_for(fake)
+                except libclang_ast.LibclangMissing as error:
+                    missing_error = str(error)
+                else:
+                    missing_error = ""
+                fails += check("cpp_policy: refuses a Clang without its libclang, naming the install",
+                               "no libclang 999" in missing_error and "dnf install clang-libs" in missing_error
+                               and "libclang1-999" in missing_error, missing_error)
 
     # --- cleanup-files: validate the whole explicit set before unlinking -----
     cleanup = os.path.join(TOOLS, "cleanup-files")

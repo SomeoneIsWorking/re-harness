@@ -1029,7 +1029,9 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "-c",
         "import os; print('BASEDIR=' + os.environ.get('CCACHE_BASEDIR', ''))",
     )
-    inside = _heavy(locks, "--", *show, cwd=nested)
+    # A caller's own CCACHE_BASEDIR wins, and this suite may itself run under heavy.py.
+    clean = {key: value for key, value in os.environ.items() if key != "CCACHE_BASEDIR"}
+    inside = _heavy(locks, "--", *show, cwd=nested, env=clean)
     # The scratch root itself sits inside a checkout; stop git's search above it.
     bare = root / "no-repo"
     bare.mkdir()
@@ -1038,7 +1040,7 @@ def _heavy_checks(check: Check, root: Path) -> int:
         "--",
         *show,
         cwd=bare,
-        env=dict(os.environ, GIT_CEILING_DIRECTORIES=str(root)),
+        env=dict(clean, GIT_CEILING_DIRECTORIES=str(root)),
     )
     fails += check(
         "heavy: a command in a git checkout shares ccache from the checkout's root",

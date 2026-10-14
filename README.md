@@ -58,13 +58,25 @@ real compile database. A local `const` or `constexpr` is not a finding: it is
 the recommended way to write a local, and flagging it buried the real ownership
 findings under a hundred good ones.
 
-Clang parses each unit in a child process, but *reading* the AST it prints is
-what dominates: one unit of a real port is 685 MB of JSON that Clang writes in
-two seconds. So the reader steps over that JSON a token at a time, never a
-character at a time, and resolves each file name once instead of once per node;
-and units are scanned in separate *processes* — threads would have taken turns
-on exactly the slow part — using every core unless `CPP_POLICY_JOBS` says
-otherwise. That port's seventeen units went from ten minutes to forty seconds.
+Each unit is parsed in-process by the libclang that ships beside the compile
+command's Clang driver (`tools/libclang_ast.py`, a ctypes binding, so no Python
+package is needed), and the walk enters only file-scope declarations that expand
+in first-party files: system and library headers are parsed by Clang and never
+visited from Python. A missing or mismatched libclang is refused with the
+install command for each platform; no other libclang is substituted. Units are
+scanned in separate processes using every core unless `CPP_POLICY_JOBS` says
+otherwise.
+
+Each unit's result is cached under `<compile database dir>/cpp_policy_cache/`
+(`tools/unit_cache.py`), keyed by the compile command, libclang version, tool
+sources and scan options, and valid only while every file that parse read
+(Clang's own inclusion list) has the same content hash and every first-party
+include directory and includer directory has the same file listing, so a new
+header that shadows a read one or satisfies a `__has_include` rescans the unit.
+An unchanged tree re-gates in seconds; a header edit rescans only the units that
+include it, and an added or removed file rescans the units that search its
+directory. A result whose inputs changed after its parse started is not stored.
+New files in system or other non-first-party include directories are not watched.
 Invoke it from a project's normal verifier alongside clang-tidy and
 clang-format:
 
@@ -87,7 +99,15 @@ rules. It does not rewrite a project's policy.
 
 Use `--exclude` only for exact vendored/generated subtrees and `--allow-global`
 only for documented platform entry points; `main` and real `extern "C"`
-functions are recognized automatically. The tool reports the translation-unit
+functions are recognized automatically. A GCC compile command is parsed with
+the libclang of the matching Clang driver.
+
+`--entry-root` (repeatable, a file or subtree) turns on the `entry point` rule:
+`main` is then allowed only inside an entry root, and a `main` anywhere else is
+reported as `path:entry point:main`. A project with one framework-owned `main`
+passes that file plus its `tests/` and `tools/` trees, and lists each remaining
+hand-written `main` in its `--accept` file until it is folded in. Without
+`--entry-root`, `main` is an entry point wherever it is. The tool reports the translation-unit
 and first-party file counts even when it finds no violations.
 
 Claim staleness needs complete Git history because its symbol evidence comes from `git log -L`.
