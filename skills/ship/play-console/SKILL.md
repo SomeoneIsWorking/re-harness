@@ -97,5 +97,10 @@ play_console.py ctl type 'textarea' '...'   # any weblua-ctl command against the
   regions", "Select all rows", save; put an uploaded version code on track `alpha` with status
   `draft` (the API refuses any other status on a draft app); "Edit release", Next, Save; the
   publishing page then offers "Submit N changes for review".
+- A track's testers are either email lists or Google Groups, never both. A group anyone can join
+  (groups.google.com; its creation asks the user for a captcha) lets testers sign themselves up;
+  the closed test's join link is `https://play.google.com/apps/testing/<package>`.
+- Submitting a change while a review is running cancels and restarts that review; save the change
+  and send it after the review finishes.
 - When `review` still says locked, record what was ruled out in the project's issue; Help > "Create
   support ticket" (App releases > App publishing) shows an AI answer before it files the ticket.
