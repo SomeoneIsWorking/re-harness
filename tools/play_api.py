@@ -9,7 +9,7 @@ signature: openssl signs the token request through a pipe.
     play_api.py listing com.example.app [--language en-US]
     play_api.py products com.example.app
     play_api.py product com.example.app remove_ads --price 2.49 --title "Remove ads" --description "..."
-    play_api.py upload com.example.app build/app.aab --track internal --notes "Fixes."
+    play_api.py upload com.example.app build/app.aab --track internal --track alpha --notes "Fixes."
 """
 
 from __future__ import annotations
@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     upload = commands.add_parser("upload")
     upload.add_argument("package")
     upload.add_argument("bundle", type=Path)
-    upload.add_argument("--track", default="internal")
+    upload.add_argument("--track", action="append", help="a track to release it on; repeat for several (default: internal)")
     upload.add_argument("--notes", default="")
     upload.add_argument("--name")
     upload.add_argument("--status", default="completed", choices=("completed", "draft"))
@@ -226,11 +226,13 @@ def main(argv: list[str] | None = None) -> int:
             client.request("POST", f"{app}/oneTimeProducts/{args.product}/purchaseOptions:batchUpdateStates", body={"requests": [activate]})
             print(f"{args.package}: {args.product} active at {args.price} USD in {len(body['purchaseOptions'][0]['regionalPricingAndAvailabilityConfigs'])} regions")
         else:
+            tracks = args.track or ["internal"]
             with Edit(client, args.package, commit=True, not_for_review=args.not_for_review) as edit:
                 bundle = client.request("POST", edit.url("bundles?uploadType=media", upload=True), data=args.bundle.read_bytes(), timeout=900)
-                body = release_body(args.track, bundle["versionCode"], args.notes, args.status, args.name)
-                client.request("PUT", edit.url(f"tracks/{args.track}"), body=body)
-            print(f"{args.package}: version code {bundle['versionCode']} on {args.track} ({args.status})")
+                for track in tracks:
+                    body = release_body(track, bundle["versionCode"], args.notes, args.status, args.name)
+                    client.request("PUT", edit.url(f"tracks/{track}"), body=body)
+            print(f"{args.package}: version code {bundle['versionCode']} on {', '.join(tracks)} ({args.status})")
     except PlayError as error:
         print(error, file=sys.stderr)
         return 1
