@@ -166,10 +166,11 @@ class Session:
             text = self.text()
             if "complete the required steps in the app dashboard" in text:
                 return "locked: the dashboard still has required steps"
-            if re.search(r"(Send|Submit) (\d+ )?changes? for review", text):
-                return "ready: changes can be sent for review"
+            waiting = re.search(r"(Send|Submit) (\d+ )?changes? for review", text)
             if "Changes in review" in text:
-                return "in review"
+                return "in review; more changes saved, sending them restarts the review" if waiting else "in review"
+            if waiting:
+                return "ready: changes can be sent for review"
             if "Last published" in text and "Changes not yet submitted" not in text:
                 return "published, nothing waiting"
             time.sleep(1)
