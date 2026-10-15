@@ -90,5 +90,12 @@ play_console.py ctl type 'textarea' '...'   # any weblua-ctl command against the
 - `review` reports `locked` (the dashboard has required steps), `ready`, `in review` or `published`.
   "Ready" still needs the user's go-ahead unless they asked for the submission; sending is
   outward-facing.
-- When `review` says locked but the dashboard shows nothing left to do, record what was ruled out
-  in the project's issue rather than guessing; Play Console Help's contact form is the last step.
+- A draft app (its dashboard says "Draft app") can only be sent for its first review with a release
+  on a reviewed track: closed testing, open testing or production. An internal-testing release does
+  not count, and `review` reports `locked` although the dashboard lists nothing left. Fix: on the
+  closed track (`closed-testing`, "Manage track") tick the testers list and save, "Add countries /
+  regions", "Select all rows", save; put an uploaded version code on track `alpha` with status
+  `draft` (the API refuses any other status on a draft app); "Edit release", Next, Save; the
+  publishing page then offers "Submit N changes for review".
+- When `review` still says locked, record what was ruled out in the project's issue; Help > "Create
+  support ticket" (App releases > App publishing) shows an AI answer before it files the ticket.

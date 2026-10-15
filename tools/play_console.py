@@ -166,7 +166,7 @@ class Session:
             text = self.text()
             if "complete the required steps in the app dashboard" in text:
                 return "locked: the dashboard still has required steps"
-            if re.search(r"Send (\d+ )?changes? for review", text):
+            if re.search(r"(Send|Submit) (\d+ )?changes? for review", text):
                 return "ready: changes can be sent for review"
             if "Changes in review" in text:
                 return "in review"
