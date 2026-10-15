@@ -37,9 +37,11 @@ play_api.py upload <package> build/android/App.aab --track internal --name "12 (
 play_api.py tracks <package>
 ```
 
-- An upload is one edit: bundle, track release, commit. Any error discards the edit.
-- `--status completed` (default) makes the release available to the track's testers, even on a
-  draft app. `--not-for-review` commits without sending changes for review when Play refuses an
+- An upload is one edit: bundle, track releases, commit. Any error discards the edit. Repeat
+  `--track` to release it on several tracks in that one edit (`alpha` is closed testing).
+- `--status completed` (default) makes the release available to the track's testers; a draft app
+  takes it only on internal testing (any other track: `--status draft`, then roll out in the
+  console). `--not-for-review` commits without sending changes for review when Play refuses an
   automatic send.
 - The version code comes from the bundle; it must be higher than every code already uploaded.
 - Verify with `tracks` afterwards; record the version in the project's state doc.
