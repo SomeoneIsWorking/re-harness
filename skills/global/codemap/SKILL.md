@@ -44,6 +44,4 @@ changes only when modules change:
 
 It does not list symbols, because `find` reads them from the code and a copied list goes stale. It
 never holds goals, state, progress, issues or verification claims. Update a module's line in the
-same change that adds, moves, splits or re-owns that module. `codemap.py check` reports cited paths
-that no longer exist and top-level dirs the map does not mention. `codemap.py tree` prints line
-counts for orientation.
+same change that adds, moves, splits or re-owns that module.
