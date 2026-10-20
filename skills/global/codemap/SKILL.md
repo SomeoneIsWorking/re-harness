@@ -1,81 +1,64 @@
 ---
 name: codemap
-description: Consult and maintain a project's codemap — the single-page ownership and placement map for which subsystem owns each responsibility, where it lives now, and where new responsibility should go. Use when orienting in a codebase or adding, moving, splitting, or re-owning a subsystem. A codemap is not a goals, project-state, task, issue, or evidence tracker.
+description: Consult and maintain a project's codemap — the module map that exists so nothing is written twice: every module, every concept it owns, and the exact symbols that implement them, searchable by the words someone would use for the feature. Use before writing any function, constant, type, conversion or formula, and when adding, moving, splitting or re-owning a module. A codemap is not a goals, project-state, task, issue or evidence tracker.
 ---
 
-# Codemap — subsystem ownership and placement
+# Codemap: a module map against duplication
 
-A codemap answers **which subsystem owns this responsibility, where does it
-live now, and where should related work go?** It prevents architecture and
-placement from being re-derived by grepping. It is keyed by subsystem, not by
-goal, state item, issue, or proof.
+The codemap exists to stop code being written twice. Someone about to write a helper, constant,
+conversion, formula, parser or state transition searches the codemap for the feature. They either
+find the symbol that already does it, or they learn that none exists and which module should own
+it. A codemap that names subsystems but not the concepts and symbols inside them fails at this job.
 
-Canonical location: `docs/codemap.md` (fall back to `CODEMAP.md` only when a
-project already uses it; migrate rather than create a second authority).
+Location: `docs/codemap.md`.
 
-## What a codemap contains
+## What it contains
 
-- A short layer diagram or prose map of the architecture and ownership
-  boundaries.
-- An annotated source tree, generated with `codemap.py tree`, so existing
-  locations are visible without hand-maintained counts.
-- An ownership table: `Subsystem | Responsibility | Current/target location |
-  Entry point | Deep doc`.
-- A “Where does X go?” index from common capabilities to their existing or
-  intended owner.
-
-For a missing responsibility, the target location names where it should be
-implemented. It does not assert whether the capability is verified or missing.
-
-The codemap must not contain goals, project-state assertions, progress checklists,
-current or next work, blockers, exit criteria, definitions of done, issue
-queues, or verification claims.
-
-When planning or progress is found in a codemap, move it to project goals,
-project state, or issues as appropriate. Leave only ownership and placement.
-
-## Tool
-
-The bundled dependency-free `codemap.py` operates from the project root:
+One section per module (a directory, or a file group with one owner), in dependency order:
 
 ```
-codemap.py tree [roots...] [--depth N] [--files] [--min-lines N]
-    Print an annotated source tree with recursive line and file counts.
-
-codemap.py scaffold [roots...] > docs/codemap.md
-    Emit an ownership-table scaffold, annotated source tree, and index.
-
-codemap.py check [--map docs/codemap.md] [roots...]
-    Report source subsystems absent from the map and referenced paths that no
-    longer exist. Exit 1 on drift.
+## present/vram  —  runtime/psx/present/vram_rect.h, vram_pixel.h
+VRAM geometry and the 555 pixel.
+- VRAM size, 1024x512, halfwords: `psx::vram::kWidth`, `kHeight`, `kHalfwords`
+- point / rect / clip / overlap: `VramRect`, `VramRect::overlaps`, `clipToVram`
+- 555 to RGB888, 5-to-8 bit expand: `vram::toRgb888`, `vram::expand5`
+- texpage / CLUT word decode: `Texpage::decode`, `ClutWord`
+Not here: GP0 command decode (`gpu/gp0`), display-area readout (`present/display`).
 ```
 
-The tool builds and audits Markdown; it never owns architectural decisions.
+- **Concept lines** start with the words a searcher would type: synonyms, the hardware name and
+  the guest name. They end with the exact public symbols. A grep for `rgb`, `555`, `1024`,
+  `expand` or `clut` must land on the owner.
+- **Every public symbol that another module may call** is listed. A shared helper missing from the
+  map counts as missing from the code, and the next agent will write it again.
+- **Hardware facts and magic numbers** (sizes, rates, masks, addresses) are concept lines too,
+  because they are the most often redefined.
+- **"Not here" lines** name the nearby concepts that live elsewhere, so a near miss still leads to
+  the right owner.
+- **A one-line dependency direction** at the top: which layer may call which.
 
-## Consulting
+There is no prose architecture essay, no annotated tree and no table of subsystem blurbs. Deep
+detail goes in the module's own doc, linked from its heading. The codemap never holds goals, state,
+progress, issues or verification claims.
 
-1. Find the responsibility in the ownership table or “Where does X go?” index.
-2. Open the current or target module and entry point.
-3. Follow a deep doc only when implementation detail is needed.
-4. For capability status, current focus, or done/missing, consult project state
-   instead of inferring from file presence, row order, or tree gaps.
+## Consulting (before writing code)
+
+1. Before adding any function, constant, type or conversion, grep `docs/codemap.md` for the
+   concept under two or three names.
+2. On a hit, use that symbol. If it is almost right, extend the owner; never write a second
+   version beside it.
+3. On a miss, grep the source for the same terms. Code that exists but is absent from the map is
+   a map defect: add its line, then use it.
+4. Only when both searches miss, write the code in the module the map says owns that layer, and
+   add its concept line in the same change.
 
 ## Maintaining
 
-Update the codemap in the same change that adds, removes, moves, splits, or
-re-owns a subsystem:
+Every change that adds, removes, renames or moves a public symbol updates its concept line in the
+same commit. When two implementations of one concept are found, the fix is to merge them into the
+owner and leave one line, never to record both.
 
-1. Correct the responsibility, owner, current/target location, and entry point.
-2. Refresh the generated tree when paths change.
-3. Run `codemap.py check` and fix uncovered subsystems or stale paths.
-4. Update any machine-readable ownership twin if the project has one.
+`codemap.py tree` prints the source tree with line counts for orientation. `codemap.py check`
+reports referenced paths that no longer exist.
 
-Do not touch the codemap merely because a state item or issue changed; no
-ownership boundary changed in that case.
-
-## Bootstrapping
-
-Run `codemap.py scaffold > docs/codemap.md`, then replace placeholders with
-precise responsibilities, current/target locations, and entry points.
-Project-specific
-mechanics belong in a project-level codemap skill; this skill remains generic.
+Project-specific mechanics belong in a project-level codemap skill; this skill stays generic.

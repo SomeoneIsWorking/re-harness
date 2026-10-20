@@ -33,8 +33,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 - Each subsystem has one accurate doc: what it owns, inputs and outputs, invariants, data flow, how
   to check it in the running product.
-- `docs/codemap.md` says where code lives. Read it before placing code; update it in the change that
-  adds or moves an owner.
+- `docs/codemap.md` is the module map that prevents duplication: each module, the concepts it owns
+  under the words someone would search for, and their exact public symbols. Grep it for the concept
+  before writing any function, constant or conversion. Update its line in the same change that adds,
+  renames or moves a public symbol.
 - `docs/project-goals.md`: stable goal IDs, outcomes, success conditions, non-goals.
 - `docs/project-state.md`: every intended capability as `verified`/`partial`/`blocked`/`missing`
   with evidence or the exact gap, one current focus, and a comparison baseline listing each
