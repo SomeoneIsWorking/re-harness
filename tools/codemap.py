@@ -1,32 +1,26 @@
 #!/usr/bin/env python3
-"""codemap.py — survey a codebase into a tree, scaffold a codemap, and check it
-for drift. Dependency-free (Python 3.8+ stdlib). Project-agnostic; run from the
-project root.
+"""codemap.py: find existing definitions before writing new ones, and keep docs/codemap.md honest.
+
+    codemap.py find PHRASE [PHRASE ...] [--limit N]
+        Search every definition (functions, lambdas, constants, macros, types, aliases, enum
+        members) in this repo, its submodules and the checkouts it links to (gitignored
+        symlinks such as external/<framework> included). A phrase matches when each of its
+        words matches the name, the value, or the comment above it. Numbers match by value,
+        so `find 1024` also finds `= 0x400`. Phrases are alternatives.
 
     codemap.py tree [roots...] [--depth N] [--files] [--min-lines N]
-        Print an annotated source TREE: each directory with its recursive
-        (lines, files) and per-file lines with --files. This is the tree-like
-        structure a codemap is built on. Roots default to auto-detected source
-        dirs (src, lib, app, pkg, internal, cmd, ...) else the top-level dirs.
-
-    codemap.py scaffold [roots...]
-        Emit a starter docs/codemap.md to stdout: layers blurb + a per-subsystem
-        ownership table (one row per top-level source dir) + the tree in a
-        fenced block + a Where-index skeleton. Redirect into docs/codemap.md
-        and edit.
+        Print the source tree with recursive line and file counts.
 
     codemap.py check [--map docs/codemap.md] [roots...]
-        Governance: cross-check the map against the tree. Reports (a) source
-        subsystems/dirs NOT mentioned in the map (ownership-map gaps) and (b) file
-        paths the map references that no longer exist on disk (stale entries).
-        Exit code 1 if any drift is found (usable in CI / a pre-commit check).
+        Report top-level source dirs the map does not mention and paths it cites that no
+        longer exist. Exit 1 on either.
 
-Storage-agnostic: the codemap doc is plain Markdown you own; this tool builds
-and audits it, it does not lock you into a format.
+Stdlib only; run from inside the project.
 """
 import argparse
 import os
 import re
+import subprocess
 import sys
 
 SKIP_DIRS = {
@@ -36,17 +30,230 @@ SKIP_DIRS = {
     ".tox", ".idea", ".vscode", ".cache", "coverage", ".next", ".claude",
 }
 CODE_EXT = {
-    ".c", ".h", ".cc", ".hh", ".cpp", ".hpp", ".cxx", ".py", ".rs", ".go",
+    ".c", ".h", ".cc", ".hh", ".cpp", ".hpp", ".cxx", ".inl", ".py", ".rs", ".go",
     ".js", ".jsx", ".ts", ".tsx", ".java", ".kt", ".swift", ".rb", ".php",
     ".cs", ".m", ".mm", ".scala", ".lua", ".sh", ".zig", ".ml", ".ex", ".exs",
+    ".glsl", ".frag", ".vert", ".comp", ".hlsl", ".metal",
 }
 SRC_ROOT_HINTS = ["src", "lib", "app", "apps", "pkg", "internal", "cmd",
                   "source", "core", "packages"]
+FIND_SKIP_DIRS = {"build", "scratch", "node_modules", ".venv", "__pycache__", ".git"}
 
 
 def _is_code(name):
     return os.path.splitext(name)[1].lower() in CODE_EXT
 
+
+def _git(root, *args):
+    res = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True)
+    return res.stdout if res.returncode == 0 else ""
+
+
+def _toplevel(path):
+    return _git(path, "rev-parse", "--show-toplevel").strip() or None
+
+
+# ---------------------------------------------------------------- find
+
+def _linked_checkouts(root):
+    """Git checkouts this repo reaches through submodules or symlinked directories."""
+    found = []
+    for line in _git(root, "submodule", "status").splitlines():
+        parts = line[1:].split()
+        if len(parts) >= 2:
+            found.append(os.path.join(root, parts[1]))
+    for dp, dirs, _ in os.walk(root):
+        if dp.count(os.sep) - root.count(os.sep) >= 3:
+            dirs[:] = []
+            continue
+        keep = []
+        for d in dirs:
+            full = os.path.join(dp, d)
+            if d in FIND_SKIP_DIRS:
+                continue
+            if os.path.islink(full):
+                found.append(full)
+            else:
+                keep.append(d)
+        dirs[:] = keep
+    return found
+
+
+def _owner(root):
+    url = _git(root, "remote", "get-url", "origin").strip()
+    m = re.search(r"[:/]([^/:]+)/[^/]+?(?:\.git)?$", url)
+    return m.group(1).lower() if m else None
+
+
+def _search_roots(start):
+    """(label, real path, ours) for the repo and every checkout it links to, nearest first.
+
+    A checkout is ours when its origin has the same owner as the starting repo's."""
+    top = _toplevel(start)
+    if not top:
+        sys.exit("codemap.py find: run inside a git checkout")
+    owner = _owner(top)
+    roots, seen, queue = [], set(), [(top, ".")]
+    while queue:
+        path, label = queue.pop(0)
+        real = os.path.realpath(path)
+        if real in seen or not os.path.isdir(real):
+            continue
+        seen.add(real)
+        roots.append((label, real, label == "." or _owner(real) == owner))
+        for link in _linked_checkouts(path):
+            if _toplevel(link) != os.path.realpath(link):
+                continue
+            rel = os.path.relpath(link, path)
+            queue.append((link, rel if label == "." else os.path.join(label, rel)))
+    return roots
+
+
+def _root_files(real):
+    out = _git(real, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    for rel in out.split("\0"):
+        if not rel or not _is_code(rel):
+            continue
+        if any(part in FIND_SKIP_DIRS for part in rel.split("/")[:-1]):
+            continue
+        full = os.path.join(real, rel)
+        if os.path.isfile(full) and not os.path.islink(full):
+            yield rel
+
+
+_CPP_KEYWORDS = {
+    "return", "if", "else", "while", "for", "switch", "case", "do", "new", "delete", "throw",
+    "sizeof", "goto", "co_return", "co_await", "static_assert", "decltype", "alignof",
+    "typedef", "operator",
+}
+_DEFS = [
+    ("macro", re.compile(r"^\s*#\s*define\s+(\w+)(.*)")),
+    ("type", re.compile(
+        r"^\s*(?:template\s*<.*>\s*)?(?:class|struct|union|enum(?:\s+class)?|concept)"
+        r"\s+(?:\[\[[^\]]*\]\]\s*)?(\w+)\s*(?:final\s*)?(?::[^;{]*)?(?:\{|$|=)")),
+    ("alias", re.compile(r"^\s*using\s+(\w+)\s*=\s*(.*?);?\s*$")),
+    ("alias", re.compile(r"^\s*typedef\s+.*?\b(\w+)\s*;\s*$")),
+    ("lambda", re.compile(r"^\s*(?:const\s+|static\s+|constexpr\s+)*auto\s+(\w+)\s*=\s*(\[.*)")),
+    ("const", re.compile(
+        r"^\s*(?:(?:inline|static|extern|constinit)\s+)*(?:constexpr|const)\s+"
+        r"[\w:<>,\s\*&]*?\b(\w+)\s*(?:\[[^\]]*\])*\s*[={]\s*(.*?)[;,]?\s*$")),
+    ("enum", re.compile(r"^\s*(k[A-Z]\w*|[A-Z][A-Z0-9_]{2,})\s*=\s*([^,;{}()]+?)\s*,?\s*(?://.*)?$")),
+    ("function", re.compile(
+        r"^\s*(?:template\s*<[^>]*>\s*)?((?:[\w:<>,\*&\[\]]+\s+)+)[\*&]*((?:\w+::)*~?\w+)\s*\(")),
+]
+_PY_DEFS = [
+    ("function", re.compile(r"^\s*(?:async\s+)?def\s+(\w+)")),
+    ("type", re.compile(r"^\s*class\s+(\w+)")),
+    ("const", re.compile(r"^([A-Z][A-Z0-9_]+)\s*(?::[^=]+)?=\s*(.+)$")),
+]
+_COMMENT = re.compile(r"^\s*(?://+|#(?!\s*(?:define|include|if|endif|else|pragma|undef))|/?\*+)\s?(.*)")
+
+
+def _definition(line, is_py):
+    for kind, pat in (_PY_DEFS if is_py else _DEFS):
+        m = pat.match(line)
+        if not m:
+            continue
+        if kind == "function" and not is_py:
+            types = m.group(1).split()
+            head = line.split("(")[0]
+            if types[0] in _CPP_KEYWORDS or "=" in head or "&&" in head or "||" in head:
+                continue
+            if line.rstrip().endswith(","):
+                continue
+            return kind, m.group(2), ""
+        value = m.group(2) if m.lastindex and m.lastindex >= 2 else ""
+        if kind == "const" and "constexpr" not in line and not re.match(r"[-\d{'\"]", value):
+            continue
+        return kind, m.group(1), value
+    return None
+
+
+def _words(name):
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name.replace("::", " ").replace("_", " "))
+    spaced = re.sub(r"([A-Za-z])([0-9])", r"\1 \2", spaced)
+    words = [w.lower() for w in spaced.split()]
+    if len(words) > 1 and words[0] == "k":
+        words = words[1:]
+    return words
+
+
+def _number(text):
+    try:
+        return int(text.replace("'", "").rstrip("uUlL"), 0)
+    except ValueError:
+        return None
+
+
+def _numbers_in(text):
+    return {_number(t) for t in re.findall(r"\b(?:0[xX][0-9a-fA-F']+|\d[\d']*)[uUlL]*\b", text)} - {None}
+
+
+def _word_hits(word, name_words, joined, value_numbers, comment):
+    num = _number(word)
+    if num is not None:
+        if num in value_numbers:
+            return 2
+        return 1 if num in _numbers_in(comment) else 0
+    stem = word[:-1] if len(word) > 3 and word.endswith("s") else word
+    if any(w.startswith(stem) for w in name_words) or stem in joined:
+        return 2
+    return 1 if re.search(r"\b" + re.escape(stem), comment) else 0
+
+
+def _scan(root_label, real):
+    for rel in _root_files(real):
+        try:
+            with open(os.path.join(real, rel), encoding="utf-8", errors="replace") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            continue
+        is_py = rel.endswith(".py")
+        comment = []
+        for i, line in enumerate(lines):
+            c = _COMMENT.match(line)
+            if c and not line.lstrip().startswith("#define"):
+                comment.append(c.group(1))
+                continue
+            found = _definition(line, is_py)
+            if found:
+                kind, name, value = found
+                trailing = line.split("//", 1)[1] if "//" in line else ""
+                text = " ".join(comment + [trailing]).lower()
+                path = rel if root_label == "." else os.path.join(root_label, rel)
+                yield path, i + 1, kind, name, value, line.strip(), text
+            comment = []
+
+
+def cmd_find(args):
+    phrases = [p.lower().split() for p in args.phrases]
+    roots = _search_roots(os.getcwd())
+    hits = []
+    for order, (label, real, ours) in enumerate(roots):
+        for path, line, kind, name, value, src, comment in _scan(label, real):
+            name_words = _words(name)
+            joined = "".join(name_words)
+            numbers = _numbers_in(value)
+            best = 0
+            for words in phrases:
+                scores = [_word_hits(w, name_words, joined, numbers, comment) for w in words]
+                if all(scores):
+                    best = max(best, sum(scores))
+            if best:
+                hits.append((not ours, -best, order, path, line, kind, src))
+    hits.sort()
+    print("searched: " + ", ".join(label + ("" if ours else " (third-party)")
+                                   for label, _, ours in roots))
+    if not hits:
+        print("no definition matches; place new code where docs/codemap.md says this layer lives")
+        return
+    for third_party, _, _, path, line, kind, src in hits[:args.limit]:
+        print(f"{path}:{line}  {kind:8} {'[3p] ' if third_party else ''}{src[:120]}")
+    if len(hits) > args.limit:
+        print(f"... {len(hits) - args.limit} more (--limit)")
+
+
+# ---------------------------------------------------------------- tree
 
 def _count_lines(path):
     try:
@@ -57,16 +264,12 @@ def _count_lines(path):
 
 
 def _walk(root):
-    """Yield (dirpath, code_files[]) for root, pruning SKIP_DIRS. dirpath is
-    relative to cwd."""
     for dp, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
-        cf = sorted(f for f in files if _is_code(f))
-        yield dp, cf
+        yield dp, sorted(f for f in files if _is_code(f))
 
 
 def _dir_stats(root):
-    """{dirpath: (lines, nfiles)} aggregated RECURSIVELY, plus per-file lines."""
     per_file = {}
     for dp, files in _walk(root):
         for f in files:
@@ -76,14 +279,14 @@ def _dir_stats(root):
     for p, n in per_file.items():
         d = os.path.dirname(p)
         while True:
-            l, c = agg.get(d, (0, 0))
-            agg[d] = (l + n, c + 1)
+            lines, count = agg.get(d, (0, 0))
+            agg[d] = (lines + n, count + 1)
             if os.path.normpath(d) == os.path.normpath(root) or not d:
                 break
-            nd = os.path.dirname(d)
-            if nd == d:
+            parent = os.path.dirname(d)
+            if parent == d:
                 break
-            d = nd
+            d = parent
     return agg, per_file
 
 
@@ -95,211 +298,94 @@ def _auto_roots():
                   if os.path.isdir(d) and d not in SKIP_DIRS and not d.startswith("."))
 
 
-def _exts_in(per_file, dirpath):
-    e = {}
-    for p in per_file:
-        if os.path.normpath(p).startswith(os.path.normpath(dirpath) + os.sep):
-            e[os.path.splitext(p)[1]] = e.get(os.path.splitext(p)[1], 0) + 1
-    return " ".join(k for k, _ in sorted(e.items(), key=lambda x: -x[1])[:4])
-
-
-def cmd_tree(args):
-    roots = args.roots or _auto_roots()
-    if not roots:
-        print("(no source roots found)")
-        return
-    total_l = total_f = 0
-    for root in roots:
-        if not os.path.isdir(root):
-            print(f"{root}  (not a directory)")
-            continue
-        agg, per_file = _dir_stats(root)
-        rl, rf = agg.get(root, (0, 0))
-        total_l += rl
-        total_f += rf
-        print(f"{root}/  —  {rl:,} lines, {rf} files")
-        # print subdirs as a tree up to depth
-        subdirs = sorted(d for d in agg if d != root
-                         and os.path.dirname(d) and _depth(d, root) <= args.depth)
-        subdirs.sort()
-        for d in subdirs:
-            depth = _depth(d, root)
-            l, c = agg[d]
-            if l < args.min_lines:
-                continue
-            name = os.path.basename(d)
-            exts = _exts_in(per_file, d)
-            print(f"{'│  ' * (depth - 1)}├─ {name}/  {l:,} lines  {c} files"
-                  + (f"  [{exts}]" if exts and depth == 1 else ""))
-            if args.files:
-                for p in sorted(per_file):
-                    if os.path.dirname(p) == d:
-                        print(f"{'│  ' * depth}   {os.path.basename(p)}  {per_file[p]:,}")
-    print(f"\nTOTAL: {total_l:,} lines across {total_f} files in {len(roots)} root(s)")
-
-
 def _depth(dirpath, root):
     rel = os.path.relpath(dirpath, root)
     return 0 if rel == "." else rel.count(os.sep) + 1
 
 
-def cmd_scaffold(args):
+def cmd_tree(args):
     roots = args.roots or _auto_roots()
-    print("# Codemap\n")
-    print("The single-page answer to **which subsystem owns each responsibility, "
-          "where it lives, and where new work should go.**")
-    print("Capability status belongs in `docs/project-state.md`.\n")
-    print("## Subsystems\n")
-    print("| Subsystem | Responsibility | Current / target location | Entry point | Deep doc |")
-    print("|---|---|---|---|---|")
+    total_lines = total_files = 0
     for root in roots:
         if not os.path.isdir(root):
+            print(f"{root}  (not a directory)")
             continue
         agg, per_file = _dir_stats(root)
-        subs = sorted(d for d in agg if _depth(d, root) == 1)
-        if not subs:
-            print(f"| {root} | _describe ownership_ | `{root}/` | _entry_ | _doc_ |")
-        for d in subs:
-            print(f"| {os.path.basename(d)} | _describe ownership_ | `{d}/` | _entry_ | _doc_ |")
-    print("\n## Source tree\n\n```")
-    # reuse tree rendering
-    ns = argparse.Namespace(roots=roots, depth=2, files=False, min_lines=0)
-    _capture(cmd_tree, ns)
-    print("```\n")
-    print("## Where is X? (quick index)\n")
-    print("- **<capability>** → `<file>:<entry function>`  _(add the lookups you do most)_")
+        lines, count = agg.get(root, (0, 0))
+        total_lines += lines
+        total_files += count
+        print(f"{root}/  {lines:,} lines, {count} files")
+        for d in sorted(d for d in agg if d != root and _depth(d, root) <= args.depth):
+            depth = _depth(d, root)
+            lines, count = agg[d]
+            if lines < args.min_lines:
+                continue
+            print(f"{'│  ' * (depth - 1)}├─ {os.path.basename(d)}/  {lines:,} lines  {count} files")
+            if args.files:
+                for p in sorted(p for p in per_file if os.path.dirname(p) == d):
+                    print(f"{'│  ' * depth}   {os.path.basename(p)}  {per_file[p]:,}")
+    print(f"\nTOTAL: {total_lines:,} lines across {total_files} files in {len(roots)} root(s)")
 
 
-def _capture(fn, ns):
-    import io
-    buf = io.StringIO()
-    old = sys.stdout
-    sys.stdout = buf
-    try:
-        fn(ns)
-    finally:
-        sys.stdout = old
-    sys.stdout.write(buf.getvalue())
+# ---------------------------------------------------------------- check
 
-
-# paths referenced in the map: backticked `foo/bar.ext` or `foo/bar/`
 _PATH_RE = re.compile(r"`([./A-Za-z0-9_\-]+\.[A-Za-z0-9]+|[./A-Za-z0-9_\-]+/)`")
+
+
+def _ignored(paths):
+    if not paths:
+        return set()
+    res = subprocess.run(["git", "check-ignore", "--stdin"], input="\n".join(paths),
+                         capture_output=True, text=True)
+    if res.returncode not in (0, 1):
+        return set()
+    return {line.strip().rstrip("/") for line in res.stdout.splitlines() if line.strip()}
 
 
 def cmd_check(args):
     if not os.path.isfile(args.map):
-        sys.exit(f"no codemap at {args.map} (run: codemap.py scaffold > {args.map})")
+        sys.exit(f"no codemap at {args.map}")
     with open(args.map, encoding="utf-8") as f:
-        text = f.read()
-    referenced = set()
-    for m in _PATH_RE.finditer(text):
-        referenced.add(m.group(1).rstrip("/"))
-    roots = args.roots or _auto_roots()
-    # (a) ownership coverage: top-level subsystem dirs not mentioned anywhere in the map
+        referenced = {m.group(1).rstrip("/") for m in _PATH_RE.finditer(f.read())}
     gaps = []
-    for root in roots:
+    for root in args.roots or _auto_roots():
         if not os.path.isdir(root):
             continue
         agg, _ = _dir_stats(root)
-        subs = [d for d in agg if _depth(d, root) == 1] or [root]
-        for d in subs:
+        for d in [d for d in agg if _depth(d, root) == 1] or [root]:
             nd = os.path.normpath(d)
             if not any(nd == os.path.normpath(r) or r.startswith(nd) for r in referenced):
                 gaps.append(d)
-    # A DIRECTORY GIT IGNORES IS NOT A SUBSYSTEM THE CODEMAP FORGOT -- it is
-    # OUTPUT. An emulator's shader cache, a build tree, a scratch directory: they
-    # are absent from a fresh clone by design and nobody will ever write a
-    # codemap row for them, so reporting them as coverage gaps makes `check`
-    # permanently noisy. That is the same cry-wolf argument the stale check below
-    # already makes, applied to the half that was missing it: measured on one
-    # repo, 5 of 7 reported gaps were ignored caches and vendored trees.
-    # The COUNT is still printed, because "no gaps" and "gaps I decided not to
-    # show you" must not look the same.
-    gap_ignored = set()
-    if gaps:
-        try:
-            import subprocess
-            res = subprocess.run(["git", "check-ignore", "--stdin"],
-                                 input="\n".join(gaps), capture_output=True,
-                                 text=True, timeout=10)
-            if res.returncode in (0, 1):
-                gap_ignored = {l.strip().rstrip("/") for l in res.stdout.splitlines()
-                               if l.strip()}
-        except Exception:
-            pass
-    gaps = [g for g in gaps if os.path.normpath(g).rstrip("/") not in gap_ignored]
-
-    # (b) stale: referenced PATHS (multi-segment, containing '/') that no longer
-    # exist. Bare filenames (e.g. `interpreter.cpp` cited in prose without a
-    # directory) are NOT path assertions, so they're not checked -- only things
-    # written as real relative paths are.
-    # THE `foo.cpp/.h` SHORTHAND IS NOT A PATH. Codemaps routinely write a pair
-    # of sibling files as `user_profile.cpp/.h`, which contains a slash and so
-    # used to be treated as a path assertion -- reporting six real, present files
-    # as STALE. A checker that cries wolf gets ignored, which costs more than not
-    # having it: the whole point is that a genuine drift stands out.
-    # A PATH THAT GIT IGNORES CANNOT BE CHECKED, so reporting it as stale is a lie the
-    # checker tells every single run. A codemap legitimately cites things inside ignored
-    # trees -- a game asset under an ignored data directory, a generated file under an
-    # ignored build directory -- and those are absent from a fresh clone BY DESIGN. Left in,
-    # they make `check` permanently red, and a check that is always red is a check nobody
-    # reads, which costs more than having no check at all.
-    ignored = set()
-    candidates = [r for r in referenced if "/" in r and "/." not in r and not os.path.exists(r)]
-    if candidates:
-        try:
-            import subprocess
-            res = subprocess.run(["git", "check-ignore", "--stdin"],
-                                 input="\n".join(candidates), capture_output=True,
-                                 text=True, timeout=10)
-            # exit 0 = some ignored, 1 = none ignored, 128 = not a git repo. Only 0 and 1 are
-            # answers; anything else means we did not learn whether they are ignored and must
-            # not pretend we did.
-            if res.returncode in (0, 1):
-                ignored = {l.strip() for l in res.stdout.splitlines() if l.strip()}
-        except Exception:
-            pass
-    stale = [r for r in sorted(candidates) if r not in ignored]
-    skipped = sorted(ignored)
-    if gap_ignored:
-        print(f"({len(gap_ignored)} gitignored director{'y' if len(gap_ignored) == 1 else 'ies'}"
-              f" not counted as gaps: {', '.join(sorted(gap_ignored))})")
-    if gaps:
-        print("OWNERSHIP-MAP GAPS — source subsystems not mentioned in the codemap:")
-        for g in sorted(gaps):
-            print(f"  ⬜ {g}/")
-    # Said out loud rather than silently dropped: "0 stale" must not be able to mean "I
-    # skipped the ones that were missing".
-    if skipped:
-        print(f"({len(skipped)} referenced path(s) are git-ignored and absent, so they cannot "
-              f"be checked: {', '.join(skipped[:4])}"
-              f"{' …' if len(skipped) > 4 else ''})")
-    if stale:
-        print("STALE — paths the codemap references that don't exist on disk:")
-        for s in stale:
-            print(f"  ❌ {s}")
-    if not gaps and not stale:
-        print("codemap OK: every source subsystem is mentioned and no referenced path is missing.")
-        return
-    sys.exit(1)
+    gaps = [g for g in gaps if os.path.normpath(g) not in _ignored(gaps)]
+    # `a.cpp/.h` shorthand and gitignored paths are not checkable path claims
+    missing = [r for r in referenced if "/" in r and "/." not in r and not os.path.exists(r)]
+    stale = sorted(set(missing) - _ignored(missing))
+    for g in sorted(gaps):
+        print(f"not in map: {g}/")
+    for s in stale:
+        print(f"stale path: {s}")
+    if gaps or stale:
+        sys.exit(1)
+    print("codemap OK")
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="survey / scaffold / check a codebase codemap")
+    p = argparse.ArgumentParser(description="find definitions; survey and check a codemap")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    f = sub.add_parser("find", help="find existing definitions of a concept")
+    f.add_argument("phrases", nargs="+")
+    f.add_argument("--limit", type=int, default=40)
+    f.set_defaults(func=cmd_find)
 
     t = sub.add_parser("tree", help="print an annotated source tree")
     t.add_argument("roots", nargs="*")
     t.add_argument("--depth", type=int, default=2)
-    t.add_argument("--files", action="store_true", help="list files under each dir")
-    t.add_argument("--min-lines", type=int, default=0, help="hide dirs below this line count")
+    t.add_argument("--files", action="store_true")
+    t.add_argument("--min-lines", type=int, default=0)
     t.set_defaults(func=cmd_tree)
 
-    s = sub.add_parser("scaffold", help="emit a starter codemap.md")
-    s.add_argument("roots", nargs="*")
-    s.set_defaults(func=cmd_scaffold)
-
-    c = sub.add_parser("check", help="report ownership-map gaps + stale paths vs the tree")
+    c = sub.add_parser("check", help="report map gaps and stale paths")
     c.add_argument("--map", default="docs/codemap.md")
     c.add_argument("roots", nargs="*")
     c.set_defaults(func=cmd_check)

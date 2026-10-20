@@ -1,64 +1,49 @@
 ---
 name: codemap
-description: Consult and maintain a project's codemap — the module map that exists so nothing is written twice: every module, every concept it owns, and the exact symbols that implement them, searchable by the words someone would use for the feature. Use before writing any function, constant, type, conversion or formula, and when adding, moving, splitting or re-owning a module. A codemap is not a goals, project-state, task, issue or evidence tracker.
+description: Stop code being written twice. Before writing any new function, lambda, constant, type, conversion, formula or magic number, run `codemap.py find` for the concept; it searches every definition in the repo and in every checkout it links to (the framework, Lucent, submodules), which plain grep in a title repo cannot see. Also covers docs/codemap.md, the short module map that says where code goes when nothing exists yet.
 ---
 
-# Codemap: a module map against duplication
+# Codemap: find before you write
 
-The codemap exists to stop code being written twice. Someone about to write a helper, constant,
-conversion, formula, parser or state transition searches the codemap for the feature. They either
-find the symbol that already does it, or they learn that none exists and which module should own
-it. A codemap that names subsystems but not the concepts and symbols inside them fails at this job.
+Duplication happens for two reasons. The searcher cannot see the owner: in a game repo the
+framework is a gitignored symlink, so `rg` and Grep skip it, and `vendor/` hides Lucent. Or the
+searcher uses a different name for the same thing (`expand5`, `scale5to8`, `kVramWidth`,
+`kDeviceVramWidth`). `codemap.py find` fixes both. It searches definitions only, across every
+linked checkout, by name words, by value and by the comment above the definition.
 
-Location: `docs/codemap.md`.
+## Before writing a definition
 
-## What it contains
-
-One section per module (a directory, or a file group with one owner), in dependency order:
+Run it for every new function, lambda, constant, type, enum value, macro or conversion that might
+already exist. That covers anything that is not plainly local to the code being changed:
 
 ```
-## present/vram  —  runtime/psx/present/vram_rect.h, vram_pixel.h
-VRAM geometry and the 555 pixel.
-- VRAM size, 1024x512, halfwords: `psx::vram::kWidth`, `kHeight`, `kHalfwords`
-- point / rect / clip / overlap: `VramRect`, `VramRect::overlaps`, `clipToVram`
-- 555 to RGB888, 5-to-8 bit expand: `vram::toRgb888`, `vram::expand5`
-- texpage / CLUT word decode: `Texpage::decode`, `ClutWord`
-Not here: GP0 command decode (`gpu/gp0`), display-area readout (`present/display`).
+~/.claude/skills/codemap/codemap.py find 'vram width' 1024
+~/.claude/skills/codemap/codemap.py find expand5 '5 to 8' 'rgb555'
 ```
 
-- **Concept lines** start with the words a searcher would type: synonyms, the hardware name and
-  the guest name. They end with the exact public symbols. A grep for `rgb`, `555`, `1024`,
-  `expand` or `clut` must land on the owner.
-- **Every public symbol that another module may call** is listed. A shared helper missing from the
-  map counts as missing from the code, and the next agent will write it again.
-- **Hardware facts and magic numbers** (sizes, rates, masks, addresses) are concept lines too,
-  because they are the most often redefined.
-- **"Not here" lines** name the nearby concepts that live elsewhere, so a near miss still leads to
-  the right owner.
-- **A one-line dependency direction** at the top: which layer may call which.
+- Give two or three phrasings. Each phrase is one alternative, and every word in a phrase must
+  match. Include the literal value of any constant: numbers match by value, so `1024` finds
+  `0x400`.
+- Results list your own repos first, then third-party checkouts marked `[3p]`.
+- **Hit:** use it. If it is almost right, change the owner; never write a second one beside it.
+- **Several hits for one concept:** that is an existing duplicate. Merge them into the owner the
+  module map names as part of the change, and do not add a further copy.
+- **No hit:** write it in the module `docs/codemap.md` names for that layer. Give it a name that
+  carries the concept's words. Where the name cannot carry them, add one short comment line above
+  it with the words someone would search for, which `find` reads.
 
-There is no prose architecture essay, no annotated tree and no table of subsystem blurbs. Deep
-detail goes in the module's own doc, linked from its heading. The codemap never holds goals, state,
-progress, issues or verification claims.
+## docs/codemap.md: the module map
 
-## Consulting (before writing code)
+The map answers what `find` cannot: where code that does not exist yet belongs. It is short and
+changes only when modules change:
 
-1. Before adding any function, constant, type or conversion, grep `docs/codemap.md` for the
-   concept under two or three names.
-2. On a hit, use that symbol. If it is almost right, extend the owner; never write a second
-   version beside it.
-3. On a miss, grep the source for the same terms. Code that exists but is absent from the map is
-   a map defect: add its line, then use it.
-4. Only when both searches miss, write the code in the module the map says owns that layer, and
-   add its concept line in the same change.
+- One line of dependency direction: which layer may call which.
+- One line per module: its path and the concepts it owns, in the words someone would search for.
+  For example: `runtime/psx/present/vram_*  VRAM size and geometry, the 555 pixel and its 5-to-8
+  expand, texpage and CLUT words`.
 
-## Maintaining
-
-Every change that adds, removes, renames or moves a public symbol updates its concept line in the
-same commit. When two implementations of one concept are found, the fix is to merge them into the
-owner and leave one line, never to record both.
-
-`codemap.py tree` prints the source tree with line counts for orientation. `codemap.py check`
-reports referenced paths that no longer exist.
-
-Project-specific mechanics belong in a project-level codemap skill; this skill stays generic.
+It does not list symbols, because `find` reads them from the code and a copied list goes stale. It
+never holds goals, state, progress, issues or verification claims. Update a module's line in the
+same change that adds, moves, splits or re-owns that module. `codemap.py check` reports cited paths
+that no longer exist and top-level dirs the map does not mention. `codemap.py tree` prints line
+counts for orientation.
