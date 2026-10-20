@@ -45,7 +45,7 @@ no second mutable copy to drift.
 | `tools/info.py` | What has been proven, falsified, or measured, and whether the evidence is stale |
 | `tools/project_state.py` | Whether goals, factual project state, and issue links form a coherent graph |
 | `tools/catalog.py` | Which atomic tasks, bugs, findings, blockers, and dead ends have been recorded |
-| `tools/codemap.py` | Whether source coverage and subsystem placement are mapped |
+| `tools/codemap.py` | `find`: every existing definition of a concept across linked checkouts, before writing a new one |
 | `tools/re_frontier.py` | Which ordered RE step is ready and which steps carry hack debt |
 | `tools/go_public.py` | Which history entries contain material that must not ship publicly |
 | `tools/cleanup-files` | How to remove an explicit set of in-tree files without partial cleanup |
