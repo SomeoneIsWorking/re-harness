@@ -18,8 +18,8 @@ Every bug, regression or feature follows these steps in order. Skipping one is h
    Until you can, you are still investigating: read, log, bisect; do not edit product code.
 4. **Fix at the owner.** The smallest change that makes the owner correct. If the owner's
    structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
-5. **Prove it.** A unit test through the shipping code that fails before and passes after, and the
-   reproduction now showing the expected behaviour.
+5. **Prove it.** Run the reproduction in the real product and show the expected behaviour (a frame,
+   a log line, a value). Never write tests or verifiers as proof: a passing test is not evidence.
 6. **Record it.** Update the owner's doc where the contract or behaviour changed.
 
 If a fix does not work, revert it and go back to step 3; never stack a second guess on the first.
@@ -32,7 +32,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 ## Docs
 
 - Each subsystem has one accurate doc: what it owns, inputs and outputs, invariants, data flow, how
-  to test it.
+  to check it in the running product.
 - `docs/codemap.md` says where code lives. Read it before placing code; update it in the change that
   adds or moves an owner.
 - `docs/project-goals.md`: stable goal IDs, outcomes, success conditions, non-goals.
@@ -58,7 +58,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - The user's observation of the running product outranks your evidence. Treat a reported regression
   as a falsifier and reproduce from the last known-good state.
 - Report delivery state literally: dirty tree, local commit and pushed commit differ. "Done" means
-  integrated, gated, committed and pushed.
+  integrated, shown working in the product, committed and pushed.
 - Do what was asked. Suggest a better idea; do not substitute it.
 - For an irreversible step, name the exact consequence. Do it if authorized; otherwise ask once.
 
@@ -73,10 +73,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - No dead code, stale names, warnings or compatibility paths once their replacement exists.
 - Errors preserve valid state: fail fast or propagate; catch only to restore an invariant, add
   context, retry an idempotent operation, or terminate cleanly.
-- The project verifier fails on source files over 1,200 lines, growth of known monoliths, forbidden
-  cross-layer dependencies, output outside the logger, and environment reads outside the config
-  owner. Limits only shrink.
-- Reusable title-neutral C++ helpers go in Lucent, tested there.
+- Reusable title-neutral C++ helpers go in Lucent.
 
 ## C++
 
@@ -84,11 +81,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   GCC, AppleClang and other supported compilers. If Clang cannot build a project, report it.
 - Tracked `.clang-format` (every body braced, one statement per line) and `.clang-tidy` (defaults plus
   `clang-analyzer-*`, `bugprone-*`, `performance-*`; warnings are errors), copied from a maintained
-  repo and checked by the verifier. Fix findings; never blanket-suppress.
+  repo. Fix findings; never blanket-suppress.
 - State lives in classes in project namespaces with RAII; no project functions in the global
   namespace, no C facade over a class, no `extern` globals, no function-local `static`. Declarations
-  live in the owning header; constants are `inline constexpr` there. `tools/cpp_policy.py` enforces
-  what clang-tidy cannot.
+  live in the owning header; constants are `inline constexpr` there.
 - Logging goes through Lucent only, one line per call, never wrapped in `if`. One config owner reads
   the environment into typed immutable config; nothing else calls `getenv`. Local HTTP and control
   channels use `lucent::http::Server`.
@@ -96,8 +92,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 ## Tooling
 
 - `./run.sh` launches the one intended product with zero arguments and is the fresh-clone setup
-  path; it is a shim (`exec uv run --frozen python bootstrap.py "$@"`). Agents never run it; verify
-  with headless, silent maintainer tools that reuse the same build modules.
+  path; it is a shim (`exec uv run --frozen python bootstrap.py "$@"`). Agents never run it; check
+  the product with headless, silent maintainer tools that reuse the same build modules.
 - Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
   `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
 - A missing native package gets a refusal naming the exact install command per platform.
@@ -110,13 +106,13 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   through `gh api` or the web tools; never clone-and-build, run their scripts, install their
   packages or pipe a download to a shell. A download goes into its own empty `scratch/` dir and is
   passed to our tools as an argument. Vendoring third-party code is a separate, reviewed step.
-- Every windowed product has a hidden-window mode for tests and tools: an unmapped window on the
+- Every windowed product has a hidden-window mode for tools: an unmapped window on the
   user's session, no vsync, errors logged instead of shown as dialogs. No Xvfb, offscreen drivers or
   stripped `DISPLAY` inside a tool; headless CI wraps the whole job.
 
 ## Repository and worktree
 
-- One branch, `main`; commit directly. A verified fix is standing authorization to commit and push.
+- One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
   Commit messages are one line, `type(scope): subject`, plus attribution trailers.
 - Every maintained repo has a GitHub `origin`; run the `go-public` audit before making one public.
 - Nothing machine-specific in tracked files (no home paths); game assets never enter git.

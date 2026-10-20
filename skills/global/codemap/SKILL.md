@@ -76,6 +76,6 @@ ownership boundary changed in that case.
 ## Bootstrapping
 
 Run `codemap.py scaffold > docs/codemap.md`, then replace placeholders with
-precise responsibilities, current/target locations, and entry points. Wire
-`codemap.py check` into the normal verifier when practical. Project-specific
+precise responsibilities, current/target locations, and entry points.
+Project-specific
 mechanics belong in a project-level codemap skill; this skill remains generic.

@@ -88,8 +88,7 @@ focus. Preserve IDs. Cite claims or direct durable evidence for `verified` and
 the demonstrated subset of `partial` items. If evidence is falsified, move the
 item back to the honest state and review dependent items.
 
-Run `project_state.py --root .` after every state or issue-link edit and make it
-part of the normal verifier when practical.
+Run `project_state.py --root .` after every state or issue-link edit.
 
 Keep implementation detail in subsystem docs, historical session narrative out
 of the state inventory, and atomic work in `docs/issues/`.
