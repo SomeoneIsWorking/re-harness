@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Google Play Developer API (androidpublisher v3) through a service account.
 
-Reads tracks, store listings and one-time products, and uploads a bundle to a
-track as one edit. The service account's key never leaves its file except as a
+Reads tracks, store listings and one-time products, writes a store listing, and
+uploads a bundle to a track as one edit. The service account's key never leaves its file except as a
 signature: openssl signs the token request through a pipe.
 
     play_api.py tracks com.example.app
     play_api.py listing com.example.app [--language en-US]
+    play_api.py set-listing com.example.app --language tr-TR --title "..." --short "..." --full listing.txt
     play_api.py products com.example.app
     play_api.py product com.example.app remove_ads --price 2.49 --title "Remove ads" --description "..."
     play_api.py upload com.example.app build/app.aab --track internal --track alpha --notes "Fixes."
@@ -181,6 +182,12 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("package")
         if name == "listing":
             command.add_argument("--language", default="en-US")
+    listing = commands.add_parser("set-listing", help="create or replace one language's store listing")
+    listing.add_argument("package")
+    listing.add_argument("--language", required=True, help="a Play language code, such as tr-TR")
+    listing.add_argument("--title", required=True, help="at most 30 characters")
+    listing.add_argument("--short", required=True, help="the short description, at most 80 characters")
+    listing.add_argument("--full", required=True, type=Path, help="a UTF-8 file holding the full description, at most 4000 characters")
     product = commands.add_parser("product", help="create or update a non-consumable one-time product and activate it")
     product.add_argument("package")
     product.add_argument("product")
@@ -209,6 +216,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "listing":
             with Edit(client, args.package, commit=False) as edit:
                 show(client.request("GET", edit.url(f"listings/{args.language}")))
+        elif args.command == "set-listing":
+            body = {"language": args.language, "title": args.title, "shortDescription": args.short, "fullDescription": args.full.read_text(encoding="utf-8").strip()}
+            with Edit(client, args.package, commit=True) as edit:
+                show(client.request("PUT", edit.url(f"listings/{args.language}"), body=body))
         elif args.command == "products":
             show(client.request("GET", f"{API}/{args.package}/oneTimeProducts"))
         elif args.command == "product":
