@@ -10,7 +10,8 @@ game ports add `dynarec-port`, `game-port-structure` and `port-release`.
 Every bug, regression or feature follows these steps in order. Skipping one is how bandaids happen.
 
 1. **Reproduce.** Write down observed vs expected and the exact input that shows it (replay and
-   frame, warp target, command). No reproduction, no change.
+   frame, warp target, command). Start from the earliest occurrence: run from boot and take the
+   first screen or frame where it shows, not the one where it was noticed. No reproduction, no change.
 2. **Find the owner.** `docs/codemap.md` to the module; read its doc and the code path end to end
    before editing anything. If the codemap cannot lead you there, fix the codemap first.
 3. **Trace to the cause.** Follow the wrong value back to where it first goes wrong; for guest
