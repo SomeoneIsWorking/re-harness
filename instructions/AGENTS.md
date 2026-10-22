@@ -3,7 +3,7 @@
 `shared/re-harness` is the only editable source of these instructions, the skills and the shared
 `tools/`; agent homes and `~/repo/AGENTS.md` are links installed by `tools/install_skills.py`.
 Domain rules live in skills: CI, releases and Android for any product in `release` and `android`;
-game ports add `dynarec-port`, `game-port-structure` and `port-release`.
+game ports add `dynarec-port`, `game-port-structure`, `port-release` and `dynamic-scan`.
 
 ## How to work a problem
 
@@ -11,7 +11,8 @@ Every bug, regression or feature follows these steps in order. Skipping one is h
 
 1. **Reproduce.** Write down observed vs expected and the exact input that shows it (replay and
    frame, warp target, command). Start from the earliest occurrence: run from boot and take the
-   first screen or frame where it shows, not the one where it was noticed. No reproduction, no change.
+   first screen or frame where it shows, not the one where it was noticed. In a port, reproduce
+   through the dynamic scan or the test program before playing. No reproduction, no change.
 2. **Find the owner.** `docs/codemap.md` to the module; read its doc and the code path end to end
    before editing anything. If the codemap cannot lead you there, fix the codemap first.
 3. **Trace to the cause.** Follow the wrong value back to where it first goes wrong; for guest
