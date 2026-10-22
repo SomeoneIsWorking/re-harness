@@ -49,5 +49,6 @@ proven in that title.
 
 ## Keep it lean
 
-One test program and one way to run a scan. No selftests, ledgers or wrappers around either. When the scan
-or test program costs more time than it saves, cut it back.
+Building the owner reports, the warps a scan needs and the test program is required work, not optional
+tooling, even when it takes a long pass; it is what makes every later pass fast. Lean means no layers around
+them: one test program, one way to run a scan, no selftests, ledgers or wrappers.
