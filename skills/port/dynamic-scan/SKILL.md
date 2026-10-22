@@ -20,6 +20,11 @@ the project logger.
 - A widescreen layer lists draws culled or clipped at the original edges.
 - A loading or skip layer lists waits it could not remove.
 
+Report only defect classes that cost real time, and report redundancy as a defect too. That covers a draw
+claimed by two owners, two code paths producing the same thing, and an owner that never fires in any
+scanned state (dead code). Never report a pass count, a census of what already works, or a surface check
+on output that cannot tell good code from bad.
+
 A layer whose concept can be bypassed should be restructured so the bypass is reported on the first
 frame it happens (`game-port-structure`: one entry point per concept).
 
