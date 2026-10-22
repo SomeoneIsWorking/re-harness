@@ -35,8 +35,11 @@ idle, then go through boot and attract mode. Collect the run-end reports, ordere
 
 - Identity, coverage and culling defects need no player input or motion. Pacing and feel still need a
   real-time run, which is done once to close a pass.
-- A state no warp reaches is a scan gap. Add the warp (title-owned, through the game's own transition
-  owner) rather than steering gameplay to get there.
+- Agents never play the game to reach an area or trigger a scenario: no scripted input, no replays steering
+  the player, no AI driving. Every area and scenario (a level, a cutscene, a boss, a menu, an event) is
+  reached by a title-owned debug route: a control-channel command that arms a request, which the frame
+  driver applies at a frame boundary through the game's own load or transition owner. A state no route
+  reaches is a scan gap; the fix is a new route, found by RE of the game's own entry into that state.
 - The result is the work list: guest functions without an owner, ordered by state. Fix the first state's
   items first.
 
