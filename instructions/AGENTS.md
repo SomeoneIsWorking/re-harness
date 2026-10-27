@@ -10,18 +10,21 @@ game ports add `dynarec-port`, `game-port-structure`, `port-release` and `dynami
 Every bug, regression or feature follows these steps in order. Skipping one is how bandaids happen.
 
 1. **Reproduce.** Write down observed vs expected and the exact input that shows it (replay and
-   frame, warp target, command). Start from the earliest occurrence: run from boot and take the
-   first screen or frame where it shows, not the one where it was noticed. In a port, reproduce
-   through the dynamic scan or the test program before playing. No reproduction, no change.
+   frame, warp target, command). Start from the earliest occurrence: run from boot once and take the
+   first screen or frame where it shows, not the one where it was noticed, then iterate on that
+   screen through its warp. In a port, reproduce through the dynamic scan or the test program before
+   playing. No reproduction, no change.
 2. **Find the owner.** `docs/codemap.md` to the module; read its doc and the code path end to end
    before editing anything. If the codemap cannot lead you there, fix the codemap first.
 3. **Trace to the cause.** Follow the wrong value back to where it first goes wrong; for guest
    behaviour, decompile the guest function. Write the cause as one sentence naming `file:function`.
-   Until you can, you are still investigating: read, log, bisect; do not edit product code.
+   Until you can, you are still investigating: read and log on HEAD; do not edit product code.
 4. **Fix at the owner.** The smallest change that makes the owner correct. If the owner's
    structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
-5. **Prove it.** Run the reproduction in the real product and show the expected behaviour (a frame,
-   a log line, a value). Never write tests or verifiers as proof: a passing test is not evidence.
+5. **Prove it.** Show the expected frame, log line or value in the running product on the defect's
+   screen, reached through its warp; one real-time walk closes the pass. A check written for the fix
+   is not proof. The framework's one test program (`dynamic-scan`) is the only standing test; add no
+   other gates, checkers, ledgers or verifiers.
 6. **Record it.** Update the owner's doc where the contract or behaviour changed.
 
 If a fix does not work, revert it and go back to step 3; never stack a second guess on the first.
@@ -35,16 +38,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 - Each subsystem has one accurate doc: what it owns, inputs and outputs, invariants, data flow, how
   to check it in the running product.
-- `docs/codemap.md` is the module map: one line per module naming the concepts it owns in the words
-  someone would search for. Update it in the change that adds or moves a module.
-- Before writing any function, lambda, constant, type or conversion, run `codemap.py find` for the
-  concept (codemap skill). Plain grep in a game repo misses the framework and Lucent.
-- `docs/project-goals.md`: stable goal IDs, outcomes, success conditions, non-goals.
-- `docs/project-state.md`: every intended capability as `verified`/`partial`/`blocked`/`missing`
-  with evidence or the exact gap, one current focus, and a comparison baseline listing each
-  user-visible delta from the original (widescreen, loading, controls, platforms, ...).
-- `docs/issues/`: one bug, task or dead end per file. `docs/re-frontier.md`: what has and has not
-  been reverse-engineered; update it in the same commit as the RE work.
+- `docs/codemap.md` is the module map, one line per module (codemap skill). Update it in the change
+  that adds or moves a module.
+- `docs/project-goals.md`, `docs/project-state.md` and `docs/issues/` (project-state skill);
+  `docs/re-frontier.md`, updated in the same commit as the RE work (re-frontier skill).
 - `docs/prior-art.md` (every RE project): community decomps, symbol maps, native ports and RE notes
   for the exact target build, each with its license, its build match proven by cross-checked
   addresses, and what we take from it. Checked before any RE begins and again before a new title or
@@ -60,7 +57,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Be brutally honest. No flattery or affirmation openers; if the user is wrong on fact or logic, say
   so plainly and proceed correctly.
 - The user's observation of the running product outranks your evidence. Treat a reported regression
-  as a falsifier and reproduce from the last known-good state.
+  as a falsifier and reproduce it on HEAD.
 - Report delivery state literally: dirty tree, local commit and pushed commit differ. "Done" means
   integrated, shown working in the product, committed and pushed.
 - Do what was asked. Suggest a better idea; do not substitute it.
@@ -72,9 +69,14 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   compose. New behaviour goes in the smallest owning module; split a touched monolith at the relevant
   boundary before extending it. No `Utils`/`Manager`/`Common`/`Misc`, numbered fragments or
   forwarding webs.
-- One implementation of each rule, formula, parser, state transition and mapping. Search for the
-  owner before adding code. Tests exercise the shipping code through a seam, never a copy.
-- No dead code, stale names, warnings or compatibility paths once their replacement exists.
+- Each concept has one entry point (a layer) callers cannot go around. If a change has to edit more
+  than one layer, the owner is wrong: restructure first. An owner that can see a bypass reports it at
+  run end (`dynamic-scan`).
+- One implementation of each rule, formula, parser, state transition and mapping. Before adding any
+  definition run `codemap.py find` (plain grep in a game repo misses the framework and Lucent) and
+  extend the owner it finds. Tests exercise the shipping code through a seam, never a copy.
+- No dead code, stale names, warnings or compatibility paths once their replacement exists. An owner
+  that never fires in any scanned state is dead code; delete it.
 - Errors preserve valid state: fail fast or propagate; catch only to restore an invariant, add
   context, retry an idempotent operation, or terminate cleanly.
 - Reusable title-neutral C++ helpers go in Lucent.
@@ -122,7 +124,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Nothing machine-specific in tracked files (no home paths); game assets never enter git.
 - Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
 - Builds go under gitignored `build/`, run artifacts under gitignored `scratch/<activity>/`, never
-  `/tmp`. Clean with `tools/scratch_gc.py` or `tools/cleanup-files`, never raw `rm` of broad paths.
+  `/tmp`. Clean with `scratch_gc.py` or `cleanup-files`, never raw `rm` of broad paths.
   Large CMake builds use Ninja; an unchanged rebuild compiles nothing.
 - One build tree per purpose (`build/agent`, `build/player`), never one per task. Third-party dependencies
   are built once per revision and toolchain into a shared prefix outside the repo and consumed through
