@@ -19,6 +19,7 @@ INSTRUCTION_DESTINATIONS = (
     Path("repo/AGENTS.md"),
 )
 TOOL_NAMES = (
+    "adb_pair.py",
     "catalog.py",
     "cleanup-files",
     "codemap.py",

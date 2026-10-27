@@ -16,5 +16,5 @@ description: Android rules for any product, whatever the engine (native SDL, God
   multi-touch, pause, safe areas, scale-aware hit regions, hidden when a controller is present.
 - Release performance is measured on named Android devices (frame-time percentiles, thermals,
   memory, loading, correctness); desktop results are not evidence.
-- Installing on the user's phone goes over `adb` (wireless pairing when they send a code); the
+- Installing on the user's phone goes over `adb`; pair it wirelessly with `adb_pair.py` (a QR to scan); the
   phone may be in use by another session, so never drive its screen without asking.
