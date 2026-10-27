@@ -73,6 +73,9 @@ oracle from the same state:
 - a bit-identical boot or savestate, pinned input, and a deterministic guest time source;
 - compare CPU state, relevant memory, service events, audio and frames at the smallest practical
   boundary;
+- audio is always compared, not only frames. Compare each sound voice's state (key on/off, pitch,
+  envelope phase, volume) per field at aligned guest state, because removed loads mean raw sample
+  streams never line up. A voice left keyed on, or one that never starts, is a divergence like any other;
 - report the first divergent guest PC, boundary, region, expected and actual value.
 
 Then classify the owner (decode/lowering, invalidation, CPU state transfer, memory map,
