@@ -6,7 +6,8 @@
         members) in this repo, its submodules and the checkouts it links to (gitignored
         symlinks such as external/<framework> included). A phrase matches when each of its
         words matches the name, the value, or the comment above it. Numbers match by value,
-        so `find 1024` also finds `= 0x400`. Phrases are alternatives.
+        so `find 1024` also finds `= 0x400`. Phrases are alternatives. A name or constant value
+        defined in more than one first-party unit is printed first as a duplicate group.
 
 Stdlib only; run from inside the project.
 """
@@ -210,6 +211,24 @@ def _scan(root_label, real):
             comment = []
 
 
+def _duplicates(hits):
+    """First-party hits defining one multi-word name, or one value under a matching name, in
+    more than one unit."""
+    groups = {}
+    for third_party, _, _, path, line, kind, src, name, numbers, named in hits:
+        if third_party:
+            continue
+        words = _words(name.split("::")[-1])
+        keys = [("name", "".join(words))] if len(words) > 1 else []
+        if named and kind in ("const", "enum", "macro") and len(numbers) == 1 and not numbers & {0, 1}:
+            keys.append(("value", next(iter(numbers))))
+        for key in keys:
+            groups.setdefault(key, []).append((path, line, kind, src))
+    # A declaration and its definition (foo.h, foo.cpp) are one unit.
+    return [members for members in groups.values()
+            if len({os.path.splitext(path)[0] for path, _, _, _ in members}) > 1]
+
+
 def cmd_find(args):
     phrases = [p.lower().split() for p in args.phrases]
     roots = _search_roots(os.getcwd())
@@ -225,14 +244,23 @@ def cmd_find(args):
                 if all(scores):
                     best = max(best, sum(scores))
             if best:
-                hits.append((not ours, -best, order, path, line, kind, src))
-    hits.sort()
+                named = any(_number(w) is None and _word_hits(w, name_words, joined, set(), "")
+                            for words in phrases for w in words)
+                hits.append((not ours, -best, order, path, line, kind, src, name, numbers, named))
+    hits.sort(key=lambda hit: hit[:5])
     print("searched: " + ", ".join(label + ("" if ours else " (third-party)")
                                    for label, _, ours in roots))
     if not hits:
         print("no definition matches; place new code where docs/codemap.md says this layer lives")
         return
-    for third_party, _, _, path, line, kind, src in hits[:args.limit]:
+    duplicates = _duplicates(hits)
+    for members in duplicates[:5]:
+        print(f"defined {len(members)} times (merge into the owner, do not add another):")
+        for path, line, kind, src in members:
+            print(f"  {path}:{line}  {kind:8} {src[:120]}")
+    if len(duplicates) > 5:
+        print(f"... {len(duplicates) - 5} more duplicate groups")
+    for third_party, _, _, path, line, kind, src, _, _, _ in hits[:args.limit]:
         print(f"{path}:{line}  {kind:8} {'[3p] ' if third_party else ''}{src[:120]}")
     if len(hits) > args.limit:
         print(f"... {len(hits) - args.limit} more (--limit)")

@@ -64,8 +64,8 @@ CONTAINERS = {NAMESPACE, LINKAGE_SPEC}
 OWNERS = {kind for kind, opens in OPENS.items() if opens & IN_NAMESPACE_OR_RECORD}
 #: Declarations whose name and storage class the rules read.
 NAMED = {FUNCTION_DECL, VAR_DECL, FUNCTION_TEMPLATE}
-#: Where a global-namespace function is declared: file scope, or an `extern "C"` block at it.
-GLOBAL_PARENTS = {TRANSLATION_UNIT, LINKAGE_SPEC}
+#: Functions a watched reference may name.
+CALLABLE = {FUNCTION_DECL, CXX_METHOD, FUNCTION_TEMPLATE}
 
 CHILD_BREAK, CHILD_CONTINUE, CHILD_RECURSE = 0, 1, 2
 DECLARATION, CODE, OTHER = "declaration", "code", "other"
@@ -261,6 +261,7 @@ class Walk:
         self.directory = directory
         self.ours = ours
         self.watched = watched
+        self.watched_names = frozenset(name.rpartition("::")[2] for name in watched)
         self.files = {}
         self.declarations = []
         self.references = []
@@ -344,12 +345,24 @@ class Walk:
             scope & ~FILE_SCOPE,
         ))
 
+    def qualified_name(self, cursor):
+        """`ns::Class::fn`; `extern "C"` blocks add nothing, so a global function is its bare name."""
+        parts = [self.library.text(self.api.clang_getCursorSpelling(cursor))]
+        parent = self.api.clang_getCursorSemanticParent(cursor)
+        while parent.kind in OPENS or parent.kind == NAMESPACE:
+            if parent.kind != LINKAGE_SPEC:
+                parts.append(self.library.text(self.api.clang_getCursorSpelling(parent)) or "(anonymous)")
+            parent = self.api.clang_getCursorSemanticParent(parent)
+        return "::".join(reversed(parts))
+
     def reference(self, cursor):
-        name = self.library.text(self.api.clang_getCursorSpelling(cursor))
-        if name not in self.watched:
+        if self.library.text(self.api.clang_getCursorSpelling(cursor)) not in self.watched_names:
             return
         target = self.api.clang_getCursorReferenced(cursor)
-        if target.kind != FUNCTION_DECL or self.api.clang_getCursorSemanticParent(target).kind not in GLOBAL_PARENTS:
+        if target.kind not in CALLABLE:
+            return
+        name = self.qualified_name(target)
+        if name not in self.watched:
             return
         source, ours, line = self.locate(self.api.clang_getSpellingLocation, cursor)
         if ours:
@@ -393,7 +406,8 @@ def parse(arguments, directory, source, ours, watched=frozenset()):
     """Parse one unit with its compile arguments and walk its first-party declarations.
 
     `arguments[0]` is the Clang driver; `ours(path)` says whether a file is first-party; uses of a
-    global-namespace function named in `watched` are collected as references.
+    function whose qualified name (`fn` for a global one, `ns::fn` otherwise) is in `watched` are
+    collected as references.
     """
     if not source.is_file():
         raise RuntimeError(f"{source} is in the compile database but does not exist; reconfigure the build")

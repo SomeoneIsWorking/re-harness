@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Check first-party C++ ownership rules using Clang's parsed AST.
 
-Run this beside clang-tidy with the same Clang compile database. Formatting and
-clang-tidy configuration are separate gates; this tool covers syntax that those
-checks cannot reliably prohibit.
+  cpp_policy.py --root . --compile-commands build/agent/compile_commands.json --exclude third_party
+  cpp_policy.py --audit-config .
+
+Findings: global-namespace functions, `extern` declarations, function-local `static`, `main`
+outside an `--entry-root`, and calls to a `--retired-name` (`fn` global, `ns::fn` qualified)
+outside the entry roots. Each unit is parsed by the libclang beside its Clang driver, one process
+per unit; results are cached under <compile db dir>/cpp_policy_cache/ while every file the parse
+read is unchanged. `--accept FILE` lists `path:rule:symbol` sites still allowed, with the reason
+above each; an accepted site that no longer occurs is itself reported. `--audit-config` checks that
+.clang-tidy and .clang-format keep the required checks and brace rules.
 """
 
 import argparse
@@ -424,7 +431,7 @@ def apply_accepted(findings, root, accepted):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--compile-commands", type=Path)
     mode.add_argument("--audit-config", type=Path, help="project directory containing .clang-tidy and .clang-format")
@@ -434,7 +441,7 @@ def main(argv=None):
     parser.add_argument("--entry-root", action="append", type=Path, default=[],
                         help="file or subtree where `main` may live; once given, `main` anywhere else is a finding")
     parser.add_argument("--retired-name", action="append", default=[],
-                        help="global function a first-party file outside the entry roots may no longer use")
+                        help="function (`fn` global, `ns::fn` qualified) a first-party file outside the entry roots may not call")
     parser.add_argument("--accept", type=Path, help="file listing accepted 'path:rule:symbol' ownership sites")
     arguments = parser.parse_args(argv)
     if arguments.audit_config:
