@@ -114,7 +114,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   passed to our tools as an argument. Vendoring third-party code is a separate, reviewed step.
 - Every windowed product has a hidden-window mode for tools: an unmapped window on the
   user's session, no vsync, errors logged instead of shown as dialogs. No Xvfb, offscreen drivers or
-  stripped `DISPLAY` inside a tool; headless CI wraps the whole job.
+  stripped `DISPLAY` inside a tool; headless CI wraps the whole job. Its control channel injects every
+  host input (keys, mouse, gamepad, touch) as real platform events into the same event queue, so a
+  hidden run exercises the player's exact input path; nothing is left that only a shown window can check.
 
 ## Repository and worktree
 
