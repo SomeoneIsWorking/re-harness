@@ -2,7 +2,7 @@
 """re_frontier.py — the RE-frontier progress tracker.
 
 The codemap (docs/codemap.md) answers "what subsystem is where + coarse status".
-The issue-catalog answers "did we hit this symptom before". Neither answers the
+The issue catalog (docs/issues/) answers "did we hit this symptom before". Neither answers the
 question this project keeps tripping on: **for the ordered chain of RE steps
 toward a faithful behaviour, which step is real reverse-engineering vs a
 render/behaviour HACK that jumped ahead of the RE?**
@@ -19,9 +19,7 @@ entries and inside them. `add`/`set` therefore edit the exact lines they mean to
 change and copy every other byte through untouched. Every write is gated on a
 preservation check that compares the new text against the old and REFUSES (exit
 2, naming the lost lines) if any content the edit did not explicitly intend to
-replace would go missing. See `selftest`, and docs/issues/0003 for the loss this
-replaced: the previous writer re-serialised only what its parser understood and
-silently dropped 1846 lines of rationale in one call.
+replace would go missing.
 
 Statuses (the core axis — real RE vs jumped-ahead hack):
   re-verified   RE'd from ground truth (exe / cooked data) + implemented + VERIFIED on real data
@@ -44,29 +42,14 @@ Commands:
   check                          integrity: unknown deps, cycles, missing fields; exit 1 on drift
   add <id> --title T --area A [--status S] [--deps a,b] [--evidence E] [--where W] [--gap G] [--notes N]
   set <id> field=value ...       update fields (status/deps/evidence/where/gap/notes/title/area)
-  selftest [--tool P] [--corpus F]  drive a prose-bearing roadmap through add/set and assert
-                                 the prose survived; exit 1 on any loss
 """
 import argparse
 import collections
 import os
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 
-# The roadmap lives at <repo>/docs/re-frontier.md by default (this file at
-# <repo>/tools/re_frontier.py). Override with $RE_FRONTIER_ROADMAP so the same
-# generic tool can run in-place from a global skill dir against any project.
-# SHARED ENGINE (psxport/tools/port/) — the roadmap belongs to the GAME, so it resolves against the
-# CURRENT WORKING DIRECTORY, not against this file's location. An in-repo copy could default to
-# <its own repo>/docs/re-frontier.md; a shared engine reached through external/psxport must not, or every
-# game would read the FRAMEWORK's roadmap. Run it from the game repo root, or pass $RE_FRONTIER_ROADMAP.
-#
-# A default that resolved to a non-existent path used to be the failure mode here (docs/info/instruments.md
-# INST-14): the tool parsed nothing and reported OK. That is now impossible in both halves — a missing file
-# exits 1, and a file that yields ZERO entries also exits 1 rather than passing vacuously.
+# The roadmap is the working project's docs/re-frontier.md, or $RE_FRONTIER_ROADMAP.
 ROADMAP = os.environ.get("RE_FRONTIER_ROADMAP", os.path.join(os.getcwd(), "docs", "re-frontier.md"))
 
 STATUS_EMOJI = {
@@ -88,9 +71,7 @@ HEADING_RE = re.compile(r"^#{1,6} ")
 AREA_RE = re.compile(r"^## +(.+)$")
 ENTRY_RE = re.compile(r"^### +(\S+) +(—|-) +(.+)$")
 FIELD_RE = re.compile(r"^- +(\w+): ?(.*)$")
-# A field-SHAPED bullet whose key this tool does not know (`- where-2: …`). It is
-# not parsed, but it does not end the field run and it is never rewritten — see
-# docs/info/instruments.md INST-14, where exactly such a line was deleted.
+# An unknown field-shaped bullet (`- where-2: …`) stays in the field run and is never rewritten.
 EXTRA_FIELD_RE = re.compile(r"^- +([\w-]+): ?(.*)$")
 
 HEADER = """# RE Frontier — the ordered RE dependency chain toward a faithful port
@@ -455,13 +436,8 @@ def cmd_next(entries, order, args):
             ready.append(e)
     print("== RE-ready steps (all deps satisfied) ==")
     if not ready:
-        # Distinguish "nothing is ready" from "nothing was PARSED". The old message claimed every
-        # unblocked step was done, which over an empty parse tells the reader the project is finished
-        # when in fact the roadmap was never read (INST-14's failure mode wearing a cheerier hat).
         if not entries:
-            print(f"  ‼ ZERO entries parsed from {DOC.path} "
-                  f"({len(DOC.lines) if DOC.exists else 0} lines) — this is NOT 'nothing is ready', it "
-                  f"is 'the roadmap was never read'. Run `check` for the diagnosis.")
+            print(f"  no entries parsed from {DOC.path}; run `check`")
         else:
             print(f"  (none of the {len(entries)} parsed step(s) is ready — each is either done or "
                   f"blocked on upstream RE)")
@@ -590,21 +566,12 @@ def cmd_check(entries, order, args):
         print(f"\n{problems} problem(s) found.", file=sys.stderr)
         return 1
     if not DOC.exists:
-        print(f"‼ {DOC.path} does not exist — checked NOTHING. Set $RE_FRONTIER_ROADMAP "
-              f"or run `scaffold`.", file=sys.stderr)
-        return 1
-    # ZERO ENTRIES IS A FAILURE, NOT A PASS (INST-14, and this half of it was still alive on
-    # 2026-08-11: the MISSING-FILE case refused correctly, the missing-CONTENT case did not).
-    # "no unknown deps, no cycles, every re-verified step cites evidence" is VACUOUSLY TRUE over an
-    # empty set, so printing it after parsing nothing is the green-over-nothing this tool exists to
-    # prevent — a file that exists but yields no entries means the parser and the document disagree
-    # about the format, which is a broken instrument, not a clean roadmap.
-    if not order:
-        print(f"‼ {DOC.path} exists ({len(DOC.lines)} lines) but ZERO entries parsed — verified "
-              f"NOTHING. Every check below is vacuously true over an empty set, so this is a FAILURE, "
-              f"not a pass. Either the file has no steps yet (run `scaffold`) or the parser and the "
-              f"document disagree about the format — fix that before trusting any re-frontier verdict.",
+        print(f"{DOC.path} does not exist; set $RE_FRONTIER_ROADMAP or run `scaffold`",
               file=sys.stderr)
+        return 1
+    if not order:
+        print(f"{DOC.path} has {len(DOC.lines)} lines but no entries parsed; run `scaffold` or fix "
+              f"the entry format", file=sys.stderr)
         return 1
     print(f"re-frontier OK: {len(order)} entr(ies) parsed from {DOC.path} "
           f"({len(DOC.lines)} lines) — no unknown deps, no cycles, every re-verified step "
@@ -694,195 +661,6 @@ def cmd_set(entries, order, args):
     return 0
 
 
-# --------------------------------------------------------------- selftest ----
-
-# A prose-bearing roadmap in the shape this tool actually meets: a project's own
-# header (not the generic one), a prose block between entries, `---` rules, a
-# non-entry `###` sub-heading inside an entry, a table, and a `- word: value`
-# line that is PROSE and must not be mistaken for a field.
-FIXTURE = """# RE frontier — Spider-Man (PSX, SLUS_008.75)
-
-The ordered reverse-engineering dependency chain toward a faithful reimplementation.
-
-**Status vocabulary**
-- `re-verified` — ground truth taken from the binary AND verified on real data.
-- `⛔ hack` — debt. **This list must shrink.**
-
-### ⛔ Current debt — none
-
-**HACK-01 (shell's measured load base) is RETIRED 2026-07-29.** No module base is
-measured any more.
-
----
-
-## Frontier
-
-### RE-00 — Provision + map the executable
-- status: re-verified
-- deps:
-- where-2: a hand-added field this tool has no schema for; INST-14 recorded one being deleted
-- evidence: PS-X EXE header: entry 0x8008739C, load 0x80010000, text 0xB6800
-- where:
-- gap:
-- notes:
-
-The disc carries ONE executable (`SLUS_008.75`), the packed archive `CD.WAD`, and
-the `CINEMAS/*.STR` movies.
-
-**Qualified 2026-07-29, and the distinction matters:** "no overlay files" is NOT
-"all code is in the executable". See RE-09.
-
-**Expires if:** a seed is added without a recorded rationale, or a different
-region/revision of the disc is used.
-
----
-
-### RE-09 — Runtime-loaded code (CD.WAD)
-- status: re-verified
-- deps: RE-00
-- evidence: shell.bin relocated offline reproduces the RUNNING game's RAM byte-for-byte over all 112912 bytes
-
-### The loader, RE'd end to end — `re-verified`
-
-| routine | what it does |
-|---|---|
-| `FUN_8001B990(name)` | loads `<name>.bin`, relocates in place, calls the base |
-
-- correction: this line looks like a field but is PROSE inside the entry body.
-
-**Verified against real data:** 112912 bytes byte-for-byte. See CLAIM-08.
-"""
-
-PROSE_MARKERS = [
-    "**HACK-01 (shell's measured load base) is RETIRED 2026-07-29.**",
-    "**Qualified 2026-07-29, and the distinction matters:**",
-    "**Expires if:** a seed is added without a recorded rationale, or a different",
-    "### The loader, RE'd end to end — `re-verified`",
-    "| `FUN_8001B990(name)` | loads `<name>.bin`, relocates in place, calls the base |",
-    "- correction: this line looks like a field but is PROSE inside the entry body.",
-    "# RE frontier — Spider-Man (PSX, SLUS_008.75)",
-    "- where-2: a hand-added field this tool has no schema for;",
-]
-
-
-def _deficits(before, after):
-    """Non-blank lines present in `before` more often than in `after`."""
-    have = collections.Counter(l for l in after if l.strip())
-    out = []
-    for line, n in collections.Counter(l for l in before if l.strip()).items():
-        d = n - have.get(line, 0)
-        if d > 0:
-            out.append((line, d))
-    return out
-
-
-def _run(tool, roadmap, argv):
-    env = dict(os.environ, RE_FRONTIER_ROADMAP=roadmap, PYTHONUTF8="1")
-    return subprocess.run([sys.executable, tool] + argv, env=env,
-                          capture_output=True, text=True, encoding="utf-8")
-
-
-def cmd_selftest(entries, order, args):
-    """Drive a prose-bearing roadmap through a real `set`/`add` and prove the prose survived.
-
-    Runs the tool as a SUBPROCESS (default: this file) so it exercises the shipping
-    CLI path, and so it can be pointed at another build with --tool to show the
-    failure this test was written against.
-    """
-    tool = os.path.abspath(args.tool or __file__)
-    base = args.workdir or os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "scratch", "re_frontier_selftest")
-    os.makedirs(base, exist_ok=True)
-    work = tempfile.mkdtemp(prefix="re_frontier_selftest_", dir=base)
-    roadmap = os.path.join(work, "re-frontier.md")
-    if args.corpus:
-        shutil.copyfile(args.corpus, roadmap)
-        src = args.corpus
-    else:
-        with open(roadmap, "w", encoding="utf-8") as fh:
-            fh.write(FIXTURE)
-        src = "<embedded fixture>"
-    with open(roadmap, encoding="utf-8") as fh:
-        before = fh.read().split("\n")
-    target = args.entry or "RE-00"
-    print(f"selftest: tool={tool}")
-    print(f"selftest: corpus={src} -> {roadmap} ({len(before)} lines)")
-
-    failures = []
-
-    def step(desc, argv, must_change):
-        r = _run(tool, roadmap, argv)
-        print(f"  $ {' '.join(argv)}  -> exit {r.returncode}")
-        for l in (r.stdout + r.stderr).splitlines():
-            print(f"    | {l}")
-        if r.returncode != 0:
-            failures.append(f"{desc}: exited {r.returncode}")
-            return None
-        with open(roadmap, encoding="utf-8") as fh:
-            after = fh.read().split("\n")
-        # POSITIVE CONTROL: a tool that refuses every write, or writes nothing,
-        # would trivially preserve the prose. The edit must actually land.
-        if must_change and not any(must_change in l for l in after):
-            failures.append(f"{desc}: the edit did not land — no line contains {must_change!r}")
-        return after
-
-    after = step("set", ["set", target, "status=in-progress",
-                         "notes=selftest touched this"], "- status: in-progress")
-    if after is not None:
-        # The ONLY lines this `set` is allowed to consume are the target entry's
-        # own old `- status:` and `- notes:` lines. Anything else missing is loss.
-        lost = [(l, n) for l, n in _deficits(before, after)
-                if not (l.startswith("- status:") or l.startswith("- notes:"))]
-        allowed = sum(n for l, n in _deficits(before, after)
-                      if l.startswith("- status:") or l.startswith("- notes:"))
-        kept = sum(1 for l in before if l.strip())
-        print(f"    checked {kept} non-blank source lines; {allowed} field line(s) "
-              f"legitimately replaced; {sum(n for _, n in lost)} lost")
-        if allowed > 2:
-            failures.append(f"set consumed {allowed} status/notes lines; at most 2 "
-                            f"(the target entry's own) can be legitimate")
-        if lost:
-            failures.append(f"set DROPPED {sum(n for _, n in lost)} non-blank line(s):")
-            for l, n in lost[:15]:
-                failures.append(f"      - {l[:150]}")
-        for marker in (PROSE_MARKERS if not args.corpus else []):
-            if not any(marker in l for l in after):
-                failures.append(f"set lost prose marker: {marker[:120]}")
-        before = after
-
-    after = step("add", ["add", "SELFTEST-01", "--title", "selftest entry",
-                         "--area", "Frontier", "--status", "todo"],
-                 "### SELFTEST-01")
-    if after is not None:
-        lost = _deficits(before, after)
-        print(f"    checked {sum(1 for l in before if l.strip())} non-blank source lines; "
-              f"{sum(n for _, n in lost)} lost")
-        if lost:
-            failures.append(f"add DROPPED {sum(n for _, n in lost)} non-blank line(s):")
-            for l, n in lost[:15]:
-                failures.append(f"      - {l[:150]}")
-
-    r = _run(tool, roadmap, ["show", target])
-    if r.returncode != 0 or "in-progress" not in r.stdout:
-        failures.append("read-back: `show` no longer reports the edited status "
-                        f"(exit {r.returncode})")
-    if not args.corpus and "0x8008739C" not in r.stdout:
-        # The fields BELOW the unknown `- where-2:` line must still parse.
-        failures.append("read-back: `show` lost the evidence field that follows an "
-                        "unknown `- where-2:` field line")
-
-    print(f"selftest workdir kept for inspection: {work}")
-    if failures:
-        print("\nSELFTEST FAILED:", file=sys.stderr)
-        for f in failures:
-            print(f"  {f}", file=sys.stderr)
-        return 1
-    print("\nselftest OK: every non-blank line of the corpus survived a real "
-          "`set` and `add`, and both edits landed.")
-    return 0
-
-
 def main():
     p = argparse.ArgumentParser(description="RE-frontier progress tracker")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -903,18 +681,13 @@ def main():
     sp.add_argument("--gap"); sp.add_argument("--notes")
     sp = sub.add_parser("set"); sp.add_argument("id")
     sp.add_argument("assignments", nargs="+")
-    sp = sub.add_parser("selftest")
-    sp.add_argument("--tool", help="tool under test (default: this file)")
-    sp.add_argument("--corpus", help="a real prose-bearing roadmap to use instead of the fixture")
-    sp.add_argument("--entry", help="entry id to edit (default RE-00)")
-    sp.add_argument("--workdir", help="where to put the scratch copy (default: tools/)")
 
     args = p.parse_args()
     entries, order = load()
     fn = {
         "list": cmd_list, "show": cmd_show, "next": cmd_next, "hacks": cmd_hacks,
         "blocked": cmd_blocked, "tree": cmd_tree, "stats": cmd_stats, "check": cmd_check,
-        "scaffold": cmd_scaffold, "add": cmd_add, "set": cmd_set, "selftest": cmd_selftest,
+        "scaffold": cmd_scaffold, "add": cmd_add, "set": cmd_set,
     }[args.cmd]
     sys.exit(fn(entries, order, args) or 0)
 

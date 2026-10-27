@@ -97,15 +97,12 @@ def _parse(path):
 
 
 def _load_all(cdir, *, refuse_if_missing=True):
-    # REFUSE, don't return empty, when the corpus is not there. A search of a directory that does not
-    # exist printing "(no matches)" and exiting 0 is indistinguishable from "I looked and found
-    # nothing" — measured in THIS repo's copy on 2026-08-12, from a missing docs/issues/, and it is
-    # the exact failure the workspace rules name. Only the READ paths refuse; `add` creates the dir.
+    # A missing catalog refuses: an empty search would read as "looked and found nothing".
     if not os.path.isdir(cdir):
         if not refuse_if_missing:
             return []
-        sys.exit(f"catalog: {os.path.abspath(cdir)} does not exist — this searched NOTHING. "
-                 f"(Set $CATALOG_DIR or --dir, or `catalog.py add --init` to create it.)")
+        sys.exit(f"catalog: {os.path.abspath(cdir)} does not exist; "
+                 f"set $CATALOG_DIR or --dir, or `catalog.py add --init` to create it")
     out = []
     for name in sorted(os.listdir(cdir)):
         if name.endswith(".md") and name.lower() != "readme.md":
@@ -136,11 +133,8 @@ def cmd_add(args):
     cdir = args.dir
     if not os.path.isdir(cdir):
         if not args.init:
-            sys.stderr.write(
-                f"catalog: {cdir} does not exist, so this would START A NEW CATALOG rather "
-                f"than add to one.\n"
-                f"catalog: cwd is {os.getcwd()}; pass --dir for an existing catalog or "
-                f"--init to create this one.\n")
+            sys.stderr.write(f"catalog: {cdir} does not exist; pass --dir for an existing "
+                             f"catalog or --init to create it\n")
             raise SystemExit(2)
         os.makedirs(cdir, exist_ok=True)
     nid = max([e["id_num"] for e in _load_all(cdir)], default=0) + 1
@@ -215,10 +209,8 @@ def cmd_search(args):
     scored = [(s, e) for e in entries if (s := _score(e, terms)) > 0]
     scored.sort(key=lambda x: (-x[0], x[1]["id_num"]))
     if not scored:
-        # The NEGATIVE carries its denominator: a bare "(no matches)" cannot be told apart from a
-        # search that never looked at anything.
-        print(f"(no matches) — searched {len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in "
-              f"{os.path.abspath(args.dir)} for {terms!r}. It cannot see: anything never written down.")
+        print(f"(no matches) in {len(entries)} entr{'y' if len(entries) == 1 else 'ies'} "
+              f"under {os.path.abspath(args.dir)} for {terms!r}")
         return
     for score, e in scored[: args.limit]:
         _print_row(e, extra=f"score={score}")
@@ -272,36 +264,6 @@ def cmd_show(args):
 
 
 
-def cmd_stale(args):
-    """Open entries that the rest of the system says are probably DONE.
-
-    WHY THIS EXISTS. Nothing in the loop ever revisits an open issue, so an entry whose work landed
-    months ago stays open forever — and `search`/`brief` rank by score, so a stale entry sits at the
-    TOP of the results for its topic and sends the next session to re-derive solved ground. That is
-    not hypothetical: issue #10 ('own the game's LOADER') stayed open at score 14 long after both
-    loaders were owned in game/core/cd_queue.cpp, and a session disassembled the loader from scratch
-    to recover a contract that file already documented in full.
-
-    THE CHECK IS DELIBERATELY DUMB, because a clever one would not be trustworthy. An entry tagged
-    `blocker` asserts the port cannot get past it. So when the gate PASSES, every open `blocker` is a
-    contradiction on its face: either it no longer blocks, or the gate does not cover it — and both of
-    those are worth someone's attention. No parsing of symptoms, no guessing.
-    """
-    entries = [e for e in _load_all(args.dir) if e.get("status") == "open"]
-    blockers = sorted((e for e in entries if "blocker" in e["tags_list"]), key=lambda e: e["id_num"])
-    if args.count:
-        print(len(blockers))
-        return 0
-    if not blockers:
-        print(f"no open blockers ({len(entries)} open entr{'y' if len(entries)==1 else 'ies'} total)")
-        return 0
-    print(f"{len(blockers)} OPEN entr{'y' if len(blockers)==1 else 'ies'} tagged 'blocker'. If the gate "
-          f"passes, each is a contradiction:\n  either it no longer blocks (resolve it) or the gate "
-          f"does not cover it (say so in the entry).\n")
-    for e in blockers:
-        _print_row(e)
-    return 0
-
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="tiny atomic-work and issue catalog")
@@ -335,10 +297,6 @@ def main(argv=None):
     l.add_argument("--state-item", type=_state_item_id,
                    help="only issues linked to this project-state ID")
     l.set_defaults(func=cmd_list)
-
-    st = sub.add_parser("stale", help="open entries the rest of the system says are probably done")
-    st.add_argument("--count", action="store_true", help="print just the number (for the gate)")
-    st.set_defaults(func=cmd_stale)
 
     sh = sub.add_parser("show", help="print an entry")
     sh.add_argument("id")

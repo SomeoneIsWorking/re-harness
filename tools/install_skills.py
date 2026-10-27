@@ -24,23 +24,15 @@ TOOL_NAMES = (
     "codemap.py",
     "cpp_policy.py",
     "go_public.py",
-    "heavy.py",
-    "info.py",
-    "piagent.py",
     "play_api.py",
     "play_console.py",
-    "project_state.py",
     "re_frontier.py",
-    "safekill",
     "scratch_gc.py",
-    "swarm.py",
 )
 TOOL_DESTINATIONS = (
     Path(".agents/bin"),
     Path(".codex/bin"),
     Path(".claude/bin"),
-    # On PATH, so a swarm worker or a pi/opencode session can run heavy.py and
-    # its own gate without knowing where the harness is installed.
     Path(".local/bin"),
 )
 
@@ -105,6 +97,22 @@ def stale_skill_links(root, skills):
     )
 
 
+def stale_tool_links(root):
+    if not root.is_dir():
+        return ()
+    tools = (REPO / "tools").resolve()
+    stale = []
+    for target in root.iterdir():
+        if not target.is_symlink() or target.name in TOOL_NAMES:
+            continue
+        try:
+            target.resolve(strict=False).relative_to(tools)
+        except ValueError:
+            continue
+        stale.append(target)
+    return tuple(stale)
+
+
 def link_file(target, source, replace, allowed_parents):
     target.parent.mkdir(parents=True, exist_ok=True)
     if points_to(target, source):
@@ -167,6 +175,10 @@ def install(home, replace):
     tool_roots = tool_destinations(home)
     for root in tool_roots:
         root.mkdir(parents=True, exist_ok=True)
+        for target in stale_tool_links(root):
+            target.unlink()
+            print(f"UNLINK retired tool {target}")
+            changed += 1
         for name in TOOL_NAMES:
             changed += link_file(root / name, (REPO / "tools" / name).resolve(), replace, set(tool_roots))
 
@@ -199,6 +211,8 @@ def check(home):
 
     tool_roots = tool_destinations(home)
     for root in tool_roots:
+        for target in stale_tool_links(root):
+            problems.append(f"{target}: retired tool link")
         for name in TOOL_NAMES:
             target = root / name
             source = (REPO / "tools" / name).resolve()
