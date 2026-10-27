@@ -43,9 +43,8 @@ correctness fallback, not the final design when bounded invalidation is availabl
 
 ## Bounded interpreter fallback
 
-Implement the global bounded-fallback contract at one explicit JIT refusal edge. Test a compiled
-cold block, a reason-coded refusal, return to JIT dispatch, and a selector that cannot make
-interpreter-only execution the default. A zero fallback count alone does not prove the boundary.
+Implement the bounded fallback in `dynarec-port` at one explicit JIT refusal edge, with a reason
+code, and return to JIT dispatch after it.
 
 ## Instruction semantics
 
@@ -59,6 +58,6 @@ instruction or block regression that reproduces it. Never special-case the faili
 
 ## Determinism and diagnostics
 
-Use the global runtime counters to locate compilation, cache, and fallback behavior by guest PC.
-Test targets report oracle and interpreter-only entries separately. Deterministic inputs and guest
-time are required for differential verification; prove diagnostic positive and negative cases.
+Use the run-end log of translated blocks and fallbacks by reason (`dynarec-port`) to locate
+compilation, cache and fallback behavior by guest PC. Oracle compare needs deterministic input and
+guest time.

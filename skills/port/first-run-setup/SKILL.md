@@ -43,18 +43,12 @@ one is missing something — extend it there and land it before the consumer tha
 - **Benefactor** (`benefactor/src/platform/setup_flow.cpp`) — three named disk images, staged, with
   desktop and Android SAF pickers.
 
-Split policy (what you ask for, how you judge it) from the loop (SDL and RmlUi) as LF2 does, so a
-test can drive the shipping config and Validator without opening a window.
+Split policy (what you ask for, how you judge it) from the loop (SDL and RmlUi) as LF2 does.
 
-## Verify before claiming it works
+## Check it
 
-- Drive the shipping config and Validator in a test: the accept path, a refusal with its reason, and
-  a file with the right name and wrong bytes. A screen that can only refuse passes a weak test.
-- Capture the screen at a landscape handset (2340x1080 at density 3.0 = 780x360 dp), portrait, and a
-  desktop window, using `ViewOptions::offscreen` with `setup-ui/tools/frame_png.py`, and look at
-  whether the confirm button and footer are on screen.
-- Record the capability in the consuming project's `docs/project-state.md`, and the new owners in
-  its codemap, in the same change.
+Look at a `setup-ui/tools/frame_png.py` capture (`ViewOptions::offscreen`) at 780x360 dp and at a
+desktop window; the confirm button and footer must be on screen.
 
 ## Build wiring traps
 

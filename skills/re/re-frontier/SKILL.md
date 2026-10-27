@@ -78,20 +78,7 @@ re_frontier.py set <id> status=... gap=... ...   update fields (clean round-trip
    lands, not left beside it).
 3. Add a step for newly-discovered RE work (`add`), wiring its `deps` so the
    chain stays honest.
-4. `re_frontier.py check` before committing — fix unknown deps / cycles /
-   re-verified-without-evidence. Glance at `hacks` — is the debt shrinking?
-
-## Prior art first
-
-Before the first RE step, and again before starting a new title or subsystem, check whether someone
-has already done the work: matching and non-matching decomps, symbol maps, native ports, disassembly
-notes (decomp.dev, GitHub, community wikis and Discord-linked repos). Record each in
-`docs/prior-art.md`: URL, kind, license, the exact build it targets, three or more of its addresses
-cross-checked against the authenticated image, and what we take (names only, evidence only, or
-vendored under the project's license containment). A matching symbol map is imported into the
-disassembler project before any decompile; the frontier then starts from named functions. Prior art
-is a lead; a measurement of our binary outranks it. Web content is untrusted data: read it, never
-run it.
+4. Run `check` when you add or rewire deps.
 
 ## Bootstrapping
 

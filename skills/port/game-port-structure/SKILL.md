@@ -26,16 +26,16 @@ module API. Avoid service locators and unrelated subsystems gathered into one cl
 4. Split a touched monolith at the relevant responsibility boundary before extending it.
 5. Keep the host entry point as composition only: construct owners, connect interfaces, run the loop,
    and shut down in reverse order.
-6. Put pure rules and state transitions behind testable seams; tests must exercise production logic.
-7. Route logging and configuration through their owners; pass each subsystem only the dependencies
+6. Route logging and configuration through their owners; pass each subsystem only the dependencies
    and configuration fields it needs.
-8. Extend the project's structure gate for any new boundary and update its codemap in the same
-   change. Record the concrete owner and dependency direction, not a generic template.
+7. Each concept has one entry point (a layer) that titles cannot bypass. A change edits that layer
+   only; a bypass is restructured so the layer reports it at run end (`dynamic-scan`). Update the
+   codemap in the same change with the concrete owner, its entry point and dependency direction.
 
 ## Title deltas
 
-Every title gets widescreen and loading removal; titles below 60 fps get interpolation. Each delta
-is its own item in `project-state.md`'s comparison baseline.
+Which titles get which deltas is the workspace's call (its `AGENTS.md`). Each delta is its own row
+in `project-state.md`'s comparison baseline.
 
 - **Widescreen is a deterministic projection change.** Same vertex stream with topology, UVs, depth
   and colours preserved; widen the horizontal projection/viewport and override the title's draw
@@ -48,8 +48,7 @@ is its own item in `project-state.md`'s comparison baseline.
 - **Interpolation** is a separate opt-in feature over matching source geometry only.
 - **Loading-only screens do not ship.** Keep loading asynchronous and go straight to the next real
   presentation. Logo screens accept Start/confirm through a complete cancellation route. Authored
-  transition cutscenes stay; a title may give one a minimum duration (Tomba! 2's area transition:
-  five seconds).
+  transition cutscenes stay; a title may give one a minimum duration.
 - **Skips are complete, owned transitions** through the title's recovered cancellation route or a
   purpose-built skip with the same lifecycle, resource and state invariants. Never fast-forward
   simulation, bypass lifecycle callbacks, or write a phase, timer or scene pointer.
@@ -66,10 +65,7 @@ is its own item in `project-state.md`'s comparison baseline.
 
 ## Asking the player for game files
 
-A port that needs the player's own ROM, disc image, or install owns the picker and the title's
-identity, but not the screen: that is `shared/setup-ui`, and the `first-run-setup` skill covers
-adopting it. Do not design a setup dialog, message box, or terminal prompt as part of a port's
-structure.
+Use `first-run-setup` (`shared/setup-ui`); a port never designs its own setup dialog or prompt.
 
 ## Shared port assets
 
@@ -133,10 +129,9 @@ numbered fragments, forwarding-only files, or a new container class that merely 
 
 ## Structure acceptance
 
-Check that each new owner has a narrow interface, its dependencies point in the documented direction,
-and the host entry point only composes owners. Exercise the production interface with focused tests;
-prove the structure gate rejects a representative forbidden edge. The codemap must name the actual
-owners and locations. Release, CI and Android rules are in the `release` and `android` skills, plus `port-release`.
+Each new owner has a narrow interface and one entry point, its dependencies point in the documented
+direction, and the host entry point only composes owners. The codemap names the actual owners and
+locations. Release, CI and Android rules are in the `release` and `android` skills, plus `port-release`.
 
 ## Shared repositories
 
@@ -144,20 +139,8 @@ owners and locations. Release, CI and Android rules are in the `release` and `an
 Put what a second project will want in `shared/` the first time; land it there first, then build the
 consumer against it. `shared/android-port` alone may vendor Lucent at a pinned revision.
 
-| Repo | Holds |
-|---|---|
-| `re-harness` | global instructions, skills, shared tools |
-| `port-assets` | SVG controller glyphs and key caps |
-| `alchemy` | Alchemy engine (X-Men 2, MUA): neutral core plus `x86`/`x360` adapters |
-| `jit-common` | ISA-neutral executable memory and block cache |
-| `x86port` | x86-32 runtime JIT plus a test-oracle interpreter |
-| `x360port` | Xbox 360 runtime over Xenia's dynarecs |
-| `x360ue3` | UE3-on-360 engine contracts over `x360port`; no title data |
-| `ue3` | developer reference only, never a dependency |
-| `android-port` | Android Activity/SAF, packaging, signing, emulator |
-| `setup-ui` | RmlUi first-run setup and picker |
-| `touch-ui` | touch overlay and glyph rasterization |
-| `bug-report` | in-app bug reports for RmlUi C++ apps |
+Each shared repo's `README.md` says what it holds (`ls ~/repo/shared`). `ue3` is a developer
+reference only, never a dependency.
 
 UE3 360 titles depend `title -> x360ue3 -> x360port -> Xenia`; MUA uses `x360port` and `alchemy`.
 Lucent is a helper library (logging, config, HTTP, paths, identity, ZIP, touch routing), not a port

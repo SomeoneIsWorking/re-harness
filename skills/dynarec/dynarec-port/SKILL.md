@@ -1,10 +1,9 @@
 ---
 name: dynarec-port
 description: >-
-  Umbrella methodology for runtime dynamic-recompiler/JIT console-to-PC ports: executing
-  guest instructions from the user's original binary, validating against an emulator
-  oracle, adding native overrides, and keeping faithful behavior separate from enhancements.
-  Use for whole-project architecture and migration away from generated-source recompilers.
+  Dynarec/JIT port methodology: architecture, bring-up, oracle compare (first divergence),
+  migration from generated-source recompilers. Use for whole-project architecture, starting a
+  runtime-translated port, or comparing it against an emulator oracle.
 ---
 
 # Console → PC dynamic-recompiler port
@@ -14,10 +13,8 @@ machine code. This skill connects the runtime, title policy, native overrides, a
 
 ## Focused skills
 
-- **dynarec-init** — starting a runtime-translated port and its verification scaffold.
 - **dynarec-runtime** — block lookup, decoding, lowering, code caching, and invalidation.
 - **dynarec-overrides** — handwritten native behavior selected by guest address at runtime.
-- **dynarec-harness** — differential verification against a reference emulator.
 
 ## Architecture boundary
 
@@ -46,6 +43,19 @@ All execution paths share canonical CPU state, memory, exception, and service se
 - WASM is a required frontier for migrated projects, running the same runtime in the browser, or
   recorded `blocked` with a migration action and acceptance criteria. ARM64 hosts: see `port-release`.
 
+## Bring-up
+
+- Identify the guest ISA, executable format, address-space rules and hardware services. If a
+  `shared/` project owns that ISA or host backend, extend it there instead of a title-local engine.
+  Choose an accurate, scriptable reference emulator as the oracle.
+- Resolve the user's game file from an explicit argument, then `.env`, then a repo drop-in; validate
+  the exact revision before mapping it.
+- Start at the title entry point or a deterministic savestate. Compile a bounded block, execute it,
+  and match its post-state against the oracle, then expand along reached control flow. An
+  unsupported block fails with its guest PC or enters the bounded fallback.
+- Bring-up is done when the runtime consumes the user's binary directly, one translated block
+  matches the oracle, and ordinary cold blocks compile before execution.
+
 ## Migration from generated-source recompilers
 
 Delete the static recomp first: the generator, generated corpora, static dispatch, and their tests and docs; the build may fail at the missing executor until the dynarec lands. Preserve independently useful behavioral evidence
@@ -55,22 +65,22 @@ entry point or deterministic savestate and expand coverage along reached control
 is complete only after a fresh clone launches from the user's binary, ordinary cold blocks compile
 before execution, and representative gameplay passes the oracle gate on each released host.
 
-## Core loop
+## Oracle compare
 
-`build runtime → run differential harness → stop at first divergence → identify decoder/lowering,
-state, memory, invalidation, or service-boundary cause → fix the owning layer → re-verify`
+Drive the shipping runtime (real dispatcher, decoder, lowered blocks, cache, invalidation) and the
+oracle from the same state:
 
-Fix instruction semantics in the shared decoder/lowering path, not at one guest address. Native
-overrides are for deliberately owned behavior or a proven service boundary, not a substitute for
-missing CPU semantics.
+- a bit-identical boot or savestate, pinned input, and a deterministic guest time source;
+- compare CPU state, relevant memory, service events, audio and frames at the smallest practical
+  boundary;
+- report the first divergent guest PC, boundary, region, expected and actual value.
+
+Then classify the owner (decode/lowering, invalidation, CPU state transfer, memory map,
+exception/timing, service emulation, native override), fix that owner, and re-run. Fix instruction
+semantics in the shared decoder/lowering path, never at one guest address. Native overrides are for
+deliberately owned behavior or a proven service boundary, not a substitute for missing CPU semantics.
 
 ## Faithful first, then enhance
 
-Maintain a faithful mode that can be compared with the original before adding widescreen, frame
-rate, rendering, input, or loading enhancements. Enhancements intentionally diverge and need their
-own observable gates; they do not weaken the faithful baseline.
-
-## Verification discipline
-
-Verify deterministic real gameplay, audio, rendering, timing, and state against a trusted oracle;
-name the measured interval and released host. See **dynarec-harness** for first-divergence evidence.
+Keep a faithful mode that compares with the oracle before adding widescreen, frame rate, rendering,
+input or loading enhancements. Enhancements diverge on purpose and never weaken the faithful mode.

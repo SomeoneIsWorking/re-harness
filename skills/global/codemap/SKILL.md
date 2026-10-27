@@ -31,6 +31,15 @@ already exist. That covers anything that is not plainly local to the code being 
 - **No hit:** write it in the module `docs/codemap.md` names for that layer. Give it a name that
   carries the concept's words. Where the name cannot carry them, add one short comment line above
   it with the words someone would search for, which `find` reads.
+- `find` prints a `defined N times` group first when one name or one constant value is defined in
+  more than one first-party unit. Merge that group as part of the change.
+- A definition you find with no caller is dead; delete it in the same change.
+
+## Before calling into another module
+
+Run `find` for the concept and call the entry point the module map names for that layer. A call
+into a layer's internals is a bypass: fix the caller, or widen the entry point. A framework that
+must forbid one call outside its layer lists it for `cpp_policy.py --retired-name ns::fn`.
 
 ## docs/codemap.md: the module map
 
@@ -41,6 +50,7 @@ changes only when modules change:
 - One line per module: its path and the concepts it owns, in the words someone would search for.
   For example: `runtime/psx/present/vram_*  VRAM size and geometry, the 555 pixel and its 5-to-8
   expand, texpage and CLUT words`.
+- Each layer line names its one entry point, the class or function callers use.
 
 It does not list symbols, because `find` reads them from the code and a copied list goes stale. It
 never holds goals, state, progress, issues or verification claims. Update a module's line in the

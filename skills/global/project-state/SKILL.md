@@ -1,94 +1,43 @@
 ---
 name: project-state
-description: "Consult and maintain the project's factual current-state ledger: the independent capability/outcome inventory of what is verified, partial, blocked, and missing, with evidence and current focus. Use for project status, progress, current state, done/missing, gaps, blockers, or what is being worked on. Epic intent belongs to goals; atomic work belongs to issues; this is not a roadmap or schedule."
+description: "A project's three docs: goals (docs/project-goals.md: why it exists, success conditions, non-goals), state (docs/project-state.md: each intended capability as verified, partial, blocked or missing, one current focus, the comparison baseline) and issues (docs/issues/: one bug, task or dead end per file). Use for project purpose, scope, status, done/missing, gaps, blockers, current focus, or before re-deriving a symptom."
 ---
 
-# Project state — factual delivery coverage
+# Project goals, state and issues
 
-The canonical state document is `docs/project-state.md`. It answers **what can
-the project demonstrably do now, what is partial or blocked, what is absent, and
-which state item is the current focus?**
+Read the doc before answering from it. If one is missing, say so and create it when the project is
+in scope; never infer it from the codemap, commit history or TODOs.
 
-This is independent of the goals document. A state item may support one goal,
-several goals, or enabling infrastructure. The state inventory remains useful
-even when goals are regrouped.
+## Goals: `docs/project-goals.md`
 
-## Model
+Why the project exists. Each goal has a stable ID (`G001`), a user-visible outcome, observable
+success conditions, and constraints and non-goals. It changes only when intent changes, never as
+work advances.
 
-Each capability or observable outcome has a stable ID such as `S001` and:
+## State: `docs/project-state.md`
 
-- a factual description of the capability/outcome, not an activity;
-- state: `verified`, `partial`, `blocked`, or `missing`;
-- observable conditions for `verified`;
-- evidence links for observed behavior;
-- factual dependency IDs where one capability cannot work without another;
-- related goal and issue IDs without requiring a one-parent hierarchy.
+What the project demonstrably does now.
 
-`Verified` requires observable conditions and durable evidence. `Partial` names
-the exact demonstrated subset and remaining gap. `Blocked` names an atomic issue
-or unavailable dependency. `Missing` means the capability is absent, not merely
-that nobody checked it.
+- One table row per capability or user-visible outcome, with a stable ID (`S001`), its state, its
+  factual dependencies and its goals. The table covers the whole intended set, absent items included.
+- `verified`: observed in the product. `partial`: names the demonstrated subset and the gap.
+  `blocked`: names its issue or missing dependency. `missing`: absent.
+- A row is one line. Its evidence is a pointer (an issue, a commit, a warp command), never a
+  measurement narrative.
+- Exactly one current focus, or `none`.
+- `## Comparison baseline` names the original product or prior workflow, and each user-visible
+  delta from it (widescreen, loading, controls, platforms, ...) is its own row.
 
-Record exactly one **current focus** state item, or explicitly record that none
-is active. Current focus is attention, not a fifth capability state: an item can
-be both `partial` and the current focus.
+Update it in the change that shows a capability, finds a gap, changes a blocker or moves the focus.
+Keep IDs. When evidence is falsified, move the row back to the honest state.
 
-The complete state table is the authoritative answer to **done versus missing**.
-It is not a roadmap, release schedule, historical changelog, or ordered list of
-future promises.
+## Issues: `docs/issues/NNNN-slug.md`
 
-Every maintained project must have this inventory. Missing project state is a
-workflow defect to correct, not permission to substitute a README, codemap,
-issue list, source-tree survey, or portfolio copy. The table must cover the
-complete intended capability set, including absent and blocked features; an
-inventory containing only implemented highlights is incomplete.
+One bug, task, investigation or dead end per file. Frontmatter: `id`, `title`, `status`
+(`open|investigating|resolved|wontfix|dead-end`), `symptom`, `state_items`, `tags`, `created`,
+`updated`.
 
-When the project changes, replaces, ports, remakes, or wraps an existing
-product, add a `## Comparison baseline` section that names the exact original,
-upstream, emulated, or prior workflow being improved. This section is required
-for every project shown in a portfolio or catalogue; greenfield projects name
-the manual, fragmented, or absent prior workflow. Make each independently
-stateable user-visible difference its own state item. A catch-all row such as
-“modern features” is not an inventory when speed, controls, physics, loading,
-presentation, cheats, packaging, or other differences can advance or regress
-independently.
-
-Any portfolio, catalogue, status page, or generated project index must present
-feature-level state from this authority. Its snapshot must remain traceable to
-state IDs and must show `partial`, `blocked`, and `missing` items as plainly as
-`verified` ones. When a comparison baseline exists, show it beside the list so
-the audience can understand what changes from the original or upstream product.
-A project-wide badge may summarize the work but never replace the
-intended-feature inventory.
-
-## Validator
-
-Run the bundled validator from the project root:
-
-```
-python project_state.py --root .
-```
-
-It checks the state vocabulary, unique and resolvable `S` IDs, factual
-dependencies, goal links, issue links, exactly one current focus (or explicit
-`none`), a detail section for every state item, and state-specific evidence/gap
-text. It prints the number of state items, goals, and issue links checked so an
-empty corpus cannot look green.
-
-## Consulting and maintaining
-
-Read `docs/project-state.md` before answering project status, current focus,
-done/missing, gaps, or blockers. If it is missing, say that no authoritative
-project-state inventory exists and create it when the project is in scope; do
-not infer state from the codemap, goals, commit history, or a visible TODO.
-
-Update the state document in the same change that demonstrates a capability,
-discovers a gap, changes a blocker, falsifies evidence, or changes current
-focus. Preserve IDs. Cite claims or direct durable evidence for `verified` and
-the demonstrated subset of `partial` items. If evidence is falsified, move the
-item back to the honest state and review dependent items.
-
-Run `project_state.py --root .` after every state or issue-link edit.
-
-Keep implementation detail in subsystem docs, historical session narrative out
-of the state inventory, and atomic work in `docs/issues/`.
+- Search before investigating: `rg -i '<symptom words>' docs/issues` or `catalog.py search`.
+- On resolve, write the root cause and the fix, not "fixed". Record ruled-out paths as dead ends.
+- Fix a wrong note instead of adding another. Link affected `S` IDs; a capability change goes in
+  the state table, not the issue.
