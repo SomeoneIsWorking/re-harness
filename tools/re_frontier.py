@@ -30,6 +30,7 @@ Statuses (the core axis — real RE vs jumped-ahead hack):
   blocked       cannot start: a dependency's RE isn't done (usually COMPUTED, not stored)
   todo          not started
   skip-by-design deliberately not implemented (e.g. Bink startup movies)
+  authored      not RE and never can be: a hand-made judgement the target does not hold
 
 Commands:
   list [--area A] [--status S]   table of entries
@@ -59,10 +60,11 @@ STATUS_EMOJI = {
     "hack": "⛔",
     "todo": "⬜",
     "skip-by-design": "➖",
+    "authored": "✍",
     "blocked": "⏸",  # computed
 }
 # Statuses that count as "the RE this step depends on is done enough to build on".
-SATISFIED = {"re-verified", "re-partial", "skip-by-design"}
+SATISFIED = {"re-verified", "re-partial", "skip-by-design", "authored"}
 FIELDS = ["status", "area", "deps", "evidence", "where", "gap", "notes"]
 BODY_FIELDS = ("status", "deps", "evidence", "where", "gap", "notes")
 VALID_STATUS = set(STATUS_EMOJI) - {"blocked"}
@@ -98,7 +100,7 @@ overrides any internal trace.
 unless the fallback IS intended behavior of the real target being reproduced.
 
 Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
-⛔ hack (debt, must remove) · ⬜ todo · ➖ skip-by-design · ⏸ blocked (computed).
+⛔ hack (debt, must remove) · ⬜ todo · ➖ skip-by-design · ✍ authored · ⏸ blocked (computed).
 
 <!-- Entries are `## <area>` sections holding `### <id> — <title>` headings, each
      followed by `- <field>: <value>` lines. Prose ANYWHERE in this file — before,
@@ -518,7 +520,7 @@ def cmd_stats(entries, order, args):
         counts[eff] = counts.get(eff, 0) + 1
     total = len(order)
     print(f"{total} step(s) tracked:")
-    for st in ["re-verified", "re-partial", "in-progress", "blocked", "todo", "hack", "skip-by-design"]:
+    for st in STATUS_EMOJI:
         if counts.get(st):
             print(f"  {emoji(st)} {st:<14} {counts[st]}")
 
