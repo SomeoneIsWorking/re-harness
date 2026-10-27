@@ -16,12 +16,8 @@ The general rules are in the `release` and `android` skills; this adds what a po
 
 ## Game files in packaged builds
 
-- Packaged builds have a no-terminal first-run setup (see the `first-run-setup` skill): native
-  Browse picker, validation, persistence in the platform's user-config store. Accept the primary
-  ROM/EXE directly or from one bounded ZIP searched by content: exactly one identity match; reject
-  unsafe paths, duplicates, corrupt entries and oversize archives; keep the previous valid
-  selection on failure. Lucent owns ZIP mechanics; the port owns identity and install policy.
-  AppImages use the desktop launcher; Android uses SAF with persisted grants.
+Packaged builds use `first-run-setup`; Lucent owns ZIP mechanics, the port owns identity. A ZIP must
+contain exactly one identity match, and the previous valid selection is kept on failure.
 
 ## Android
 

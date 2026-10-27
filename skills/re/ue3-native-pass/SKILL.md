@@ -97,8 +97,6 @@ way to see values the shader computes.
   is the worst possible outcome.
 - Emit the **suspect and a known-good reference in different channels**, so one image carries
   both and successive builds cannot be confused.
-- When you correct a probe, **keep emitting the old value too**. That is how a wrong
-  measurement stops silently propagating.
 
 Work multiplicatively: the output is a product of terms, so measure each term and let
 arithmetic tell you which is zero. Then confirm by forcing that term and seeing the picture
@@ -106,28 +104,12 @@ change — and **say out loud that forcing a guest constant is a control arm, ne
 number comes from the guest; a wrong one is a bug upstream, and hardcoding it makes one frame
 look right and breaks the next.
 
-## The evidence gate
+## Done
 
-A pass is implemented when it is **verified**, not when it renders something plausible. Three
-arms, all required:
+A pass is done when it matches the translated shader on the same captured frame, per pixel, with no
+validation-layer warnings. Generate shader modules ahead of time into checked-in headers and
+regenerate them in the commit that edits the shader.
 
-1. **Pixels** — render a captured frame through both paths and compare per pixel. Delete the
-   output before each arm (a stale file compares a frame against itself and reports a perfect
-   match). Refuse rather than pass when an arm produces nothing or both frames are near-black.
-2. **Interface** — re-run under the validation layer and fail on any descriptor or
-   shader-interface warning. A pass can be bit-exact for days while declaring the wrong image
-   view type, and pixels can never see that.
-3. **Negative control** — a second capture, in the same invocation, that must NOT match. A
-   comparison never shown able to report a difference has not been shown to be a comparison.
+## Roster
 
-Generate shader modules ahead of time into checked-in headers rather than compiling at
-runtime, so a pass cannot change under a driver update — and regenerate them in the same
-commit that edits the shader.
-
-## Keep the roster honest
-
-List passes in a table with an explicit status, and distinguish **implemented** (a module
-exists) from **declared** (an entry with no module). Lookup must refuse a declaration rather
-than silently falling through to the translated shader, and the log must distinguish "native
-passes off" from "on, and none exist". Withdraw a pass that turns out not to run in the title
-rather than leaving it listed — absence is cleaner documentation than a tombstone.
+The roster lists only implemented passes, and a declared-but-missing hash fails lookup.
