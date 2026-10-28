@@ -20,6 +20,7 @@ INSTRUCTION_DESTINATIONS = (
 )
 TOOL_NAMES = (
     "adb_pair.py",
+    "agent_session.py",
     "catalog.py",
     "cleanup-files",
     "codemap.py",
