@@ -10,9 +10,9 @@ read its logs, or stop it like any session they started themselves.
   agent_session.py start <repo> --name <name> --prompt "<text>"
   agent_session.py list
 
-``start`` refuses when the directory is not yet trusted (the user accepts the
-trust prompt once by running ``claude`` there) or a live session already has the
-name or the directory,
+``start`` accepts Claude Code's trust prompt for a directory under ~/repo (the
+user's own repos), refuses an untrusted one elsewhere or when a live session
+already has the name or the directory,
 runs ``claude --bg`` with the repo as its working directory (no ``cd`` in a
 shell), then confirms through ``claude agents --json`` that the new session
 is up in that directory. It prints the id and the commands to follow it.
@@ -35,11 +35,28 @@ def sessions() -> list[dict]:
     return json.loads(reply.stdout or "[]")
 
 
+CONFIG = Path.home() / ".claude.json"
+# The user's own repos; the tool accepts the trust prompt only under here.
+OWN_REPOS = Path.home() / "repo"
+
+
 def trusted(repo: Path) -> bool:
     """Claude Code records an accepted trust prompt per directory."""
-    config = Path.home() / ".claude.json"
-    projects = json.loads(config.read_text()).get("projects", {})
+    projects = json.loads(CONFIG.read_text()).get("projects", {})
     return bool(projects.get(str(repo), {}).get("hasTrustDialogAccepted"))
+
+
+def trust(repo: Path) -> None:
+    """Record the trust prompt as accepted for `repo`, as the dialog would.
+    Written to a sibling file and renamed, so a reader never sees half a file."""
+    config = json.loads(CONFIG.read_text())
+    entry = config.setdefault("projects", {}).setdefault(str(repo), {})
+    entry["hasTrustDialogAccepted"] = True
+    staged = CONFIG.with_name(CONFIG.name + ".agent_session")
+    staged.write_text(json.dumps(config, indent=2))
+    staged.replace(CONFIG)
+    print("trusted %s (the user's own repos accept the prompt through this "
+          "tool)" % repo)
 
 
 def refuse(message: str) -> None:
@@ -52,10 +69,11 @@ def start(args: argparse.Namespace) -> int:
     if not repo.is_dir():
         refuse("%s is not a directory" % repo)
     if not trusted(repo):
-        refuse("%s is not a trusted workspace, and claude --bg will not start "
-               "there. The user accepts that once, in a terminal: run `claude` "
-               "in %s, accept the trust prompt, exit, then start again. An "
-               "agent never records trust itself." % (repo, repo))
+        if not repo.is_relative_to(OWN_REPOS):
+            refuse("%s is not a trusted workspace and is outside %s; the user "
+                   "accepts it once by running `claude` there" % (repo,
+                                                                OWN_REPOS))
+        trust(repo)
     if args.prompt_file:
         prompt = Path(args.prompt_file).expanduser().read_text()
     else:
