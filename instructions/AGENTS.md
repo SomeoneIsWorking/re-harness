@@ -40,7 +40,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   to check it in the running product.
 - `docs/codemap.md` is the module map, one line per module (codemap skill). Update it in the change
   that adds or moves a module.
-- `docs/project-goals.md`, `docs/project-state.md` and `docs/issues/` (project-state skill);
+- `docs/project-goals.md`, `docs/project-state.md`, `docs/issues/` (problems), `docs/plans/` (features
+  that will be built) and `docs/ideas.md` (maybes) (project-state skill);
   `docs/re-frontier.md`, updated in the same commit as the RE work (re-frontier skill).
 - `docs/prior-art.md` (every RE project): community decomps, symbol maps, native ports and RE notes
   for the exact target build, each with its license, its build match proven by cross-checked

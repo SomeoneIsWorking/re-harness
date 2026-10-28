@@ -1,9 +1,9 @@
 ---
 name: project-state
-description: "A project's three docs: goals (docs/project-goals.md: why it exists, success conditions, non-goals), state (docs/project-state.md: each intended capability as verified, partial, blocked or missing, one current focus, the comparison baseline) and issues (docs/issues/: one bug, task or dead end per file). Use for project purpose, scope, status, done/missing, gaps, blockers, current focus, or before re-deriving a symptom."
+description: "A project's docs of purpose and work: goals (docs/project-goals.md: why it exists, success conditions, non-goals), state (docs/project-state.md: each intended capability as verified, partial, blocked or missing, one current focus, the comparison baseline), issues (docs/issues/: one problem per file: a bug, a balance or performance problem, a dead end), plans (docs/plans/: one feature that will be built per file) and ideas (docs/ideas.md: maybes not yet asked for). Use for project purpose, scope, status, done/missing, gaps, blockers, current focus, what is planned, or before re-deriving a symptom."
 ---
 
-# Project goals, state and issues
+# Project goals, state, issues, plans and ideas
 
 Read the doc before answering from it. If one is missing, say so and create it when the project is
 in scope; never infer it from the codemap, commit history or TODOs.
@@ -33,7 +33,8 @@ Keep IDs. When evidence is falsified, move the row back to the honest state.
 
 ## Issues: `docs/issues/NNNN-slug.md`
 
-One bug, task, investigation or dead end per file. Frontmatter: `id`, `title`, `status`
+One problem per file: a bug, a balance or performance problem, an investigation or a dead end.
+A feature to build is a plan, not an issue. Frontmatter: `id`, `title`, `status`
 (`open|investigating|resolved|wontfix|dead-end`), `symptom`, `state_items`, `tags`, `created`,
 `updated`.
 
@@ -41,3 +42,16 @@ One bug, task, investigation or dead end per file. Frontmatter: `id`, `title`, `
 - On resolve, write the root cause and the fix, not "fixed". Record ruled-out paths as dead ends.
 - Fix a wrong note instead of adding another. Link affected `S` IDs; a capability change goes in
   the state table, not the issue.
+
+## Plans: `docs/plans/NNNN-slug.md`
+
+One feature or change the user has decided will be built, per file: the request in the user's own
+words, then the design, its phases and progress. Plans share the issues' ID sequence so a reference
+never changes meaning when an item moves between them. Delete or resolve the file in the change that
+ships it.
+
+## Ideas: `docs/ideas.md`
+
+Maybes and brainstorming the user floats without asking for them ("I was thinking", "maybe", "don't
+start this yet"), one short entry each with the user's words and date. Nothing here is built and none
+needs a deferral notice; an idea becomes a plan when the user asks for it, and leaves this file then.
