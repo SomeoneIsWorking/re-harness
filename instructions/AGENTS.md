@@ -62,6 +62,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Report delivery state literally: dirty tree, local commit and pushed commit differ. "Done" means
   integrated, shown working in the product, committed and pushed.
 - Do what was asked. Suggest a better idea; do not substitute it.
+- The user says "SVG" for anything scalable and vector: an "SVG font" is an outline font (TTF/OTF,
+  SDF or MSDF rendering), not the SVG file format. Read for the intent: crisp at any resolution.
 - For an irreversible step, name the exact consequence. Do it if authorized; otherwise ask once.
 
 ## Code
