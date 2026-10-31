@@ -103,6 +103,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - `./run.sh` launches the one intended product with zero arguments and is the fresh-clone setup
   path; it is a shim (`exec uv run --frozen python bootstrap.py "$@"`). Agents never run it; check
   the product with headless, silent maintainer tools that reuse the same build modules.
+- Every project that produces a runnable executable (a game port, a desktop app) also gets a desktop
+  shortcut from its maintainer tools: a `.desktop` entry in `~/.local/share/applications` and one on
+  the user's Desktop, with the product's own icon, running the same command the launcher runs. It is
+  per-machine and never committed, and is re-run when the launcher, name or icon changes.
 - Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
   `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
 - A missing native package gets a refusal naming the exact install command per platform.
@@ -133,8 +137,11 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Nothing machine-specific in tracked files (no home paths); game assets never enter git.
 - Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
 - Builds go under gitignored `build/`, run artifacts under gitignored `scratch/<activity>/`, never
-  `/tmp`. Clean with `scratch_gc.py` or `cleanup-files`, never raw `rm` of broad paths.
-  Large CMake builds use Ninja; an unchanged rebuild compiles nothing.
+  `/tmp`. `scratch/` holds temporary files only: anything in it can be deleted at any time, so
+  nothing a launch needs lives there. Long-lived gitignored inputs (game data, asset drops,
+  provisioned toolchains) live in their own gitignored directory, `env-assets/` (a project with an
+  established `assets/` keeps it). Clean with `scratch_gc.py` or `cleanup-files`, never raw `rm` of
+  broad paths. Large CMake builds use Ninja; an unchanged rebuild compiles nothing.
 - One build tree per purpose (`build/agent`, `build/player`), never one per task. Third-party dependencies
   are built once per revision and toolchain into a shared prefix outside the repo and consumed through
   `find_package`; a build tree holds only its own project's objects.
