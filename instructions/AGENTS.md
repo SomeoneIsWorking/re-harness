@@ -23,8 +23,7 @@ Every bug, regression or feature follows these steps in order. Skipping one is h
    structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
 5. **Prove it.** Show the expected frame, log line or value in the running product on the defect's
    screen, reached through its warp; one real-time walk closes the pass. A check written for the fix
-   is not proof. The framework's one test program (`dynamic-scan`) is the only standing test; add no
-   other gates, checkers, ledgers or verifiers.
+   is not proof.
 6. **Record it.** Update the owner's doc where the contract or behaviour changed.
 
 If a fix does not work, revert it and go back to step 3; never stack a second guess on the first.
