@@ -9,6 +9,7 @@ read its logs, or stop it like any session they started themselves.
   agent_session.py start <repo> --name <name> --prompt-file <file>
   agent_session.py start <repo> --name <name> --prompt "<text>"
   agent_session.py list
+  agent_session.py update
 
 ``start`` accepts Claude Code's trust prompt for a directory under ~/repo (the
 user's own repos), refuses an untrusted one elsewhere or when a live session
@@ -16,13 +17,20 @@ already has the name or the directory,
 runs ``claude --bg`` with the repo as its working directory (no ``cd`` in a
 shell), then confirms through ``claude agents --json`` that the new session
 is up in that directory. It prints the id and the commands to follow it.
+
+``update`` runs ``claude update``, then ``claude respawn <id>`` for each
+background session that runs an older binary and is not working (a working
+session's background jobs would be killed). It ends by listing each session's
+running version; run it again for a session left behind once it is idle.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -119,12 +127,57 @@ def start(args: argparse.Namespace) -> int:
     return 2
 
 
+def running_version(pid: int | None) -> str:
+    """Claude Code runs from versions/<version>; a session's binary names it."""
+    if pid is None:
+        return "stopped"
+    try:
+        return Path(os.readlink("/proc/%d/exe" % pid)).name
+    except OSError:
+        return "stopped"
+
+
+def installed_version() -> str:
+    claude = shutil.which("claude")
+    if claude is None:
+        refuse("claude is not on PATH")
+    return Path(claude).resolve().name
+
+
 def list_sessions(_: argparse.Namespace) -> int:
     live = sessions()
+    current = installed_version()
     for session in live:
-        print("%-8s %-16s %-8s %s" % (session.get("id"), session.get("name"),
-                                      session.get("state"), session.get("cwd")))
-    print("%d session(s)" % len(live))
+        version = running_version(session.get("pid"))
+        print("%-8s %-24s %-8s %-9s%s %s" % (
+            session.get("id"), session.get("name"), session.get("state"),
+            version, " " if version in (current, "stopped") else "*",
+            session.get("cwd")))
+    print("%d session(s); installed %s, * runs an older version" %
+          (len(live), current))
+    return 0
+
+
+def update(args: argparse.Namespace) -> int:
+    before = installed_version()
+    subprocess.run(["claude", "update"], check=True)
+    after = installed_version()
+    print("claude %s -> %s" % (before, after) if after != before
+          else "claude %s is the latest" % after)
+    # respawn --all also restarts working sessions and kills their background jobs.
+    failed = []
+    for session in sessions():
+        behind = running_version(session.get("pid")) not in (after, "stopped")
+        working = session.get("state") == "working" or session.get("status") == "busy"
+        if behind and working:
+            print("left %s (%s) running: it is working" % (session.get("id"), session.get("name")))
+        elif behind and session.get("id"):
+            if subprocess.run(["claude", "respawn", session["id"]]).returncode != 0:
+                failed.append(session["id"])
+    list_sessions(args)
+    if failed:
+        print("could not respawn: %s" % " ".join(failed), file=sys.stderr)
+        return 1
     return 0
 
 
@@ -143,6 +196,9 @@ def main() -> int:
     begin.set_defaults(run=start)
     show = commands.add_parser("list", help="list live sessions")
     show.set_defaults(run=list_sessions)
+    upgrade = commands.add_parser(
+        "update", help="update Claude Code and restart idle background sessions on it")
+    upgrade.set_defaults(run=update)
     args = parser.parse_args()
     return args.run(args)
 
