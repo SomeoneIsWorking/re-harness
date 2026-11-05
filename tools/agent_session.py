@@ -18,10 +18,11 @@ runs ``claude --bg`` with the repo as its working directory (no ``cd`` in a
 shell), then confirms through ``claude agents --json`` that the new session
 is up in that directory. It prints the id and the commands to follow it.
 
-``update`` runs ``claude update``, then ``claude respawn <id>`` for each
-background session that runs an older binary and is not working (a working
-session's background jobs would be killed). It ends by listing each session's
-running version; run it again for a session left behind once it is idle.
+``update`` runs ``claude update``, then restarts each background session that
+runs an older binary: an idle one through ``claude respawn <id>``; a working
+one is stopped and resumed with a note that it was updated and should carry
+on, since a restart interrupts its turn and kills its background jobs. It ends
+by listing each session's running version.
 """
 
 from __future__ import annotations
@@ -158,25 +159,66 @@ def list_sessions(_: argparse.Namespace) -> int:
     return 0
 
 
+RESUME_NOTE = ("Claude Code was updated to %s and this session was restarted on "
+               "it, which interrupted your turn and stopped any background jobs "
+               "it had running. If you were in the middle of something, continue "
+               "it, and rerun any background job that was cut off.")
+
+
+DAEMON_LOG = Path.home() / ".claude" / "daemon.log"
+
+
+def daemon_log_size() -> int:
+    return DAEMON_LOG.stat().st_size if DAEMON_LOG.exists() else 0
+
+
+def wait_settled(short: str, offset: int) -> None:
+    """Resuming before the daemon logs the stop as settled starts a copy instead."""
+    deadline = time.monotonic() + 60
+    marker = "bg settled %s " % short
+    while True:
+        with DAEMON_LOG.open(errors="replace") as log:
+            log.seek(offset)
+            if marker in log.read():
+                return
+        if time.monotonic() > deadline:
+            refuse("the daemon did not settle session %s within 60 s" % short)
+        time.sleep(0.5)
+
+
+def restart_working(session: dict, version: str) -> int:
+    """Interrupts a working session and resumes it on the new binary with a note."""
+    offset = daemon_log_size()
+    subprocess.run(["claude", "stop", session["id"]], check=True, capture_output=True)
+    wait_settled(session["id"], offset)
+    return subprocess.run(["claude", "--bg", "--resume", session["sessionId"],
+                           RESUME_NOTE % version], cwd=session["cwd"]).returncode
+
+
 def update(args: argparse.Namespace) -> int:
     before = installed_version()
     subprocess.run(["claude", "update"], check=True)
     after = installed_version()
     print("claude %s -> %s" % (before, after) if after != before
           else "claude %s is the latest" % after)
-    # respawn --all also restarts working sessions and kills their background jobs.
+    # respawn --all would also restart current sessions; go one by one.
     failed = []
     for session in sessions():
-        behind = running_version(session.get("pid")) not in (after, "stopped")
+        if running_version(session.get("pid")) in (after, "stopped"):
+            continue
+        if not session.get("id"):
+            print("left %s running: not a background session" % session.get("name"))
+            continue
         working = session.get("state") == "working" or session.get("status") == "busy"
-        if behind and working:
-            print("left %s (%s) running: it is working" % (session.get("id"), session.get("name")))
-        elif behind and session.get("id"):
-            if subprocess.run(["claude", "respawn", session["id"]]).returncode != 0:
-                failed.append(session["id"])
+        if working:
+            code = restart_working(session, after)
+        else:
+            code = subprocess.run(["claude", "respawn", session["id"]]).returncode
+        if code != 0:
+            failed.append(session["id"])
     list_sessions(args)
     if failed:
-        print("could not respawn: %s" % " ".join(failed), file=sys.stderr)
+        print("could not restart: %s" % " ".join(failed), file=sys.stderr)
         return 1
     return 0
 
