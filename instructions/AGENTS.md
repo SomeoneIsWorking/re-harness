@@ -144,6 +144,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - One build tree per purpose (`build/agent`, `build/player`), never one per task. Third-party dependencies
   are built once per revision and toolchain into a shared prefix outside the repo and consumed through
   `find_package`; a build tree holds only its own project's objects.
+- Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator) never fan out: a
+  session and its subagents run one at a time, each at full width. Subagents edit in parallel and
+  take turns for the heavy step. This is not a cap: add no `-j` limits, slots or memory guards.
 - Account for every change in the tree before ending: land it, continue it, or remove it. Do not
   revert another agent's work.
 - Kill by PID, never `pkill` a shared name.
