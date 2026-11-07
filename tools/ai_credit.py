@@ -16,8 +16,7 @@ remapped through their saved commit maps, so rewrite dependencies first.
 
 After pushing it moves each local branch of every clone whose ``origin`` is the repo to its
 rewritten commit. File contents never change, only messages, identities and submodule links, so
-checkouts and uncommitted work are untouched. A branch with commits that were never pushed is
-replayed when linear and reported otherwise.
+checkouts and uncommitted work are untouched. Commits never pushed are rewritten on top.
 """
 
 from __future__ import annotations
@@ -107,8 +106,11 @@ def save_map(name: str, mapping: dict[bytes, bytes]) -> dict[bytes, bytes]:
 
 def git(*args: str, cwd: Path | None = None, capture: bool = True,
         env: dict[str, str] | None = None) -> str:
-    done = subprocess.run(["git", *args], cwd=cwd, check=True, text=True,
-                          capture_output=capture, env=None if env is None else {**os.environ, **env})
+    done = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=capture,
+                          env=None if env is None else {**os.environ, **env})
+    if done.returncode != 0:
+        print("git %s: %s" % (" ".join(args[:3]), (done.stderr or "").strip()), file=sys.stderr)
+        raise subprocess.CalledProcessError(done.returncode, done.args, done.stdout, done.stderr)
     return done.stdout if capture else ""
 
 
@@ -160,7 +162,7 @@ def count_credits(mirror: Path) -> int:
     log = git("log", "--all", "--format=%ae%n%ce%n%(trailers:key=Co-authored-by,valueonly)",
               cwd=mirror)
     return sum(1 for line in log.splitlines() if AI_EMAIL.search(
-        (re.search(r"<([^>]*)>", line).group(1) if "<" in line else line.strip()).encode()))
+        (re.search(r"<([^>]*)", line).group(1) if "<" in line else line.strip()).encode()))
 
 
 def mirror_of(name: str) -> Path:
@@ -169,6 +171,8 @@ def mirror_of(name: str) -> Path:
         shutil.rmtree(mirror)
     WORK.mkdir(parents=True, exist_ok=True)
     remote_git("clone", "--quiet", "--mirror", "https://github.com/%s/%s.git" % (OWNER, name), str(mirror))
+    # A detached auto-gc would pack loose objects away while the rewriter writes beside them.
+    git("--git-dir", str(mirror), "config", "gc.auto", "0")
     return mirror
 
 
@@ -322,10 +326,13 @@ def rev_list(mirror: Path, tips: list[str]) -> list[bytes]:
     return [line.encode() for line in listing.split()]
 
 
-def link_paths(mirror: Path) -> set[tuple[bytes, ...]]:
-    """Every path that ever held a submodule link."""
-    raw = subprocess.run(["git", "--git-dir", str(mirror), "log", "--all", "--format=", "--raw",
-                          "--no-abbrev", "--no-renames", "-m"], capture_output=True, check=True).stdout
+def link_paths(git_dir: Path, revs: list[str]) -> set[tuple[bytes, ...]]:
+    """Every path that ever held a submodule link in the history of revs."""
+    if not revs:
+        return set()
+    raw = subprocess.run(["git", "--git-dir", str(git_dir), "log", "--format=", "--raw", "--no-abbrev",
+                          "--no-renames", "-m", "--stdin"], input="\n".join(revs).encode() + b"\n",
+                         capture_output=True, check=True).stdout
     paths = set()
     for line in raw.splitlines():
         meta, _, path = line.partition(b"\t")
@@ -375,7 +382,7 @@ def rewrite_history(mirror: Path, name: str, credited: bool) -> dict[bytes, byte
         remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", "origin",
                    *("%s:refs/original/%d" % (sha, i) for i, sha in enumerate(originals)))
     with ObjectStore(mirror) as store:
-        rewriter = HistoryRewriter(store, load_maps(), link_paths(mirror), credited)
+        rewriter = HistoryRewriter(store, load_maps(), link_paths(mirror, ["--all"]), credited)
         rewriter.run(rev_list(mirror, originals))
         for bad, old in original.items():
             if old in rewriter.new:
@@ -438,39 +445,6 @@ def git_dirs(name: str) -> list[Path]:
     return found
 
 
-def on_remote(git_dir: Path, sha: str) -> bool:
-    return git("--git-dir", str(git_dir), "for-each-ref", "--contains", sha, "refs/remotes").strip() != ""
-
-
-def replay(git_dir: Path, tip: str, mapping: dict[bytes, bytes]) -> str | None:
-    """Recreates commits never pushed on the rewritten base, tree for tree; None if not linear."""
-    chain = []
-    sha = tip
-    while sha.encode() not in mapping and not on_remote(git_dir, sha):
-        parents = git("--git-dir", str(git_dir), "rev-list", "--parents", "-n1", sha).split()[1:]
-        if len(parents) != 1:
-            return None
-        chain.append(sha)
-        sha = parents[0]
-    base = mapping.get(sha.encode(), sha.encode()).decode()
-    for old in reversed(chain):
-        fields = git("--git-dir", str(git_dir), "log", "-1",
-                     "--format=%an%x00%ae%x00%ad%x00%cn%x00%ce%x00%cd%x00%T", "--date=raw",
-                     old).rstrip("\n").split("\0")
-        message = git("--git-dir", str(git_dir), "log", "-1", "--format=%B", old).encode()
-        env = dict(zip(("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE",
-                        "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE"), fields[:6]))
-        for role in ("AUTHOR", "COMMITTER"):
-            if is_ai(env["GIT_%s_EMAIL" % role].encode()):
-                env["GIT_%s_NAME" % role] = USER_NAME.decode()
-                env["GIT_%s_EMAIL" % role] = USER_EMAIL.decode()
-        done = subprocess.run(["git", "--git-dir", str(git_dir), "commit-tree", fields[6], "-p", base],
-                              input=clean_message(message, False) or message, capture_output=True, check=True,
-                              env={**os.environ, **env})
-        base = done.stdout.decode().strip()
-    return base
-
-
 def sync_submodules(git_dir: Path, links: dict[bytes, bytes]) -> None:
     """Points each worktree's index and submodule checkout at the rewritten commit of its link."""
     listing = git("--git-dir", str(git_dir), "worktree", "list", "--porcelain")
@@ -491,23 +465,24 @@ def sync_submodules(git_dir: Path, links: dict[bytes, bytes]) -> None:
                 git("checkout", "--quiet", "--detach", new.decode(), cwd=checkout)
 
 
-def move_git_dir(git_dir: Path, mapping: dict[bytes, bytes]) -> list[str]:
-    """Moves branches and tags to their rewritten commits; returns branches it could not move."""
+def move_git_dir(git_dir: Path, mapping: dict[bytes, bytes]) -> None:
+    """Moves branches to their rewritten commits; commits never pushed are rewritten on top."""
     remote_git("--git-dir", str(git_dir), "fetch", "--quiet", "--force", "--tags", "origin")
-    stuck = []
-    for ref, sha in refs_of(git_dir).items():
-        new = mapping.get(sha.encode())
-        if new is None and ref.startswith("refs/heads/") and not on_remote(git_dir, sha):
-            replayed = replay(git_dir, sha, mapping)
-            if replayed is None:
-                stuck.append(ref)
-                continue
-            new = replayed.encode()
-        if new is not None:
-            git("--git-dir", str(git_dir), "update-ref", ref, new.decode(), sha)
+    heads = {ref: sha for ref, sha in refs_of(git_dir).items() if ref.startswith("refs/heads/")}
+    unpushed = subprocess.run(["git", "--git-dir", str(git_dir), "rev-list", "--topo-order", "--reverse",
+                               "--stdin"], input="\n".join([*heads.values(), "--not", "--remotes"]) + "\n",
+                              capture_output=True, text=True, check=True).stdout.split()
+    with ObjectStore(git_dir) as store:
+        local = [sha.encode() for sha in unpushed]
+        tips = [sha for sha in heads.values() if sha.encode() not in mapping]
+        rewriter = HistoryRewriter(store, load_maps(), link_paths(git_dir, tips) if local else set(), False)
+        rewriter.new.update(mapping)
+        rewriter.run(local)
+    moves = "".join("update %s %s %s\n" % (ref, rewriter.new[sha.encode()].decode(), sha)
+                    for ref, sha in heads.items() if rewriter.new.get(sha.encode(), sha.encode()) != sha.encode())
+    subprocess.run(["git", "--git-dir", str(git_dir), "update-ref", "--stdin"], input=moves, text=True, check=True)
     if "modules" not in git_dir.parts:
         sync_submodules(git_dir, load_maps())
-    return stuck
 
 
 def disclose_one(name: str) -> str:
@@ -555,7 +530,6 @@ def scan(args: argparse.Namespace) -> int:
 
 def rewrite(args: argparse.Namespace) -> int:
     MAPS.mkdir(parents=True, exist_ok=True)
-    status = 0
     for name in args.names:
         mirror = mirror_of(name)
         before_refs = refs_of(mirror)
@@ -567,14 +541,12 @@ def rewrite(args: argparse.Namespace) -> int:
         print("%s: %d AI credits -> %d, %d commits rewritten" % (name, before, after,
                                                                   len(mapping)), flush=True)
         for git_dir in git_dirs(name):
-            stuck = move_git_dir(git_dir, moved)
-            print("  moved %s%s" % (git_dir, "; not linear, not moved: " + " ".join(stuck)
-                                     if stuck else ""), flush=True)
-            status = status or (1 if stuck else 0)
+            move_git_dir(git_dir, moved)
+            print("  moved %s" % git_dir, flush=True)
         if before and args.disclose:
             print("  README: %s" % disclose_one(name), flush=True)
         shutil.rmtree(mirror)
-    return status
+    return 0
 
 
 def main() -> int:
