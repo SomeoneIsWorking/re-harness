@@ -132,8 +132,12 @@ class RulesetsLifted:
         self.lifted: list[str] = []
 
     def __enter__(self) -> RulesetsLifted:
-        ids = subprocess.run(["gh", "api", self.path, "--jq", '.[] | select(.enforcement == "active") | .id'],
-                             capture_output=True, text=True, check=True).stdout.split()
+        listed = subprocess.run(["gh", "api", self.path, "--jq", '.[] | select(.enforcement == "active") | .id'],
+                                capture_output=True, text=True)
+        # Private repos on a free plan cannot have rulesets; the API answers 403.
+        if listed.returncode != 0 and "Upgrade to GitHub Pro" not in listed.stderr + listed.stdout:
+            refuse("cannot list rulesets of %s: %s" % (self.path, listed.stderr.strip()))
+        ids = listed.stdout.split() if listed.returncode == 0 else []
         for ruleset in ids:
             subprocess.run(["gh", "api", "-X", "PUT", "%s/%s" % (self.path, ruleset), "-f",
                             "enforcement=disabled"], capture_output=True, check=True)
@@ -378,20 +382,29 @@ def rewrite_history(mirror: Path, name: str, credited: bool) -> dict[bytes, byte
                 rewriter.new[bad] = rewriter.new[old]
         rewriter.run([sha for sha in current if sha not in original])
         upstream_url, upstream = upstream_tags(name) if original else ("", {})
-        for ref, sha in refs.items():
-            kind = git("--git-dir", str(mirror), "cat-file", "-t", sha).strip()
+        listing = git("--git-dir", str(mirror), "for-each-ref",
+                      "--format=%(refname) %(objectname) %(objecttype) %(*objectname)", "refs/heads", "refs/tags")
+        moves = []
+        from_upstream = []
+        for line in listing.splitlines():
+            ref, sha, kind, *peeled = line.split()
             if kind == "commit":
                 new = rewriter.new[sha.encode()].decode()
             else:
-                peeled = git("--git-dir", str(mirror), "rev-parse", sha + "^{commit}").strip().encode()
+                target = peeled[0].encode() if peeled else sha.encode()
                 source = upstream.get(ref.removeprefix("refs/tags/"))
-                if source and rewriter.new.get(peeled, peeled) == source[1].encode():
-                    remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", upstream_url, source[0])
+                if source and rewriter.new.get(target, target) == source[1].encode():
                     new = source[0]
+                    from_upstream.append(new)
                 else:
                     new = rewriter.tag(sha.encode()).decode()
             if new != sha:
-                git("--git-dir", str(mirror), "update-ref", ref, new, sha)
+                moves.append("update %s %s %s\n" % (ref, new, sha))
+    for chunk in range(0, len(from_upstream), 500):
+        remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", upstream_url,
+                   *from_upstream[chunk:chunk + 500])
+    subprocess.run(["git", "--git-dir", str(mirror), "update-ref", "--stdin"], input="".join(moves),
+                   text=True, check=True)
     for ref in git("--git-dir", str(mirror), "for-each-ref", "--format=%(refname)", "refs/original").split():
         git("--git-dir", str(mirror), "update-ref", "-d", ref)
     return {old: new for old, new in rewriter.new.items() if old != new}
