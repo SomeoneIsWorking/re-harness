@@ -42,9 +42,12 @@ MAPS = WORK / "maps"
 
 # Every AI identity found in the user's repos on 2026-11-07, matched on the email.
 AI_EMAIL = re.compile(
-    rb"@(anthropic\.com|openai\.com|opencode\.ai)$|^opencode@|@spacebunny$"
+    rb"@(anthropic\.com|openai\.com|opencode\.ai|pi\.dev|earendil[.-]works|various-llms\.invalid)$"
+    rb"|^(opencode|ox-alpha)@|^pi@localhost$|@spacebunny$"
     rb"|^copilot@github\.com$|Copilot@users\.noreply\.github\.com$|^685f4c1d-", re.IGNORECASE)
-TRAILER = re.compile(rb"^co-authored-by:\s*.*<([^>]*)>\s*$", re.IGNORECASE)
+# Trailers some tools wrote without an email, such as "opencode (glm-5.3-flash)".
+AI_NAME = re.compile(rb"^(opencode|ox-alpha|pi|claude|codex|openai)\b", re.IGNORECASE)
+TRAILER = re.compile(rb"^co-authored-by:\s*(.*)$", re.IGNORECASE)
 # Copilot's bot authored upstream commits in imported histories; those stay theirs.
 FOREIGN_BOT = re.compile(rb"copilot-swe-agent", re.IGNORECASE)
 
@@ -58,9 +61,15 @@ def is_ai(email: bytes) -> bool:
     return bool(AI_EMAIL.search(email))
 
 
+def is_ai_credit(value: bytes) -> bool:
+    """A co-author value, "Name <email>" or a bare name, that names an AI tool."""
+    email = re.search(rb"<([^>]*)>?", value)
+    return is_ai(email.group(1)) if email else bool(AI_NAME.match(value.strip()))
+
+
 def is_ai_trailer(line: bytes) -> bool:
     match = TRAILER.match(line.strip())
-    return match is not None and is_ai(match.group(1))
+    return match is not None and is_ai_credit(match.group(1))
 
 
 def owned(author_email: bytes, author_name: bytes) -> bool:
@@ -159,10 +168,8 @@ def refs_of(git_dir: Path) -> dict[str, str]:
 
 
 def count_credits(mirror: Path) -> int:
-    log = git("log", "--all", "--format=%ae%n%ce%n%(trailers:key=Co-authored-by,valueonly)",
-              cwd=mirror)
-    return sum(1 for line in log.splitlines() if AI_EMAIL.search(
-        (re.search(r"<([^>]*)", line).group(1) if "<" in line else line.strip()).encode()))
+    log = git("log", "--all", "--format=<%ae>%n<%ce>%n%(trailers:key=Co-authored-by,valueonly)", cwd=mirror)
+    return sum(1 for line in log.splitlines() if line.strip() and is_ai_credit(line.encode()))
 
 
 def mirror_of(name: str) -> Path:
@@ -417,10 +424,21 @@ def rewrite_history(mirror: Path, name: str, credited: bool) -> dict[bytes, byte
     return {old: new for old, new in rewriter.new.items() if old != new}
 
 
+def immutable_release_tags(name: str) -> set[str]:
+    """Tags of immutable releases, which GitHub never lets move."""
+    listing = subprocess.run(["gh", "api", "--paginate", "repos/%s/%s/releases" % (OWNER, name), "--jq",
+                              ".[] | select(.immutable) | .tag_name"], capture_output=True, text=True, check=True)
+    return {"refs/tags/" + tag for tag in listing.stdout.split()}
+
+
 def push(mirror: Path, name: str, before: dict[str, str]) -> None:
     """Force-pushes only over what was mirrored, so a push that landed meanwhile is never lost."""
     after = refs_of(mirror)
-    changed = [ref for ref, sha in after.items() if before.get(ref) != sha]
+    locked = immutable_release_tags(name)
+    changed = [ref for ref, sha in after.items() if before.get(ref) != sha and ref not in locked]
+    for ref in sorted(locked & set(after)):
+        if before.get(ref) != after[ref]:
+            print("  %s is an immutable release's tag; it keeps the old commit" % ref, flush=True)
     if not changed:
         return
     url = "https://github.com/%s/%s.git" % (OWNER, name)
