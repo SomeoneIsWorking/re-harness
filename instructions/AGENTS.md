@@ -131,7 +131,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 ## Repository and worktree
 
 - One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
-  Commit messages are one line, `type(scope): subject`, plus attribution trailers.
+  Commit messages are one line, `type(scope): subject`, plus one AI trailer whatever the tool or
+  model: `Co-Authored-By: Various LLMs <noreply@various-llms.invalid>`. No per-model or per-tool
+  trailers, and no AI identity as author or committer.
 - Every maintained repo has a GitHub `origin`; run the `go-public` audit before making one public.
 - Nothing machine-specific in tracked files (no home paths); game assets never enter git.
 - Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
