@@ -18,6 +18,8 @@ links all three into agent homes. Nothing in `tools/` reads this repo's docs.
 | `tools/libclang_ast.py` | libclang ctypes binding: parse a unit, first-party declarations, qualified watched references |
 | `tools/unit_cache.py` | per-unit result cache keyed by command and every file the parse read |
 | `tools/go_public.py` | history audit: assets, home paths, private references; filter-repo rules |
+| `tools/ai_credit.py` | history rewrite: AI co-author trailers collapsed to Claude on the first commit, clones moved, README disclosure |
+| `tools/agent_session.py` | Claude Code background sessions: start one per project, list with versions, update and respawn |
 | `tools/scratch_gc.py` | scratch cleanup honouring `.scratch-keep` |
 | `tools/cleanup-files` | remove an explicit list of in-tree files |
 | `tools/play_api.py`, `tools/play_console.py` | Google Play publishing: API tracks and uploads, console web UI through WebLua |
