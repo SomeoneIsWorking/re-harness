@@ -108,6 +108,7 @@ def save_map(name: str, mapping: dict[bytes, bytes]) -> dict[bytes, bytes]:
     """Adds to the repo's map, so a second run, which moves nothing, keeps the first one's ids."""
     path = MAPS / (name + ".map")
     known = dict(line.split() for line in path.read_bytes().splitlines()) if path.exists() else {}
+    known = {old: mapping.get(new, new) for old, new in known.items()}
     known.update(mapping)
     path.write_bytes(b"".join(old + b" " + new + b"\n" for old, new in known.items()))
     return known
@@ -239,8 +240,9 @@ class HistoryRewriter:
     """Rewrites the user's and AI tools' commits; everyone else's stay byte-identical, signed or not."""
 
     def __init__(self, store: ObjectStore, links: dict[bytes, bytes], link_paths: set[tuple[bytes, ...]],
-                 credited: bool) -> None:
+                 credited: bool, foreign: set[bytes] = frozenset()) -> None:
         self.store = store
+        self.foreign = foreign
         self.links = links
         self.link_dirs = {path[:depth] for path in link_paths for depth in range(1, len(path))}
         self.credited = credited
@@ -281,7 +283,7 @@ class HistoryRewriter:
         head, separator, message = body.partition(b"\n\n")
         fields = header_lines(head)
         author = next(IDENTITY.match(f) for f in fields if f.startswith(b"author "))
-        own = owned(author.group(3), author.group(2))
+        own = sha not in self.foreign and owned(author.group(3), author.group(2))
         parents = [f for f in fields if f.startswith(b"parent ")]
         out = []
         for field in fields:
@@ -348,27 +350,30 @@ def link_paths(git_dir: Path, revs: list[str]) -> set[tuple[bytes, ...]]:
     return paths
 
 
-def upstream_tags(name: str) -> tuple[str, dict[str, tuple[str, str]]]:
-    """A fork's parent URL and its tags as name to (tag object, peeled commit); empty for own repos."""
+def fork_parent(name: str) -> str:
+    """The URL of the repo this one forks, or "" for the user's own projects."""
     parent = subprocess.run(["gh", "api", "repos/%s/%s" % (OWNER, name), "--jq", ".parent.full_name // \"\""],
                             capture_output=True, text=True, check=True).stdout.strip()
-    if not parent:
-        return "", {}
-    url = "https://github.com/%s.git" % parent
+    return "https://github.com/%s.git" % parent if parent else ""
+
+
+def upstream_tags(url: str) -> dict[str, tuple[str, str]]:
+    """The parent's tags as name to (tag object, peeled commit)."""
     tags: dict[str, tuple[str, str]] = {}
     for line in remote_git("ls-remote", "--tags", url).splitlines():
         sha, ref = line.split("\t")
         tag = ref.removeprefix("refs/tags/").removesuffix("^{}")
         object_, peeled = tags.get(tag, (sha, sha))
         tags[tag] = (object_, sha) if ref.endswith("^{}") else (sha, peeled)
-    return url, tags
+    return tags
 
 
 def rewrite_history(mirror: Path, name: str, credited: bool) -> dict[bytes, bytes]:
     """Rewrites the mirror's branches and tags; returns old to new ids of every commit that moved.
 
-    A repo an earlier filter-repo run rewrote (its map in bad-maps/) is rebuilt from the original
-    commits, which GitHub still serves by id; commits pushed on top since then follow along."""
+    A repo an earlier run rewrote wrongly (its map in bad-maps/) is rebuilt from the original
+    commits, which GitHub still serves by id; commits pushed on top since then follow along.
+    In a fork every commit upstream's branches reach is upstream's, whoever authored it."""
     bad_map = WORK / "bad-maps" / (name + ".map")
     original = {}
     if bad_map.exists():
@@ -388,14 +393,20 @@ def rewrite_history(mirror: Path, name: str, credited: bool) -> dict[bytes, byte
     if originals:
         remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", "origin",
                    *("%s:refs/original/%d" % (sha, i) for i, sha in enumerate(originals)))
+    parent = fork_parent(name)
+    foreign: set[bytes] = set()
+    if parent:
+        remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", parent, "+refs/heads/*:refs/upstream/*")
+        foreign = set(rev_list(mirror, git("--git-dir", str(mirror), "for-each-ref", "--format=%(objectname)",
+                                           "refs/upstream").split()))
     with ObjectStore(mirror) as store:
-        rewriter = HistoryRewriter(store, load_maps(), link_paths(mirror, ["--all"]), credited)
+        rewriter = HistoryRewriter(store, load_maps(), link_paths(mirror, ["--all"]), credited, foreign)
         rewriter.run(rev_list(mirror, originals))
         for bad, old in original.items():
             if old in rewriter.new:
                 rewriter.new[bad] = rewriter.new[old]
         rewriter.run([sha for sha in current if sha not in original])
-        upstream_url, upstream = upstream_tags(name) if original else ("", {})
+        upstream = upstream_tags(parent) if parent and original else {}
         listing = git("--git-dir", str(mirror), "for-each-ref",
                       "--format=%(refname) %(objectname) %(objecttype) %(*objectname)", "refs/heads", "refs/tags")
         moves = []
@@ -415,11 +426,12 @@ def rewrite_history(mirror: Path, name: str, credited: bool) -> dict[bytes, byte
             if new != sha:
                 moves.append("update %s %s %s\n" % (ref, new, sha))
     for chunk in range(0, len(from_upstream), 500):
-        remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", upstream_url,
+        remote_git("--git-dir", str(mirror), "fetch", "--quiet", "--no-tags", parent,
                    *from_upstream[chunk:chunk + 500])
     subprocess.run(["git", "--git-dir", str(mirror), "update-ref", "--stdin"], input="".join(moves),
                    text=True, check=True)
-    for ref in git("--git-dir", str(mirror), "for-each-ref", "--format=%(refname)", "refs/original").split():
+    for ref in git("--git-dir", str(mirror), "for-each-ref", "--format=%(refname)", "refs/original",
+                   "refs/upstream").split():
         git("--git-dir", str(mirror), "update-ref", "-d", ref)
     return {old: new for old, new in rewriter.new.items() if old != new}
 
