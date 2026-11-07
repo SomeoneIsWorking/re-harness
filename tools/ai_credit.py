@@ -43,7 +43,7 @@ MAPS = WORK / "maps"
 # Every AI identity found in the user's repos on 2026-11-07, matched on the email.
 AI_EMAIL = re.compile(
     rb"@(anthropic\.com|openai\.com|opencode\.ai|pi\.dev|earendil[.-]works|various-llms\.invalid)$"
-    rb"|^(opencode|ox-alpha)@|^pi@localhost$|@spacebunny$"
+    rb"|^(opencode|ox-alpha)@|^(pi|agent)@localhost$|@spacebunny$"
     rb"|^copilot@github\.com$|Copilot@users\.noreply\.github\.com$|^685f4c1d-", re.IGNORECASE)
 # Trailers some tools wrote without an email, such as "opencode (glm-5.3-flash)".
 AI_NAME = re.compile(rb"^(opencode|ox-alpha|pi|claude|codex|openai)\b", re.IGNORECASE)
