@@ -36,3 +36,5 @@ skills, untouched; `--replace` swaps only known targets. `--home <dir>` installs
 
 The tools read project data from the working project (`docs/issues/`, `docs/re-frontier.md`,
 source), never from this repo.
+
+Built with AI assistance (Claude and other LLMs).
