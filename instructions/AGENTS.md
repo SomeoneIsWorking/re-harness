@@ -138,7 +138,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 ## Repository and worktree
 
 - One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
-  Commit messages are one line, `type(scope): subject`, with no AI trailers and no AI identity as
+  A commit subject is one line, `type(scope): subject`, with no AI identity as
   author or committer. AI use is disclosed once, in the README ("Built with AI assistance (Claude
   and other LLMs)."), and the first commit carries `Co-Authored-By: Claude <noreply@anthropic.com>`.
 - Every maintained repo has a GitHub `origin`; run the `go-public` audit before making one public.
