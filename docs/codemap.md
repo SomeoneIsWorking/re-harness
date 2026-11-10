@@ -8,7 +8,7 @@ links all three into agent homes. Nothing in `tools/` reads this repo's docs.
 | `instructions/AGENTS.md` | global agent rules: problem workflow, docs, communication, code, C++, tooling, repository |
 | `skills/global/` | codemap find and module maps, go-public history audit, project goals/state/issues, kill by PID, WebLua browser automation |
 | `skills/ship/` | release, CI, packaging, signing, Android, Play Console |
-| `skills/port/` | port structure and layers, first-run game-file setup, port release, dynamic scan and test program |
+| `skills/port/` | port structure and layers, first-run game-file setup, port release, dynamic scan and test program, replay interpolation |
 | `skills/re/` | Ghidra headless decompile/xrefs/loaders, RE frontier, UE3 native passes |
 | `skills/dynarec/` | dynarec port method, bring-up and oracle compare, JIT runtime, native overrides |
 | `tools/codemap.py` | codemap find: definitions by name, value and comment across linked checkouts; duplicate groups |

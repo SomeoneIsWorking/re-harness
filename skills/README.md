@@ -6,7 +6,7 @@ The first directory is an applicability boundary, not a project name:
 |---|---|---|
 | `global` | Any long-lived project or repository | codemap, go-public, project-state, safe-kill, weblua |
 | `ship` | Any product is built, packaged, released or put on Android, port or original game | release, android, play-console |
-| `port` | A game port needs host-side ownership and composition, regardless of guest execution strategy | game-port-structure, first-run-setup, port-release, dynamic-scan |
+| `port` | A game port needs host-side ownership and composition, regardless of guest execution strategy | game-port-structure, first-run-setup, port-release, dynamic-scan, replay-interpolation |
 | `re` | Work recovers ground truth from a binary, asset, emulator, or engine | ghidra-re, re-frontier, ue3-native-pass |
 | `dynarec` | A port interprets or dynamically translates guest code at runtime | dynarec-port, dynarec-runtime, dynarec-overrides |
 

@@ -3,7 +3,8 @@
 `shared/re-harness` is the only editable source of these instructions, the skills and the shared
 `tools/`; agent homes and `~/repo/AGENTS.md` are links installed by `tools/install_skills.py`.
 Domain rules live in skills: CI, releases and Android for any product in `release` and `android`;
-game ports add `dynarec-port`, `game-port-structure`, `port-release` and `dynamic-scan`.
+game ports add `dynarec-port`, `game-port-structure`, `port-release`, `dynamic-scan` and
+`replay-interpolation`.
 
 ## How to work a problem
 

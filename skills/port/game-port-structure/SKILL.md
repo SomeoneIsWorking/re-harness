@@ -45,7 +45,8 @@ in `project-state.md`'s comparison baseline.
   window decides whether objects exist (spawn/unload, side-scrollers) widen that guest window,
   recorded as a gameplay delta. Edge HUD moves to the widened edges, centred UI stays centred,
   nothing stretches. Never sample adjacent frames, infer geometry from pixels, or stretch the image.
-- **Interpolation** is a separate opt-in feature over matching source geometry only.
+- **Interpolation** is a separate opt-in feature over matching source geometry only, built as a
+  sandboxed replay of the title's own draw code (`replay-interpolation`).
 - **Loading-only screens do not ship.** Keep loading asynchronous and go straight to the next real
   presentation. Logo screens accept Start/confirm through a complete cancellation route. Authored
   transition cutscenes stay; a title may give one a minimum duration.
