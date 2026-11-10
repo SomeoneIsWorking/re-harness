@@ -111,8 +111,6 @@ cuts missed, is named as such, and never stands in for finding the declaration.
 
 - `psxport` `docs/plans/replay-interpolation.md` with `runtime/psx/present/{replay_frame,motion_set,guest_redraw}`:
   the framework owner (sandboxed `GuestRedraw`, `MotionSet`), on Spyro 1-3 and Tomba! 2.
-- `wiiuport` `docs/frame-interpolation.md`, "The game-side in-between frame": Wind Waker HD under a Cemu
-  runtime, the gated tick's draw phase re-run at the midpoint. It does not have the sandbox yet.
 - ZeldaWWHDRecomp (MPL-2.0, `runtime/src/interp/`): the same method on a static recompilation. Each
   drawn actor is saved before its hold-pass draw and put back after the paint, excluding the process and
   draw tags. Its commit log lists draw-time side effects by guest address.
