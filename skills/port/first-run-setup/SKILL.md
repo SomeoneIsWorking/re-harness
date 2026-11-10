@@ -57,4 +57,4 @@ desktop window; the confirm button and footer must be on screen.
 - If the module fails to compile against the RmlUi your port pins, fix the module to use API every
   pinned version has. Bumping a consumer's RmlUi to adopt a setup screen is the wrong direction.
 - Land the shared change and bump the consumer's pin before building the consumer; a local
-  uncommitted shared tree passes here and fails in CI, which builds the pin.
+  uncommitted shared tree passes here and fails for every build of the pin.

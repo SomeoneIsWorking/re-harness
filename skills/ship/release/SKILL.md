@@ -7,7 +7,8 @@ description: Ship any product — a game port or an original game — through ho
 
 ## CI
 
-- Hosted CI covers every applicable shipping platform (Linux, Windows, macOS, Android), or
+- Hosted CI builds the release: it starts by hand or from a release tag, never per push (global
+  instructions). It covers every applicable shipping platform (Linux, Windows, macOS, Android), or
   `project-state.md` says why one is inapplicable. Jobs configure, build, lint, test and package
   through the project's own tooling owners.
 - Workflows are deterministic and least-privileged: actions pinned by SHA, downloads checksummed,

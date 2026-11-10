@@ -23,7 +23,8 @@ Every bug, regression or feature follows these steps in order. Skipping one is h
    structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
 5. **Prove it.** Show the expected frame, log line or value in the running product on the defect's
    screen, reached through its warp; one real-time walk closes the pass. A check written for the fix
-   is not proof.
+   is not proof. Alongside it, run only the focused tests for what the change touches; a repo's full
+   verifier or check suite runs when the user asks, never per change.
 6. **Record it.** Update the owner's doc where the contract or behaviour changed.
 
 If a fix does not work, revert it and go back to step 3; never stack a second guess on the first.
@@ -35,6 +36,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 ## Docs
 
+- These instructions and the skills are the only home of a rule. A repo's `AGENTS.md` holds that
+  repo's facts (layout, commands, pins, its focused tests) and links to a rule instead of restating
+  it; a restated or diverging copy is deleted on sight.
 - Each subsystem has one accurate doc: what it owns, inputs and outputs, invariants, data flow, how
   to check it in the running product.
 - `docs/codemap.md` is the module map, one line per module (codemap skill). Update it in the change
@@ -149,6 +153,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator) never fan out: a
   session and its subagents run one at a time, each at full width. Subagents edit in parallel and
   take turns for the heavy step. This is not a cap: add no `-j` limits, slots or memory guards.
+- Hosted workflows start only by hand (`workflow_dispatch`) or from a release tag (`push: tags`);
+  none runs on a branch push, pull request or schedule, except the Pages site's deploy. Third-party
+  copies that carry upstream
+  workflows have Actions disabled on the repository instead.
 - Account for every change in the tree before ending: land it, continue it, or remove it. Do not
   revert another agent's work.
 - Kill by PID, never `pkill` a shared name.
