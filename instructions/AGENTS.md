@@ -23,7 +23,8 @@ Every bug, regression or feature follows these steps in order. Skipping one is h
    structure cannot express the fix cleanly, restructure it first (its own commit), then fix.
 5. **Prove it.** Show the expected frame, log line or value in the running product on the defect's
    screen, reached through its warp; one real-time walk closes the pass. A check written for the fix
-   is not proof. Alongside it, run only the focused tests for what the change touches; a repo's full
+   is not proof, and neither is a number that would read the same with the defect present: look at the
+   frames as the player would. A filed issue, a trace or a decision is not a fix. Alongside it, run only the focused tests for what the change touches; a repo's full
    verifier or check suite runs when the user asks, never per change.
 6. **Record it.** Update the owner's doc where the contract or behaviour changed.
 
