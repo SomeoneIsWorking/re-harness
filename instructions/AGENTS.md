@@ -155,8 +155,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   take turns for the heavy step. This is not a cap: add no `-j` limits, slots or memory guards.
 - Hosted workflows start only by hand (`workflow_dispatch`) or from a release tag (`push: tags`);
   none runs on a branch push, pull request or schedule, except the Pages site's deploy. Third-party
-  copies that carry upstream
-  workflows have Actions disabled on the repository instead.
+  copies that carry upstream workflows have Actions disabled on the repository instead.
 - Account for every change in the tree before ending: land it, continue it, or remove it. Do not
   revert another agent's work.
 - Kill by PID, never `pkill` a shared name.
