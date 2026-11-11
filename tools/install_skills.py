@@ -26,6 +26,7 @@ TOOL_NAMES = (
     "codemap.py",
     "cpp_policy.py",
     "go_public.py",
+    "perf_compare.py",
     "play_api.py",
     "play_console.py",
     "re_frontier.py",

@@ -91,6 +91,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Errors preserve valid state: fail fast or propagate; catch only to restore an invariant, add
   context, retry an idempotent operation, or terminate cleanly.
 - Reusable title-neutral C++ helpers go in Lucent.
+- Weak hardware is met by removing needless work, measured in load-independent units and compared
+  against the run-to-run spread (`perf-units`); never ms budgets, wall-clock tests or generated load.
 
 ## C++
 

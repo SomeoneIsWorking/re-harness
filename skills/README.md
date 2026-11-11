@@ -4,7 +4,7 @@ The first directory is an applicability boundary, not a project name:
 
 | Scope | Applies when | Skills |
 |---|---|---|
-| `global` | Any long-lived project or repository | codemap, go-public, project-state, safe-kill, weblua |
+| `global` | Any long-lived project or repository | codemap, go-public, perf-units, project-state, safe-kill, weblua |
 | `ship` | Any product is built, packaged, released or put on Android, port or original game | release, android, play-console |
 | `port` | A game port needs host-side ownership and composition, regardless of guest execution strategy | game-port-structure, first-run-setup, port-release, dynamic-scan, replay-interpolation |
 | `re` | Work recovers ground truth from a binary, asset, emulator, or engine | ghidra-re, re-frontier, ue3-native-pass |

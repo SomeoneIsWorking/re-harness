@@ -6,7 +6,7 @@ links all three into agent homes. Nothing in `tools/` reads this repo's docs.
 | Module | Owns |
 |---|---|
 | `instructions/AGENTS.md` | global agent rules: problem workflow, docs, communication, code, C++, tooling, repository |
-| `skills/global/` | codemap find and module maps, go-public history audit, project goals/state/issues, kill by PID, WebLua browser automation |
+| `skills/global/` | codemap find and module maps, go-public history audit, load-independent cost units, project goals/state/issues, kill by PID, WebLua browser automation |
 | `skills/ship/` | release, CI, packaging, signing, Android, Play Console |
 | `skills/port/` | port structure and layers, first-run game-file setup, port release, dynamic scan and test program, replay interpolation |
 | `skills/re/` | Ghidra headless decompile/xrefs/loaders, RE frontier, UE3 native passes |
@@ -19,6 +19,7 @@ links all three into agent homes. Nothing in `tools/` reads this repo's docs.
 | `tools/unit_cache.py` | per-unit result cache keyed by command and every file the parse read |
 | `tools/go_public.py` | history audit: assets, home paths, private references; filter-repo rules |
 | `tools/agent_session.py` | Claude Code background sessions: start one per project, list with versions, update and respawn |
+| `tools/perf_compare.py` | cost compare: two builds' run-end `[perf]` lines, per-line delta against each side's run-to-run spread |
 | `tools/scratch_gc.py` | scratch cleanup honouring `.scratch-keep` |
 | `tools/cleanup-files` | remove an explicit list of in-tree files |
 | `tools/play_api.py`, `tools/play_console.py` | Google Play publishing: API tracks and uploads, console web UI through WebLua |
