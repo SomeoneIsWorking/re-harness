@@ -52,6 +52,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   for the exact target build, each with its license, its build match proven by cross-checked
   addresses, and what we take from it. Checked before any RE begins and again before a new title or
   subsystem; a symbol map that matches the build is imported into the project's disassembler first.
+- Our projects are MIT. A title someone already ported under a license without strict limits (MIT,
+  BSD, zlib) is dropped or built by copying from that port, with attribution; a restrictive license
+  (noncommercial, copyleft, none) leaves the title ours, and its code is evidence only.
 - Write what you learn into the owning doc in the same session; fix a wrong note rather than adding
   another.
 - Comments and docs read like a developer wrote them. A comment is one short line where the code
