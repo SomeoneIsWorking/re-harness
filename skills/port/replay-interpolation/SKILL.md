@@ -30,8 +30,10 @@ the owner reports it.
   (widescreen culls included).
 - If the frame makes more than one submission, the replay names the one it replaces by what it is, never
   by a packet or list address that moves with the scene.
-- First probe: run the section once at t = 1 in the sandbox and compare its output with the real draw's,
-  byte for byte. That proves the section and the sandbox before any blend exists.
+- The t = 1 probe (the section's output with nothing blended, compared byte for byte with the real draw) runs
+  when a framework replay mechanism is new or changed (the sandbox, skipped calls, refusal rules) or when a
+  screen's in-betweens look wrong. A new section on a proven mechanism does not run it: its halfway crops and
+  the on/off leak proof already show a wrong section.
 
 ## 2. The sandbox
 
@@ -103,7 +105,7 @@ cuts missed, is named as such, and never stands in for finding the declaration.
 
 - Show crops of one moving object across consecutive presents, with each in-between visibly halfway
   between its neighbours, judged as the player sees them.
-- The t = 1 replay is identical to the real frame (the null case).
+- The t = 1 probe, only when §1 calls for it.
 - One paced real-time run on a quiet host shows about 0.5 tick per vblank at 60 Hz.
 - A "pixels changed between presents" count is not proof: it reads the same with the defect present.
 
