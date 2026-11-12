@@ -115,8 +115,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   the product with headless, silent maintainer tools that reuse the same build modules.
 - Every project that produces a runnable executable (a game port, a desktop app) also gets a desktop
   shortcut from its maintainer tools: a `.desktop` entry in `~/.local/share/applications` and one on
-  the user's Desktop, with the product's own icon, running the same command the launcher runs. It is
-  per-machine and never committed, and is re-run when the launcher, name or icon changes.
+  the user's Desktop, with the product's own icon, running the launcher on the newest build already
+  made, without rebuilding (it builds only when none exists). It is per-machine and never committed,
+  and is re-run when the launcher, name or icon changes.
 - Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
   `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
 - A missing native package gets a refusal naming the exact install command per platform.
