@@ -33,7 +33,7 @@ All execution paths share canonical CPU state, memory, exception, and service se
   non-executable knowledge (symbols, types, identity, override metadata).
 - The interpreter is a bounded fallback, used only after the JIT reports a block cannot be compiled
   or fetched safely, recorded with reason, PC and counts. Interpreter-only mode is diagnostic, never
-  the default or gameplay/performance evidence. Low-power 8/16-bit targets (NES, GBA, Amiga)
+  the default or gameplay/performance evidence. Low-power 8/16-bit targets (NES, SNES, GBA, Amiga)
   classified so in their goals may ship an interpreter, qualified on gameplay on every host.
 - A runtime translation cache is optional disposable data keyed to guest image, runtime version,
   host architecture and configuration.
