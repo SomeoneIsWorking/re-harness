@@ -80,7 +80,7 @@ Shipped builds stay statically linked, so players see no difference.
    - Its game state is guest state.
    - Overrides are already chosen by guest address (`runtime/cpu/native_dispatch.*`).
    - Machine snapshots exist (`runtime/cpu/machine_snapshot.*`).
-   - Pilot on Tomba 2.
+   - Pilot on Tomba 2; psxport's part is its `docs/plans/0201-title-hot-reload.md`.
 2. **The other port frameworks**: x86port, snesport, nesport, amigaport and gcnport. Their titles
    follow.
 3. **Non-port C++ products** (openSU, Lucent tools), where the state audit decides how much can
