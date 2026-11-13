@@ -1,12 +1,12 @@
 ---
 name: decomp-split
-description: "Move a port's RE knowledge into the decomp repository of its exact build: fork the community decomp or create our own permissive one, verify the split against the user's files, move the RE docs and named addresses, pin it as a submodule, and plan the generated address constants. Use before any other work on a title whose port still holds RE notes or hand-written guest addresses, and whenever a title gains a decomp."
+description: "Move a port's RE knowledge and code into the decomp repository of its exact build: fork the community decomp or create our own permissive one, verify the split against the user's files, move the RE docs and named addresses, pin it as a submodule, and plan the generated address constants. Use before any other work on a title whose port still holds RE notes or hand-written guest addresses, and whenever a title gains a decomp."
 ---
 
 # Decomp split
 
-The rule lives in the global instructions (Docs): RE knowledge belongs to the decomp repository, the
-port reads guest addresses from its symbol map. The split is the one-time move that makes a title
+The rule lives in the global instructions (Docs): RE knowledge and code belong to the decomp repository,
+the port reads guest addresses from its symbol map. The split is the one-time move that makes a title
 obey it, and it comes before any other work on that title.
 
 ## 1. The decomp repository
@@ -27,6 +27,7 @@ obey it, and it comes before any other work on that title.
 | into the decomp | stays in the port |
 |---|---|
 | decompiled source and splat configs | port code, overrides, native owners |
+| C for every guest function the port has recovered | the port's native overrides of those functions |
 | the symbol map: named addresses, structure sizes, field offsets | `docs/project-goals.md`, `project-state.md`, issues, plans |
 | `docs/re-frontier.md` | `docs/codemap.md` and subsystem docs |
 | behaviour notes (how the guest works) | docs mapping guest addresses to native owners |
@@ -37,6 +38,10 @@ obey it, and it comes before any other work on that title.
   ours beside it; the port adopts upstream's name when the constants are generated.
 - Overlay names go in the map of the overlay that holds them; a name with no known image waits in a
   list in the decomp, not in the map.
+- A guest function the port decompiled (a Ghidra reading turned into an override, a reimplemented
+  routine) is written into the decomp's source as C at its address: matched where the decomp builds
+  matching, otherwise functional C marked non-matching in the decomp's own way. The port's override
+  stays port code and cites the decomp function.
 - Each moved port file becomes a one-line pointer to its new home, so references keep resolving.
 
 ## 3. Commits

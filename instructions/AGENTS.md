@@ -61,7 +61,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   port with interpolation. Other sources speed the work up: permissive ones (MIT, BSD, ISC, zlib, CC0) are
   copied with attribution; restrictive ones (noncommercial, copyleft, none) are evidence only.
   Closed-source work does not exist for us: it neither displaces a title nor is consulted.
-- RE knowledge lives in the decomp repository, not the port: decompiled source, the symbol map (named
+- RE knowledge and code live in the decomp repository, not the port: decompiled source (each function
+  we recover written there as C, matched where the decomp builds matching), the symbol map (named
   addresses, structure sizes and field offsets), `docs/re-frontier.md`, behaviour notes and
   `docs/prior-art.md`. Where the decomp is someone else's, our findings go in our fork of it. The port
   holds its code and its own goals, state, issues and plans, and reads guest addresses from the
