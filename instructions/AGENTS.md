@@ -188,6 +188,11 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator) never fan out: a
   session and its subagents run one at a time, each at full width. Subagents edit in parallel and
   take turns for the heavy step. This is not a cap: add no `-j` limits, slots or memory guards.
+- A second machine, `ssh ally`, takes runs when this one is loaded, whenever it answers
+  (`ssh -o ConnectTimeout=5 ally true`). It runs the same Fedora and glibc. Builds stay here;
+  binaries, their libraries and the user's game data are copied to `~/agents/<project>/` there,
+  about 10 GB each. Heavy runs there take turns through `flock ~/agents/.heavy.lock`, use hidden
+  windows only, and may close the user's apps there to free RAM, never the desktop session.
 - Hosted workflows start only by hand (`workflow_dispatch`) or from a release tag (`push: tags`);
   none runs on a branch push, pull request or schedule, except the Pages site's deploy. Third-party
   copies that carry upstream workflows have Actions disabled on the repository instead.
