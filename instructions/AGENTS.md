@@ -59,7 +59,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   exists we create it as its own permissive repository, added to the port as a submodule the same
   way. On top of it we build a permissive
   port with interpolation. Other sources speed the work up: permissive ones (MIT, BSD, ISC, zlib, CC0) are
-  copied with attribution; restrictive ones (noncommercial, copyleft, none) are evidence only.
+  copied with attribution. Copyleft ones (GPL, LGPL, MPL) may be pinned as a submodule and built into
+  the product, but are never copied into our own files: the repo's licence is what counts, and a
+  build's licence does not matter to the user. Noncommercial and unlicensed ones are evidence only.
   Closed-source work does not exist for us: it neither displaces a title nor is consulted.
 - RE knowledge, and the code that belongs with it, lives in the decomp repository, not the port:
   decompiled source, the symbol map (named
