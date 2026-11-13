@@ -47,8 +47,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   that adds or moves a module.
 - `docs/project-goals.md`, `docs/project-state.md`, `docs/issues/` (problems), `docs/plans/` (features
   that will be built) and `docs/ideas.md` (maybes) (project-state skill);
-  `docs/re-frontier.md`, updated in the same commit as the RE work (re-frontier skill).
-- `docs/prior-art.md` (every RE project): community decomps, symbol maps, native ports and RE notes
+  `docs/re-frontier.md` in the decomp repository, updated in the same commit as the RE work
+  (re-frontier skill).
+- `docs/prior-art.md` (the decomp repository of every RE project): community decomps, symbol maps, native ports and RE notes
   for the exact target build, each with its license, its build match proven by cross-checked
   addresses, and what we take from it. Checked before any RE begins and again before a new title or
   subsystem; a symbol map that matches the build is imported into the project's disassembler first.
@@ -58,6 +59,13 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   port with interpolation. Other sources speed the work up: permissive ones (MIT, BSD, zlib, CC0) are
   copied with attribution; restrictive ones (noncommercial, copyleft, none) are evidence only.
   Closed-source work does not exist for us: it neither displaces a title nor is consulted.
+- RE knowledge lives in the decomp repository, not the port: decompiled source, the symbol map (named
+  addresses, structure sizes and field offsets), `docs/re-frontier.md`, behaviour notes and
+  `docs/prior-art.md`. Where the decomp is someone else's, our findings go in our fork of it. The port
+  holds its code and its own goals, state, issues and plans, and reads guest addresses from the
+  decomp's symbol map (generated constants), never a hand copy. A change that needs a new finding
+  commits it to the decomp repository first and bumps the submodule in the port change that uses it.
+  Existing ports move their notes over when their decomp repository is created or added.
 - Write what you learn into the owning doc in the same session; fix a wrong note rather than adding
   another.
 - Comments and docs read like a developer wrote them. A comment is one short line where the code

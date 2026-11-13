@@ -37,8 +37,9 @@ real data; compiling alone does not qualify.
 
 ## Shared tool: `tools/re_frontier.py`
 
-Run the canonical `shared/re-harness/tools/re_frontier.py` from the consuming repository root. It
-reads that repository's `docs/re-frontier.md` by default; `$RE_FRONTIER_ROADMAP` overrides the path.
+The roadmap lives in the decomp repository (global instructions). Run the canonical
+`shared/re-harness/tools/re_frontier.py` from that repository's root, where it reads
+`docs/re-frontier.md`; from a port, set `$RE_FRONTIER_ROADMAP` to the decomp submodule's roadmap.
 Use the discoverable `re_frontier.py` link when installed. Never copy the shared implementation into
 the consumer.
 
