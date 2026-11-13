@@ -27,7 +27,7 @@ obey it, and it comes before any other work on that title.
 | into the decomp | stays in the port |
 |---|---|
 | decompiled source and splat configs | port code, overrides, native owners |
-| C for every guest function the port has recovered | the port's native overrides of those functions |
+| decompiled C of guest functions, where it adds to the decomp | overrides and anything built on the framework |
 | the symbol map: named addresses, structure sizes, field offsets | `docs/project-goals.md`, `project-state.md`, issues, plans |
 | `docs/re-frontier.md` | `docs/codemap.md` and subsystem docs |
 | behaviour notes (how the guest works) | docs mapping guest addresses to native owners |
@@ -38,10 +38,9 @@ obey it, and it comes before any other work on that title.
   ours beside it; the port adopts upstream's name when the constants are generated.
 - Overlay names go in the map of the overlay that holds them; a name with no known image waits in a
   list in the decomp, not in the map.
-- A guest function the port decompiled (a Ghidra reading turned into an override, a reimplemented
-  routine) is written into the decomp's source as C at its address: matched where the decomp builds
-  matching, otherwise functional C marked non-matching in the decomp's own way. The port's override
-  stays port code and cites the decomp function.
+- Code is a judgement per piece: move what is a faithful reading of the guest (a function the decomp
+  lacks, in its own conventions, matching or marked non-matching its way); keep what is port behaviour.
+  A raw Ghidra dump nobody has cleaned up adds nothing.
 - Each moved port file becomes a one-line pointer to its new home, so references keep resolving.
 
 ## 3. Commits
