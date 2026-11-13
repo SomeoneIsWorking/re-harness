@@ -17,9 +17,9 @@ to scrub the offending content while preserving commits and messages. Squashing
 to an orphan commit discards history and is a last resort. The `rules` command
 generates a replace-text starting point that must be reviewed before use.
 
-Rewriting and force-pushing history require the user's go-ahead under the
-canonical global instructions. The audit and a concrete remediation plan can be
-prepared before that decision. After authorization, verify the published state.
+Rewriting and force-pushing the user's own repos need no separate go-ahead (global
+instructions, Repository). Review the rewrite first, keep a `git bundle --all` backup,
+then verify the published state.
 
 ## The three checks
 

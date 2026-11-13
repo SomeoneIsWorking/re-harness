@@ -165,6 +165,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 ## Repository and worktree
 
 - One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
+  History rewrites and force pushes on the user's own repos need no permission; check what you
+  rewrite first and report the new commit IDs.
   A commit subject is one line, `type(scope): subject`, with no AI identity as
   author or committer. AI use is disclosed once, in the README ("Built with AI assistance (Claude
   and other LLMs)."), and the first commit carries `Co-Authored-By: Claude <noreply@anthropic.com>`.
