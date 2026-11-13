@@ -3,7 +3,7 @@
 `shared/re-harness` is the only editable source of these instructions, the skills and the shared
 `tools/`; agent homes and `~/repo/AGENTS.md` are links installed by `tools/install_skills.py`.
 Domain rules live in skills: CI, releases and Android for any product in `release` and `android`;
-game ports add `dynarec-port`, `game-port-structure`, `port-release`, `dynamic-scan` and
+game ports add `decomp-split`, `dynarec-port`, `game-port-structure`, `port-release`, `dynamic-scan` and
 `replay-interpolation`.
 
 ## How to work a problem
@@ -67,7 +67,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   holds its code and its own goals, state, issues and plans, and reads guest addresses from the
   decomp's symbol map (generated constants), never a hand copy. A change that needs a new finding
   commits it to the decomp repository first and bumps the submodule in the port change that uses it.
-  Existing ports move their notes over when their decomp repository is created or added.
+  Existing ports move their notes over when their decomp repository is created or added; that
+  split comes before any other work on the title (decomp-split skill).
 - A permissive community decomp is extended in our fork. Our port's needs come first: in the fork, a
   port-only change (a preprocessor block, a build hook, our own layout) is its own commit, never
   mixed with a finding. Contributing back is optional and never blocks our work: a PR is opened only
