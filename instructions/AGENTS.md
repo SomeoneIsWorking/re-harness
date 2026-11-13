@@ -190,8 +190,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   take turns for the heavy step. This is not a cap: add no `-j` limits, slots or memory guards.
 - A second machine, `ssh ally`, takes runs when this one is loaded, whenever it answers
   (`ssh -o ConnectTimeout=5 ally true`). It runs the same Fedora and glibc. Builds stay here;
-  binaries, their libraries and the user's game data are copied to `~/agents/<project>/` there,
-  about 10 GB each. Heavy runs there take turns through `flock ~/agents/.heavy.lock`, use hidden
+  binaries and their libraries are copied to `~/agents/<project>/` there, about 10 GB each. Game
+  files live in `~/ROM/<System>/` there, laid out like `/mnt/Boy/ROM/<System>/` here: use them,
+  and add missing ones from here under the same name; they stay. Heavy runs there take turns through `flock ~/agents/.heavy.lock`, use hidden
   windows only, and may close the user's apps there to free RAM, never the desktop session.
 - Hosted workflows start only by hand (`workflow_dispatch`) or from a release tag (`push: tags`);
   none runs on a branch push, pull request or schedule, except the Pages site's deploy. Third-party
