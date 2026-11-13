@@ -17,7 +17,8 @@ everything downstream. The derived image stays out of git.
 
 ## Import and analyze
 
-Keep the analyzed project under the consumer's `build/ghidra/` and reuse it. Resolve
+Keep the analyzed project and its decompiled output under the consumer's gitignored `env-assets/`
+(`env-assets/ghidra/`, `env-assets/decomp/`) and reuse them; they are never committed. Resolve
 `analyzeHeadless` from `PATH` or an untracked `GHIDRA_HOME`; set
 `-Djava.io.tmpdir=<repo>/scratch/ghidra-tmp`.
 

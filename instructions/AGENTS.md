@@ -178,8 +178,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
 - Builds go under gitignored `build/`, run artifacts under gitignored `scratch/<activity>/`, never
   `/tmp`. `scratch/` holds temporary files only: anything in it can be deleted at any time, so
-  nothing a launch needs lives there. Long-lived gitignored inputs (game data, asset drops,
-  provisioned toolchains) live in their own gitignored directory, `env-assets/` (a project with an
+  nothing a launch needs lives there. Long-lived gitignored inputs and derived assets (game data, asset drops,
+  provisioned toolchains, Ghidra projects and decompiler output) live in their own gitignored directory, `env-assets/` (a project with an
   established `assets/` keeps it). Clean with `scratch_gc.py` or `cleanup-files`, never raw `rm` of
   broad paths. Large CMake builds use Ninja; an unchanged rebuild compiles nothing.
 - One build tree per purpose (`build/agent`, `build/player`), never one per task. Third-party dependencies
