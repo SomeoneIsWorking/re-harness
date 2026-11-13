@@ -53,10 +53,12 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   for the exact target build, each with its license, its build match proven by cross-checked
   addresses, and what we take from it. Checked before any RE begins and again before a new title or
   subsystem; a symbol map that matches the build is imported into the project's disassembler first.
-- Our projects are MIT. A port stands on a decomp of its exact build: an existing one is a git
-  submodule pinned by revision; where none exists we create it as its own MIT repository, added to
-  the port as a submodule the same way. On top of it we build an MIT
-  port with interpolation. Other sources speed the work up: permissive ones (MIT, BSD, zlib, CC0) are
+- Our projects are permissively licensed: MIT by default, or another permissive licence (BSD, ISC,
+  0BSD, zlib, CC0), such as the one a forked permissive project already carries. A port stands on a
+  decomp of its exact build: an existing one is a git submodule pinned by revision; where none
+  exists we create it as its own permissive repository, added to the port as a submodule the same
+  way. On top of it we build a permissive
+  port with interpolation. Other sources speed the work up: permissive ones (MIT, BSD, ISC, zlib, CC0) are
   copied with attribution; restrictive ones (noncommercial, copyleft, none) are evidence only.
   Closed-source work does not exist for us: it neither displaces a title nor is consulted.
 - RE knowledge lives in the decomp repository, not the port: decompiled source, the symbol map (named
