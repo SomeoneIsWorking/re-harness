@@ -168,7 +168,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   author or committer. AI use is disclosed once, in the README ("Built with AI assistance (Claude
   and other LLMs)."), and the first commit carries `Co-Authored-By: Claude <noreply@anthropic.com>`.
 - Every maintained repo has a GitHub `origin`; run the `go-public` audit before making one public.
-- Nothing machine-specific in tracked files (no home paths); game assets never enter git.
+- Nothing machine-specific in tracked files (no home paths); game assets and copyrighted
+  material never enter git: disc and ROM data, extracted assets and raw disassembler or decompiler
+  output (Ghidra dumps) are gitignored. A decomp tracks only matched or hand-written source, configs,
+  the symbol map and notes in our own words.
 - Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
 - Builds go under gitignored `build/`, run artifacts under gitignored `scratch/<activity>/`, never
   `/tmp`. `scratch/` holds temporary files only: anything in it can be deleted at any time, so
