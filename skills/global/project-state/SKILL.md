@@ -52,8 +52,9 @@ ships it.
 
 ## Ideas: `docs/ideas.md`
 
-Maybes and brainstorming the user floats without asking for them ("I was thinking", "maybe", "don't
-start this yet"), one short entry each with the user's words and date. Nothing here is built and none
+Maybes and brainstorming the user floats without asking for them ("don't start this yet", "just a
+thought"), one short entry each with the user's words and date. Nothing here is built and none
 needs a deferral notice; an idea becomes a plan when the user asks for it, and leaves this file then.
 Something the user says we will do or need ("we can make", "we need tools for") is a plan even when it
-is not scheduled yet; when the wording leaves it open, ask in one line which it is.
+is not scheduled yet. "Maybe" says nothing either way: the user uses it for plans and dreams alike;
+when the wording leaves it open, ask in one line which it is.
