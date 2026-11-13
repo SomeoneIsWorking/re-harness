@@ -66,6 +66,11 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   decomp's symbol map (generated constants), never a hand copy. A change that needs a new finding
   commits it to the decomp repository first and bumps the submodule in the port change that uses it.
   Existing ports move their notes over when their decomp repository is created or added.
+- A community decomp is extended in our fork and given back by pull request. Our port's needs come
+  first: in the fork, a port-only change (a preprocessor block, a build hook, our own layout) is its
+  own commit, never mixed with a finding. A PR branch starts from upstream and carries only findings
+  written in upstream's style (names, types, matched code, their doc format), cherry-picked from the
+  fork. Port-only commits never go upstream, and no patch files.
 - Write what you learn into the owning doc in the same session; fix a wrong note rather than adding
   another.
 - Comments and docs read like a developer wrote them. A comment is one short line where the code
