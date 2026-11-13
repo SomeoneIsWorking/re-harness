@@ -52,9 +52,11 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   for the exact target build, each with its license, its build match proven by cross-checked
   addresses, and what we take from it. Checked before any RE begins and again before a new title or
   subsystem; a symbol map that matches the build is imported into the project's disassembler first.
-- Our projects are MIT. A title someone already ported under a license without strict limits (MIT,
-  BSD, zlib) is dropped or built by copying from that port, with attribution; a restrictive license
-  (noncommercial, copyleft, none) leaves the title ours, and its code is evidence only.
+- Our projects are MIT. A port stands on a decomp of its exact build: an existing one is a git
+  submodule pinned by revision; where none exists we create it, also MIT. On top of it we build an MIT
+  port with interpolation. Other sources speed the work up: permissive ones (MIT, BSD, zlib, CC0) are
+  copied with attribution; restrictive ones (noncommercial, copyleft, none) are evidence only.
+  Closed-source work does not exist for us: it neither displaces a title nor is consulted.
 - Write what you learn into the owning doc in the same session; fix a wrong note rather than adding
   another.
 - Comments and docs read like a developer wrote them. A comment is one short line where the code
