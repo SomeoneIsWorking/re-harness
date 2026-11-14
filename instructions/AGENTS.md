@@ -190,8 +190,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   are built once per revision and toolchain into a shared prefix outside the repo and consumed through
   `find_package`; a build tree holds only its own project's objects.
 - Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator) never fan out: a
-  session and its subagents run one at a time, each at full width. Subagents edit in parallel and
-  take turns for the heavy step. This is not a cap: add no `-j` limits, slots or memory guards.
+  session and its subagents run one at a time. Subagents edit in parallel and take turns for the heavy
+  step.
 - A second machine, `ssh ally`, takes runs when this one is loaded, whenever it answers
   (`ssh -o ConnectTimeout=5 ally true`). It runs the same Fedora and glibc. Builds stay here;
   binaries and their libraries are copied to `~/agents/<project>/` there, about 10 GB each. Game
