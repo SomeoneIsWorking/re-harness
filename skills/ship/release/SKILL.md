@@ -33,6 +33,12 @@ description: Ship any product — a game port or an original game — through ho
     The release publishes the `.zsync` next to the AppImage.
   - linuxdeploy runs with a pinned patchelf 0.19 or newer through `PATCHELF`. Older patchelf (the
     0.15 bundled with linuxdeploy, distribution packages) writes libraries that crash the loader.
+  - The catalog finds the window with `xdotool` under `LANG=C.UTF-8`, and that search cannot match
+    upstream SDL3's X11 `WM_NAME`, which it writes as `UTF8_STRING`. SDL comes from a
+    `SomeoneIsWorking/SDL` fork branch carrying the ICCCM `WM_NAME` commit.
+  - FreeType is on linuxdeploy's exclude list, so it is linked statically.
+  - appimagetool writes the `.zsync` into its working directory, and only when `zsyncmake` is
+    installed.
 - WASM deploys only through `~/repo/pages/public/<slug>/`: import, run the Pages verifier, push,
   check the live URL. Every release refreshes its Pages entry (links, media, state snapshot).
 - Saves and settings live in the OS user-data location (XDG, Application Support, app-data), never
