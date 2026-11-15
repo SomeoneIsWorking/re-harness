@@ -20,6 +20,19 @@ description: Ship any product — a game port or an original game — through ho
 
 - A major update publishes a GitHub Release with verified packages per platform (Windows
   installer/app, macOS `.app` archive, Linux AppImage or archive, signed APK/AAB).
+- A Linux AppImage meets the AppImage catalog's checks (appimage.github.io):
+  - Built inside an Ubuntu 22.04 container, so it needs glibc 2.35 at most. SDL3 and other libraries
+    22.04 lacks are built in the image from checksummed source tarballs. The packager reads every
+    bundled ELF and refuses anything that needs a newer glibc.
+  - Started with no arguments, it opens its window within 30 s. A missing game file means the
+    first-run screen, never an exit or a terminal prompt.
+  - The repository, the AppImage file name, the README title and the desktop entry's `Name=` all
+    use the same product name. The entry passes `desktop-file-validate`, and an AppStream
+    metainfo file ships with it.
+  - It embeds update information (`gh-releases-zsync|OWNER|REPO|latest|<Name>-*-x86_64.AppImage.zsync`).
+    The release publishes the `.zsync` next to the AppImage.
+  - linuxdeploy runs with a pinned patchelf 0.19 or newer through `PATCHELF`. Older patchelf (the
+    0.15 bundled with linuxdeploy, distribution packages) writes libraries that crash the loader.
 - WASM deploys only through `~/repo/pages/public/<slug>/`: import, run the Pages verifier, push,
   check the live URL. Every release refreshes its Pages entry (links, media, state snapshot).
 - Saves and settings live in the OS user-data location (XDG, Application Support, app-data), never
