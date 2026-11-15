@@ -62,7 +62,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   copied with attribution. Copyleft ones (GPL, LGPL, MPL) may be pinned as a submodule and built into
   the product, but are never copied into our own files: the repo's licence is what counts, and a
   build's licence does not matter to the user. Noncommercial and unlicensed ones are evidence only.
-  Closed-source work does not exist for us: it neither displaces a title nor is consulted.
+  Closed-source work may be reverse engineered and consulted as evidence, its code never copied
+  into our files, and it never displaces our own project, however much better it is.
 - RE knowledge, and the code that belongs with it, lives in the decomp repository, not the port:
   decompiled source, the symbol map (named
   addresses, structure sizes and field offsets), `docs/re-frontier.md`, behaviour notes and
