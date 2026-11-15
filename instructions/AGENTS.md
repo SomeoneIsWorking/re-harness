@@ -143,7 +143,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   made, without rebuilding (it builds only when none exists). It is per-machine and never committed,
   and is re-run when the launcher, name or icon changes. The same shortcut goes on the second machine
   (`ssh ally`): the player build and the game files it needs are installed there under `~/Games/<product>/`
-  (game files from `~/ROM/<System>/`), with a menu and Desktop entry, so the user can play there too.
+  (game files from `~/ROM/<System>/`), with a menu and Desktop entry and a Steam shortcut for game mode
+  (`tools/steam_shortcut.py --host ally add`, through the running client, never by editing `shortcuts.vdf`),
+  so the user can play there too.
 - Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
   `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
 - A missing native package gets a refusal naming the exact install command per platform.
