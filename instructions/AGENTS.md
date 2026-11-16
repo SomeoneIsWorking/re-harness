@@ -117,6 +117,13 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Reusable title-neutral C++ helpers go in Lucent.
 - Weak hardware is met by removing needless work, measured in load-independent units and compared
   against the run-to-run spread (`perf-units`); never ms budgets, wall-clock tests or generated load.
+- A renderer that emulates a guest framebuffer and blends, mask-tests or otherwise reads the pixel it
+  overwrites reads it in-pass wherever the backend can: Metal framebuffer fetch, Vulkan input
+  attachments with rasterization-order access (or fragment-shader interlock), D3D12 rasterizer-ordered
+  views. Device selection prefers the backend that offers it on that host. A snapshot copy, and the
+  pass split it forces, is only the fallback for a device that offers none; new rendering work adds no
+  copy the in-pass path would not need. Where SDL3 or another dependency does not expose the read, add
+  it to our fork of that dependency.
 
 ## C++
 
