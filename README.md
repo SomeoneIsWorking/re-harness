@@ -19,22 +19,12 @@ uv run --no-project python tools/install_skills.py check
 The installer links the instructions, every skill and every tool in `TOOL_NAMES` into `.agents`,
 `.codex`, `.claude`, `~/.local/bin` and `~/repo/AGENTS.md` as relative symlinks, and removes links
 to skills and tools that no longer exist. It leaves unrelated entries, including Codex's `.system`
-skills, untouched; `--replace` swaps only known targets. `--home <dir>` installs into another home.
+skills, untouched; `--replace` swaps only known targets. `--home <dir>`, before the subcommand, installs into another home.
 
 ## Tools
 
-| Tool | Does |
-|---|---|
-| `codemap.py find` | every existing definition of a concept across linked checkouts, duplicates first |
-| `catalog.py` | add, search and resolve `docs/issues/` entries |
-| `re_frontier.py` | the ordered RE steps in `docs/re-frontier.md`: what is ready, what is hack debt |
-| `cpp_policy.py` | AST scan for global functions, `extern`, block statics, stray `main` and retired calls; `--help` |
-| `go_public.py` | history audit before a repo goes public |
-| `scratch_gc.py` | sweep a repo's `scratch/` |
-| `cleanup-files` | remove an explicit list of in-tree files |
-| `play_api.py`, `play_console.py` | Google Play tracks and uploads; the console web UI through WebLua |
-
-The tools read project data from the working project (`docs/issues/`, `docs/re-frontier.md`,
-source), never from this repo.
+One implementation each; those in `TOOL_NAMES` are linked onto `PATH` by the installer. What each owns is in
+[`docs/codemap.md`](docs/codemap.md). They read project data from the working project
+(`docs/issues/`, `docs/re-frontier.md`, source), never from this repo.
 
 Built with AI assistance (Claude and other LLMs).

@@ -18,9 +18,4 @@ Reusable executables live under `../tools/`. A package that exposes one uses
 a relative symlink, so the repository retains one source of truth. Resources
 used by only one skill stay inside that package.
 
-Install or verify the shared global instruction, skill, and tool links with:
-
-```text
-uv run --no-project python tools/install_skills.py install --replace
-uv run --no-project python tools/install_skills.py check
-```
+Install and verify with `tools/install_skills.py` (the root `README.md`).

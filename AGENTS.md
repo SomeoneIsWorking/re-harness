@@ -6,5 +6,6 @@ skills (`skills/<scope>/<name>/SKILL.md`) and the shared tools (`tools/`). Agent
 
 - Skill scopes and names: `skills/README.md`. Module map: `docs/codemap.md`.
 - A skill package links to its tool in `tools/`; it never carries a copy.
-- `tools/install_skills.py` is the only installer:
-  `uv run --no-project python tools/install_skills.py install --replace`, then `check`.
+- `tools/install_skills.py` is the only installer (`README.md` Install); run `check` after any
+  change that adds, renames or removes an instruction, skill or tool.
+- A new tool gets its line in `docs/codemap.md` in the same change.

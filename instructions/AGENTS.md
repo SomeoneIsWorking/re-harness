@@ -1,7 +1,7 @@
 # Global working principles
 
-`shared/re-harness` is the only editable source of these instructions, the skills and the shared
-`tools/`; agent homes and `~/repo/AGENTS.md` are links installed by `tools/install_skills.py`.
+This repository (`SomeoneIsWorking/re-harness`) is the only editable source of these instructions,
+the skills and the shared `tools/`; agent homes and `~/repo/AGENTS.md` are links installed by `tools/install_skills.py`.
 Domain rules live in skills: CI, releases and Android for any product in `release` and `android`;
 game ports add `decomp-split`, `dynarec-port`, `game-port-structure`, `port-release`, `dynamic-scan` and
 `replay-interpolation`.
@@ -144,15 +144,6 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - `./run.sh` launches the one intended product with zero arguments and is the fresh-clone setup
   path; it is a shim (`exec uv run --frozen python bootstrap.py "$@"`). Agents never run it; check
   the product with headless, silent maintainer tools that reuse the same build modules.
-- Every project that produces a runnable executable (a game port, a desktop app) also gets a desktop
-  shortcut from its maintainer tools: a `.desktop` entry in `~/.local/share/applications` and one on
-  the user's Desktop, with the product's own icon, running the launcher on the newest build already
-  made, without rebuilding (it builds only when none exists). It is per-machine and never committed,
-  and is re-run when the launcher, name or icon changes. The same shortcut goes on the second machine
-  (`ssh ally`): the player build and the game files it needs are installed there under `~/Games/<product>/`
-  (game files from `~/ROM/<System>/`), with a menu and Desktop entry and a Steam shortcut for game mode
-  (`tools/steam_shortcut.py --host ally add`, through the running client, never by editing `shortcuts.vdf`),
-  so the user can play there too.
 - Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
   `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
 - A missing native package gets a refusal naming the exact install command per platform.
@@ -176,7 +167,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   a run. Only input tests inject host input (keys, mouse, gamepad, touch) as real platform events
   into the event queue, to prove the player's input path works.
 
-## Repository and worktree
+## Git and GitHub
 
 - One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
   History rewrites and force pushes on the user's own repos need no permission; check what you
@@ -190,6 +181,14 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   output (Ghidra dumps) are gitignored. A decomp tracks only matched or hand-written source, configs,
   the symbol map and notes in our own words.
 - Third-party changes are commits in a maintained fork pinned by revision; no `.patch` files.
+- Hosted workflows start only by hand (`workflow_dispatch`) or from a release tag (`push: tags`);
+  none runs on a branch push, pull request or schedule, except the Pages site's deploy. Third-party
+  copies that carry upstream workflows have Actions disabled on the repository instead.
+- Account for every change in the tree before ending: land it, continue it, or remove it. Do not
+  revert another agent's work.
+
+## Files and builds
+
 - Builds go under gitignored `build/`, run artifacts under gitignored `scratch/<activity>/`, never
   `/tmp`. `scratch/` holds temporary files only: anything in it can be deleted at any time, so
   nothing a launch needs lives there. Long-lived gitignored inputs and derived assets (game data, asset drops,
@@ -202,15 +201,22 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator) never fan out: a
   session and its subagents run one at a time. Subagents edit in parallel and take turns for the heavy
   step.
+
+## Machines
+
 - A second machine, `ssh ally`, takes runs when this one is loaded, whenever it answers
   (`ssh -o ConnectTimeout=5 ally true`). It runs the same Fedora and glibc. Builds stay here;
   binaries and their libraries are copied to `~/agents/<project>/` there, about 10 GB each. Game
   files live in `~/ROM/<System>/` there, laid out like `/mnt/Boy/ROM/<System>/` here: use them,
   and add missing ones from here under the same name; they stay. Heavy runs there take turns through `flock ~/agents/.heavy.lock`, use hidden
   windows only, and may close the user's apps there to free RAM, never the desktop session.
-- Hosted workflows start only by hand (`workflow_dispatch`) or from a release tag (`push: tags`);
-  none runs on a branch push, pull request or schedule, except the Pages site's deploy. Third-party
-  copies that carry upstream workflows have Actions disabled on the repository instead.
-- Account for every change in the tree before ending: land it, continue it, or remove it. Do not
-  revert another agent's work.
+- Every project that produces a runnable executable (a game port, a desktop app) also gets a desktop
+  shortcut from its maintainer tools: a `.desktop` entry in `~/.local/share/applications` and one on
+  the user's Desktop, with the product's own icon, running the launcher on the newest build already
+  made, without rebuilding (it builds only when none exists). It is per-machine and never committed,
+  and is re-run when the launcher, name or icon changes. The same shortcut goes on the second machine
+  (`ssh ally`): the player build and the game files it needs are installed there under `~/Games/<product>/`
+  (game files from `~/ROM/<System>/`), with a menu and Desktop entry and a Steam shortcut for game mode
+  (`tools/steam_shortcut.py --host ally add`, through the running client, never by editing `shortcuts.vdf`),
+  so the user can play there too.
 - Kill by PID, never `pkill` a shared name.
