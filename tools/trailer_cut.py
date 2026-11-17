@@ -8,6 +8,8 @@ Usage: trailer_cut.py <shots.json> <out folder> [landscape|portrait]
 shots.json: {"music": path, "music_from": s, "bpm": n, "music_db": dB, "sfx_db": dB,
              "shots": [{"name", "src": avi, "frame": first movie frame, "beats": n, framing, "sfx_db"?}],
              "card": {"landscape": avi, "portrait": avi, "frame": n, "beats": n}}
+A card filmed in one shape only goes into the other cut framed like a shot. "tall_source": true for a portrait game, whose
+frames fill the portrait cut and sit in a window ("laspect") over a blurred fill in the landscape cut.
 Each shot lasts whole beats of the music, so every cut falls on a beat. A shot is framed by "zoom" and
 its centre "cx", "cy" (0 to 1 of the frame); the portrait cut shows a window of it ("paspect", 4:5 by
 default, "pzoom", "px", "py", defaulting to the landscape centre) over a blurred fill.
@@ -57,20 +59,31 @@ def window(width, height, zoom, cx, cy):
             f"scale={width}:{height}:flags=lanczos")
 
 
-def landscape(shot):
-    return window(*WIDE, shot.get("zoom", 1), shot.get("cx", 0.5), shot.get("cy", 0.5))
+def landscape(shot, tall_source=False):
+    """The frame placed by zoom, cx, cy; a tall game's frame is a window ("laspect", 9:16 by default) over a blurred fill."""
+    if not tall_source:
+        return window(*WIDE, shot.get("zoom", 1), shot.get("cx", 0.5), shot.get("cy", 0.5))
+    width = round(WIDE[1] * shot.get("laspect", 9 / 16) / 2) * 2
+    fg = window(width, WIDE[1], shot.get("zoom", 1), shot.get("cx", 0.5), shot.get("cy", 0.5))
+    return (f"split[a][b];[a]scale={WIDE[0]}:-2,crop={WIDE[0]}:{WIDE[1]},boxblur=24:2,eq=brightness=-0.18[bg];"
+            f"[b]{fg}[fg];[bg][fg]overlay={(WIDE[0] - width) // 2}:0")
 
 
-def portrait(shot):
-    """A window of the frame ("paspect" wide over high, 4:5 by default; placed by px, py, pzoom) over a blurred fill of the same footage."""
+def portrait(shot, tall_source=False):
+    """A window of the frame ("paspect" wide over high, 4:5 by default; placed by px, py, pzoom) over a blurred fill of the same footage;
+    a tall game's frame fills the cut, placed by pzoom, px, py."""
+    px, py = shot.get("px", shot.get("cx", 0.5)), shot.get("py", shot.get("cy", 0.5))
+    if tall_source:
+        return window(*TALL, shot.get("pzoom", 1), px, py)
     height = round(TALL[0] / shot.get("paspect", PANEL[0] / PANEL[1]) / 2) * 2
-    fg = window(TALL[0], height, shot.get("pzoom", 1), shot.get("px", shot.get("cx", 0.5)), shot.get("py", shot.get("cy", 0.5)))
+    fg = window(TALL[0], height, shot.get("pzoom", 1), px, py)
     return (f"split[a][b];[a]scale=-2:{TALL[1]},crop={TALL[0]}:{TALL[1]},boxblur=24:2,eq=brightness=-0.18[bg];"
             f"[b]{fg}[fg];[bg][fg]overlay=0:{(TALL[1] - height) // 2}")
 
 
 def cut(spec, out, tall):
     bpm = spec["bpm"]
+    tall_source = spec.get("tall_source", False)
     shots = spec["shots"]
     card = spec["card"]
     frames = boundaries([s["beats"] for s in shots] + [card["beats"]], bpm)
@@ -79,7 +92,7 @@ def cut(spec, out, tall):
     parts = []
     for i, shot in enumerate(shots):
         count = frames[i + 1] - frames[i]
-        vf = portrait(shot) if tall else landscape(shot)
+        vf = portrait(shot, tall_source) if tall else landscape(shot, tall_source)
         part = work / f"{i:02d}-{shot['name']}.mkv"
         clip(shot["src"], shot["frame"], count, vf, part, shot.get("sfx_db", spec["sfx_db"]))
         parts.append(part)
@@ -87,8 +100,13 @@ def cut(spec, out, tall):
     seconds = count / FPS
     part = work / "99-card.mkv"
     size = TALL if tall else WIDE
-    clip(card["portrait" if tall else "landscape"], card["frame"], count,
-         f"scale={size[0]}:{size[1]},fade=t=in:d=0.25:color=black,fade=t=out:st={seconds - 0.6:.3f}:d=0.6:color=black", part, -60)
+    fades = f"fade=t=in:d=0.25:color=black,fade=t=out:st={seconds - 0.6:.3f}:d=0.6:color=black"
+    own = "portrait" if tall else "landscape"
+    if own in card:
+        clip(card[own], card["frame"], count, f"scale={size[0]}:{size[1]},{fades}", part, -60)
+    else:
+        framed = portrait(card, tall_source) if tall else landscape(card, tall_source)
+        clip(card["landscape" if tall else "portrait"], card["frame"], count, f"{framed},{fades}", part, -60)
     parts.append(part)
     listing = work / "parts.txt"
     listing.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
