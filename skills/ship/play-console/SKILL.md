@@ -11,6 +11,7 @@ one shared headless WebLua session for the rest.
 | Task | Route |
 |---|---|
 | Upload a bundle to a track, with release notes | `play_api.py upload` |
+| Put an already uploaded version code on another track (internal to closed testing) | `play_api.py release` |
 | Read tracks and releases, a store listing, one-time products | `play_api.py tracks`, `listing`, `products` |
 | A store listing's text in one language (add a translation, fix a description) | `play_api.py set-listing` |
 | Create a non-consumable one-time product and activate it | `play_api.py product`; console form on an unreviewed app |

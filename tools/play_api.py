@@ -11,6 +11,7 @@ signature: openssl signs the token request through a pipe.
     play_api.py products com.example.app
     play_api.py product com.example.app remove_ads --price 2.49 --title "Remove ads" --description "..."
     play_api.py upload com.example.app build/app.aab --track internal --track alpha --notes "Fixes."
+    play_api.py release com.example.app 12 --track alpha --name "12 (1.2.0)" --notes "Fixes."
 """
 
 from __future__ import annotations
@@ -202,6 +203,14 @@ def main(argv: list[str] | None = None) -> int:
     upload.add_argument("--name")
     upload.add_argument("--status", default="completed", choices=("completed", "draft"))
     upload.add_argument("--not-for-review", action="store_true", help="commit without sending changes for review")
+    release = commands.add_parser("release", help="release an already uploaded version code on tracks")
+    release.add_argument("package")
+    release.add_argument("version_code", type=int)
+    release.add_argument("--track", action="append", required=True)
+    release.add_argument("--notes", default="")
+    release.add_argument("--name")
+    release.add_argument("--status", default="completed", choices=("completed", "draft"))
+    release.add_argument("--not-for-review", action="store_true", help="commit without sending changes for review")
     args = parser.parse_args(argv)
 
     path = key_path()
@@ -236,6 +245,12 @@ def main(argv: list[str] | None = None) -> int:
             activate = {"activatePurchaseOptionRequest": {"packageName": args.package, "productId": args.product, "purchaseOptionId": "buy"}}
             client.request("POST", f"{app}/oneTimeProducts/{args.product}/purchaseOptions:batchUpdateStates", body={"requests": [activate]})
             print(f"{args.package}: {args.product} active at {args.price} USD in {len(body['purchaseOptions'][0]['regionalPricingAndAvailabilityConfigs'])} regions")
+        elif args.command == "release":
+            with Edit(client, args.package, commit=True, not_for_review=args.not_for_review) as edit:
+                for track in args.track:
+                    body = release_body(track, args.version_code, args.notes, args.status, args.name)
+                    client.request("PUT", edit.url(f"tracks/{track}"), body=body)
+            print(f"{args.package}: version code {args.version_code} on {', '.join(args.track)} ({args.status})")
         else:
             tracks = args.track or ["internal"]
             with Edit(client, args.package, commit=True, not_for_review=args.not_for_review) as edit:
