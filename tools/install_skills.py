@@ -27,6 +27,7 @@ TOOL_NAMES = (
     "cpp_policy.py",
     "go_public.py",
     "perf_compare.py",
+    "perf_run.py",
     "play_api.py",
     "play_console.py",
     "re_frontier.py",

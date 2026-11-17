@@ -27,4 +27,14 @@ One implementation each; those in `TOOL_NAMES` are linked onto `PATH` by the ins
 [`docs/codemap.md`](docs/codemap.md). They read project data from the working project
 (`docs/issues/`, `docs/re-frontier.md`, source), never from this repo.
 
+## Libraries
+
+Shared code the skills name, each in its own repository, pinned by revision where a project uses it:
+
+| Library | Owns |
+|---|---|
+| [Lucent](https://github.com/SomeoneIsWorking/lucent) | C++ infrastructure: config, logging, HTTP, networking, and `lucent::perf` cost units and per-operation scopes |
+| [PerfUnits](https://github.com/SomeoneIsWorking/perf-units) | .NET cost units: per-thread instruction counter, named per-operation scopes, allocation census, the `[perf]` lines |
+| [GodotPerfUnits](https://github.com/SomeoneIsWorking/perf-units-godot) | Godot frame meter on PerfUnits: frame phases, draw and object counts, census and timeline |
+
 Built with AI assistance (Claude and other LLMs).

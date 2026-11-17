@@ -12,9 +12,8 @@ two builds are compared on any machine, paced or unpaced.
 ## Units
 
 - **CPU: user-space instructions retired**, per product thread, split by the program's own phases (per
-  logic frame: update, present, audio, the rest). Each thread reads only its own counter; threads that
-  hand control to each other (fibers on threads) bank at each handoff. Reference: Lucent `lucent::perf`
-  (`ThreadWorkCounter`, `WorkClock`, `CountHistogram`).
+  logic frame: update, present, audio, the rest), and by named operation. Each thread reads only its
+  own counter; threads that hand control to each other (fibers on threads) bank at each handoff.
 - **Thread CPU time only as a labelled fallback** where no counter opens (`perf_event_paranoid` above 2,
   a VM without a PMU, macOS, Windows). Every line names its unit; CPU time moves with load and frequency,
   so its spread is wider.
@@ -24,6 +23,32 @@ two builds are compared on any machine, paced or unpaced.
   the host. GPU timestamps are a supplement where the API has them, not the comparison.
 - **Allocations**: count and bytes per frame, where a hot path is suspected.
 - Report per-frame/per-present p50, p99 and max plus the exact run total, at run end, one line each.
+
+## Implementations
+
+- C++: Lucent `lucent::perf`: `ThreadWorkCounter`, `WorkClock`, `CountHistogram`, and
+  `OperationMeter` for named operations
+  (`OperationMeter::Scope scope(meter, meter.operation("chain.update"))`).
+- .NET: [PerfUnits](https://github.com/SomeoneIsWorking/perf-units) (`WorkCounter`,
+  `using (Meter.Scope("chain.update"))`, `Meter.Work` for caller-counted GPU work, the allocation
+  census). Godot: [GodotPerfUnits](https://github.com/SomeoneIsWorking/perf-units-godot)'s
+  `FrameMeter` adds Godot's frame phases and draw and object counts. Both are pinned as submodules
+  under `lib/` (their READMEs).
+- Godot engine code: the fork (`SomeoneIsWorking/godot`) built with `profiler=perf_units` counts the
+  engine's own profiling zones per thread; `GODOT_PERF_ZONES=<warmup frames>` turns it on and it prints
+  `[perf] engine <zone> ...` lines at exit (fork `tests/headless/README.md`).
+- No meter in the program: `perf_run.py` (linked here) runs a command N times under `perf stat`
+  (whole process, exact) or `--threads` (`perf record`, per thread name, each within one sample
+  period), writes the lines and prints the spread.
+
+Per operation, a scope gives self (nested operations excluded) and inclusive per call, self per frame,
+calls per frame, and in .NET managed bytes per call. Wrap operations, not tiny helpers: a scope costs a
+few hundred instructions while on (two counter reads), one branch while off. Scopes nest on one thread;
+an out-of-order close or a scope open at a frame boundary is an error.
+
+A run is deterministic before it is measured: seed every random source the screen touches (the game's
+and the engine's global one), and run .NET with `DOTNET_TieredCompilation=0`, since tiering compiles
+on the wall clock and moves managed counts between runs.
 
 ## Pacing
 
@@ -39,7 +64,8 @@ two builds are compared on any machine, paced or unpaced.
    resolution and sink, the cost channels on.
 2. Repeat each side at least twice. The run-to-run spread, (max - min) / mean, is the noise floor; state
    it with every comparison. Deterministic GPU counts repeat exactly.
-3. Compare the run-end lines with `perf_compare.py` (linked here, re-harness `tools/`):
+3. Compare the run-end lines with `perf_compare.py` (linked here, re-harness `tools/`); `op`,
+   `engine` and `perf_run.py` lines compare the same way:
    ```text
    uv run --no-project python tools/perf_compare.py A1.log A2.log --vs B1.log B2.log [--field p99]
    uv run --no-project python tools/perf_compare.py A1.log A2.log       # one build's spread
@@ -56,5 +82,5 @@ two builds are compared on any machine, paced or unpaced.
   pixel counts scale with the square, CPU phases must not. A CPU phase that grows is a defect to file.
 - Measure the meter's own overhead (whole-process `perf stat -e instructions:u` with the channel on and
   off) and state it. Off, each hook is one cached branch.
-- Reference implementation: psxport `runtime/psx/debug/gpu_perf.*` (`docs/presentation.md`, Cost and
-  cadence) on Lucent `lucent::perf`.
+- Reference users: psxport `runtime/psx/debug/gpu_perf.*` (`docs/presentation.md`, Cost and cadence)
+  on Lucent; Nebula Reset, Devoid and Tazoru `tools/perf-check/` on GodotPerfUnits.
