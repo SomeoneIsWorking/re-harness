@@ -74,6 +74,8 @@ on the wall clock and moves managed counts between runs.
    bracket), warns when the `… run-end:` headers differ (frames or presents metered, unit), and marks a
    line CHANGED only when its delta exceeds the larger side's spread. Exit 1 when any line changed.
 4. A difference above the spread is the change; one inside it is not a result.
+   A line with zero spread (calls, allocations, a deterministic operation) is CHANGED by any delta;
+   a rebuild alone can move a managed one by a few KB or a few parts per million, so read its size.
 
 ## Rules
 
