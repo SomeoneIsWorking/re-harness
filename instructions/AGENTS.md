@@ -169,7 +169,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 ## Git and GitHub
 
-- One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
+- `main` always holds the latest work, since the user tests `main`. Work may happen on a branch or
+  worktree, but each change lands on `main` and is pushed once it is shown working; nothing waits
+  unmerged elsewhere, and the branch or worktree is removed when its work lands. A fix shown working in the product is standing authorization to commit and push.
   History rewrites and force pushes on the user's own repos need no permission; check what you
   rewrite first and report the new commit IDs.
   A commit subject is one line, `type(scope): subject`, with no AI identity as
