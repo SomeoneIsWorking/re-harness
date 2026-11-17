@@ -169,6 +169,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 ## Git and GitHub
 
+- Never create a git worktree (`EnterWorktree`, `--worktree`, `git worktree add`), including in a background session; work in the main checkout.
 - One branch, `main`; commit directly. A fix shown working in the product is standing authorization to commit and push.
   History rewrites and force pushes on the user's own repos need no permission; check what you
   rewrite first and report the new commit IDs.
