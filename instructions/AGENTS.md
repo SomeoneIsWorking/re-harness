@@ -221,6 +221,10 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   (game files from `~/ROM/<System>/`), with a menu and Desktop entry and a Steam shortcut for game mode
   (`tools/steam_shortcut.py --host ally add`, through the running client, never by editing `shortcuts.vdf`),
   so the user can play there too.
+- What the user runs is what `main` holds. A product installed outside its build tree (into
+  `~/.local`, on the Ally) is reinstalled through its own install step after every change it ships
+  lands on `main`, taking its turn as a heavy run; a running copy is left for the user to restart,
+  and the report says it needs one.
 - Kill by PID, never `pkill` a shared name.
 
 ## Agents across machines
