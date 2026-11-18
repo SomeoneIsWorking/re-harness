@@ -10,6 +10,7 @@ shots.json: {"music": path, "music_from": s, "bpm": n, "music_db": dB, "sfx_db":
              "card": {"landscape": avi, "portrait": avi, "frame": n, "beats": n}}
 A card filmed in one shape only goes into the other cut framed like a shot. "tall_source": true for a portrait game, whose
 frames fill the portrait cut and sit in a window ("laspect") over a blurred fill in the landscape cut.
+The mix is limited to a true peak under -1 dBFS; music_db and sfx_db set its loudness (about -14 LUFS for stores).
 Each shot lasts whole beats of the music, so every cut falls on a beat. A shot is framed by "zoom" and
 its centre "cx", "cy" (0 to 1 of the frame); the portrait cut shows a window of it ("paspect", 4:5 by
 default, "pzoom", "px", "py", defaulting to the landscape centre) over a blurred fill.
@@ -118,7 +119,8 @@ def cut(spec, out, tall):
     ffmpeg("-i", str(joined), "-ss", f"{spec['music_from']:.6f}", "-i", spec["music"],
            "-filter_complex",
            f"[1:a]aresample=48000,atrim=0:{total:.6f},volume={music_db}dB,afade=t=out:st={total - 1.2:.6f}:d=1.2[m];"
-           f"[0:a][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89[a]",
+           # Limited 4x oversampled, auto level off, so the AAC file's true peak stays under -1 dBFS.
+           f"[0:a][m]amix=inputs=2:duration=first:normalize=0,aresample=192000,alimiter=limit=0.87:level=false,aresample=48000[a]",
            "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p",
            "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(name))
     sheet(name, frames, [s["name"] for s in shots] + ["card"], out, tall)
