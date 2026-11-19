@@ -117,6 +117,11 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - Reusable title-neutral C++ helpers go in Lucent.
 - Weak hardware is met by removing needless work, measured in load-independent units and compared
   against the run-to-run spread (`perf-units`); never ms budgets, wall-clock tests or generated load.
+- New work is efficient when it first lands, not after the user reports lag. Write it the cheap way from the
+  start, following the project's documented drawing and update patterns (batched draws, geometry built
+  once, nothing redone per frame that hasn't changed, nothing processed off screen). Before showing a new
+  screen, effect, boss or system, count its cost on the weakest target's screen against a peer
+  (`perf-units`), and fix any rise past the run-to-run spread first.
 - A renderer that emulates a guest framebuffer and blends, mask-tests or otherwise reads the pixel it
   overwrites reads it in-pass wherever the backend can: Metal framebuffer fetch, Vulkan input
   attachments with rasterization-order access (or fragment-shader interlock), D3D12 rasterizer-ordered
