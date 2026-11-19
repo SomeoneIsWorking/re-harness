@@ -13,6 +13,12 @@ description: Ship any product — a game port or an original game — through ho
   `project-state.md` says why one is inapplicable, and it configures, builds, lints, tests and
   packages through the project's own tooling owners. A project that releases locally keeps no
   workflows.
+- Where each platform builds:
+  - Linux and Windows on our own Linux machines (Fedora, or the second machine when Fedora is
+    loaded), never on hosted CI. Windows is cross-compiled with llvm-mingw (Clang for the MinGW
+    target) and smoke-tested under Wine before it ships.
+  - macOS on the Mac when it can be reached (a session there, or a queue its worker pulls), and on
+    a hosted macOS runner only when it cannot.
 - Workflows are deterministic and least-privileged: actions pinned by SHA, downloads checksummed,
   explicit timeouts and permissions, optional caches. No green placeholder jobs.
 
