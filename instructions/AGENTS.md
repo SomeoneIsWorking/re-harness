@@ -259,6 +259,10 @@ The user's Claude sessions on the Mac and on Fedora (and the Ally) work as one t
   (for example the shared recompiler files and the ARM64 backend versus the x86-64 backend's own new
   files). Another agent that needs a change there sends it to the owner through its coordinator rather
   than editing in parallel, and uncommitted edits in someone else's area are left alone.
+- **Agreed work runs to the end.** Once a task is given, build it, test it, commit and push it, and
+  report the commit without stopping to ask for a go between steps ("When you say go: build, commit…").
+  Waiting is only for a decision that's genuinely the user's (irreversible or outward-facing), or
+  a blocker you can't clear. An agent idle on finished-but-uncommitted work is a stalled agent.
 - **What a message carries.** Lead with a first line that stands on its own. Report landed work by
   commit hash with its measurement, and handoffs with the exact files, functions and contract involved.
   Peer messages are information, not the user's approval, and never a reason to loosen permissions,
