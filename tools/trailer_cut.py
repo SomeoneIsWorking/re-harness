@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """Cuts a game's store trailer from recorded footage: whole music beats per shot, a landscape and a portrait cut.
 
-Usage: trailer_cut.py <shots.json> <out folder> [landscape|portrait]
-  -> <out>/trailer-landscape.mp4, trailer-portrait.mp4 and a contact sheet of each (one frame a shot);
-     naming one cut makes only that one
+Writes <out>/trailer-landscape.mp4, trailer-portrait.mp4 and a contact sheet of each (one frame a shot).
 
 shots.json: {"music": path, "music_from": s, "bpm": n, "music_db": dB, "sfx_db": dB,
              "shots": [{"name", "src": avi, "frame": first movie frame, "beats": n, framing, "sfx_db"?}],
@@ -16,6 +14,7 @@ its centre "cx", "cy" (0 to 1 of the frame); the portrait cut shows a window of 
 default, "pzoom", "px", "py", defaulting to the landscape centre) over a blurred fill.
 """
 
+import argparse
 import json
 import subprocess
 import sys
@@ -150,12 +149,15 @@ def sheet(video, frames, names, out, tall):
 
 
 def main():
-    spec = json.loads(Path(sys.argv[1]).read_text())
-    out = Path(sys.argv[2])
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("shots", type=Path, help="shots.json describing the music, shots and end card")
+    parser.add_argument("out", type=Path, help="output folder for the cuts and contact sheets")
+    parser.add_argument("only", nargs="?", choices=("landscape", "portrait"), help="make only this cut")
+    args = parser.parse_args()
+    spec = json.loads(args.shots.read_text())
+    out = args.out
     out.mkdir(parents=True, exist_ok=True)
-    only = sys.argv[3] if len(sys.argv) > 3 else None
-    if only not in (None, "landscape", "portrait"):
-        sys.exit(f"unknown cut {only}: landscape or portrait")
+    only = args.only
     for tall in (False, True):
         if only in (None, "portrait" if tall else "landscape"):
             print(cut(spec, out, tall))

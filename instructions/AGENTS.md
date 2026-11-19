@@ -151,6 +151,8 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   the product with headless, silent maintainer tools that reuse the same build modules.
 - Python runs in one locked environment (`pyproject.toml`/`uv.lock`, `uv run --frozen`); a bare
   `python3` in project tooling is a defect. Project tooling is modular Python, not shell.
+- Every runnable script and tool answers `--help` (argparse) with what it does, its arguments and
+  its outputs, and exits 0 without side effects; agents try `--help` first.
 - A missing native package gets a refusal naming the exact install command per platform.
 - Provision missing tools yourself without root: project provisioning, then an official checksummed
   release under `~/dev/` or `~/.local/`, then `uv`/`cargo`/`npm`/Homebrew, then `podman`. Only if
