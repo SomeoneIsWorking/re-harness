@@ -13,7 +13,8 @@ description: Android rules for any product, whatever the engine (native SDL, God
   background layer: a rounded plate inset 1/16 of the canvas, corner radius about 22% of the plate.
   Masking launchers crop that margin away. Check it on a device beside other apps.
 - A release needs an authored touch layer through the same action policy as controllers:
-  multi-touch, pause, safe areas, scale-aware hit regions, hidden when a controller is present.
+  multi-touch, pause, safe areas, scale-aware hit regions, hidden while a controller is in use and
+  shown again on the next touch (hotswap, no setting).
 - Release performance is measured on named Android devices (frame-time percentiles, thermals,
   memory, loading, correctness); desktop results are not evidence.
 - Installing on the user's phone goes over `adb`; pair it wirelessly with `adb_pair.py` (a QR to scan); the

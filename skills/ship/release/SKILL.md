@@ -18,8 +18,8 @@ description: Ship any product — a game port or an original game — through ho
 
 ## Releases
 
-- A major update publishes a GitHub Release with verified packages per platform (Windows
-  installer/app, macOS `.app` archive, Linux AppImage or archive, signed APK/AAB).
+- Every milestone publishes a GitHub Release with verified packages for every platform the product
+  can run on: Windows `.exe`, macOS `.app` archive, Linux AppImage, Android `.apk`.
 - A Linux AppImage meets the AppImage catalog's checks (appimage.github.io):
   - Built inside an Ubuntu 22.04 container, so it needs glibc 2.35 at most. SDL3 and other libraries
     22.04 lacks are built in the image from checksummed source tarballs. The packager reads every
