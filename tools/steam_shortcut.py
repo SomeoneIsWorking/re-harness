@@ -9,6 +9,7 @@ uses. A shortcut is matched by its name: adding one that exists updates it in pl
     steam_shortcut.py [--host ally] list
     steam_shortcut.py [--host ally] add --name N --exe E [--start-dir D] [--options O] [--icon PNG]
     steam_shortcut.py [--host ally] remove --name N
+    steam_shortcut.py [--host ally] rename --name N --to M
 
 Without --host it talks to this machine's Steam.
 """
@@ -185,6 +186,18 @@ def remove(cdp: Cdp, name: str) -> int:
     return len(match)
 
 
+def rename(cdp: Cdp, name: str, to: str) -> int:
+    """The app id of the shortcut named `name`, now named `to`; its program, icon and playtime stay."""
+    match = [entry for entry in shortcuts(cdp) if entry["name"] == name]
+    if len(match) != 1:
+        raise Refused(f"{len(match)} shortcuts are named {name!r}; rename needs exactly one")
+    if any(entry["name"] == to for entry in shortcuts(cdp)):
+        raise Refused(f"a shortcut is already named {to!r}")
+    appid = int(match[0]["appid"])
+    cdp.evaluate(f"SteamClient.Apps.SetShortcutName({appid}, {json.dumps(to)})")
+    return appid
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--host", help="an ssh host whose Steam to change; this machine's without it")
@@ -198,6 +211,9 @@ def main() -> int:
     adding.add_argument("--icon", help="a PNG on the host")
     removing = commands.add_parser("remove")
     removing.add_argument("--name", required=True)
+    renaming = commands.add_parser("rename")
+    renaming.add_argument("--name", required=True)
+    renaming.add_argument("--to", required=True)
     args = parser.parse_args()
     try:
         with _cef_port(args.host) as port:
@@ -209,6 +225,8 @@ def main() -> int:
                 elif args.command == "add":
                     start_dir = args.start_dir or args.exe.rsplit("/", 1)[0]
                     print(add(cdp, args.name, args.exe, start_dir, args.options, args.icon))
+                elif args.command == "rename":
+                    print(rename(cdp, args.name, args.to))
                 else:
                     print(f"removed {remove(cdp, args.name)}")
             finally:
