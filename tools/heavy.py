@@ -12,7 +12,8 @@ cores and memory it needs. It starts once the machine has that much to spare:
 A job alone on the machine waits only for memory. Each running job holds a locked reservation file
 under ~/agents/heavy/ naming its pid, command and request; a job that dies frees its share with it.
 The runner watches its job's process tree and records since when it has used no CPU, so a hung job
-shows in `status` and in the lines a waiting job prints. Linux only (it reads /proc).
+shows in `status` and in the lines a waiting job prints. A podman container's processes run under
+conmon, outside the job's tree, so a container job always reads as idle there. Linux only (it reads /proc).
 
   heavy.py run --cores 4 --memory 6 -- cmake --build build/agent
   heavy.py run --cores 8 --memory 12 --label psx-scan -- uv run --frozen python tools/scan.py
