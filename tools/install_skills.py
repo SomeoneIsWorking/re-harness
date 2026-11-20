@@ -27,6 +27,7 @@ TOOL_NAMES = (
     "cpp_policy.py",
     "go_public.py",
     "heavy.py",
+    "godot_templates.py",
     "perf_compare.py",
     "perf_run.py",
     "play_api.py",
