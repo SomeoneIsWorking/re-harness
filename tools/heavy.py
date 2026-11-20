@@ -12,8 +12,9 @@ cores and memory it needs. It starts once the machine has that much to spare:
 A job alone on the machine waits only for memory. Each running job holds a locked reservation file
 under ~/agents/heavy/ naming its pid, command and request; a job that dies frees its share with it.
 The runner watches its job's process tree and records since when it has used no CPU, so a hung job
-shows in `status` and in the lines a waiting job prints. A podman container's processes run under
-conmon, outside the job's tree, so a container job always reads as idle there. Linux only (it reads /proc).
+shows in `status` and in the lines a waiting job prints. A job that runs podman or distrobox is shown
+as in a container instead: the container's processes run under conmon, outside the job's tree, where its
+CPU can't be seen. Linux only (it reads /proc).
 
   heavy.py run --cores 4 --memory 6 -- cmake --build build/agent
   heavy.py run --cores 8 --memory 12 --label psx-scan -- uv run --frozen python tools/scan.py
@@ -87,6 +88,8 @@ class Reservation:
     def describe(self) -> str:
         idle = self.data.get("idle_since")
         hung = f", no CPU for {duration(time.time() - idle)}" if idle else ""
+        if self.data.get("container"):
+            hung = ", in a container (its CPU isn't visible)"
         return (f"{self.data['label']} (pid {self.data['pid']}, {self.data['cores']} cores, "
                 f"{self.data['memory_gib']} GiB, running {duration(self.age)}{hung})")
 
@@ -146,10 +149,14 @@ class Room:
                 f"{max(self.memory, 0) / GIB:.1f} GiB memory spare after a {self.reserve / GIB:.1f} GiB desktop reserve")
 
 
-def process_tree_cpu(root: int) -> int:
-    """CPU ticks used so far by root and every process under it."""
+CONTAINER_COMMANDS = {"podman", "distrobox", "distrobox-enter", "docker"}
+
+
+def process_tree_cpu(root: int) -> tuple[int, bool]:
+    """CPU ticks used so far by root and every process under it, and whether one of them starts a container."""
     children: dict[int, list[int]] = {}
     ticks: dict[int, int] = {}
+    names: dict[int, str] = {}
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
             continue
@@ -159,14 +166,16 @@ def process_tree_cpu(root: int) -> int:
             continue
         fields = stat[stat.rindex(")") + 2:].split()
         pid = int(entry.name)
+        names[pid] = stat[stat.index("(") + 1:stat.rindex(")")]
         children.setdefault(int(fields[1]), []).append(pid)
         ticks[pid] = int(fields[11]) + int(fields[12]) + int(fields[13]) + int(fields[14])
-    total, stack = 0, [root]
+    total, container, stack = 0, False, [root]
     while stack:
         pid = stack.pop()
         total += ticks.get(pid, 0)
+        container |= names.get(pid) in CONTAINER_COMMANDS
         stack.extend(children.get(pid, []))
-    return total
+    return total, container
 
 
 def reserve(cores: float, memory_gib: float, label: str) -> tuple:
@@ -202,9 +211,11 @@ def reserve(cores: float, memory_gib: float, label: str) -> tuple:
 
 def watch(child: subprocess.Popen, handle, data: dict, stop: threading.Event) -> None:
     """Records in the reservation since when the job's process tree has used no CPU."""
-    last = process_tree_cpu(child.pid)
+    last, _ = process_tree_cpu(child.pid)
     while not stop.wait(WATCH_SECONDS):
-        now = process_tree_cpu(child.pid)
+        now, container = process_tree_cpu(child.pid)
+        if container:
+            data["container"] = True
         if now > last:
             data.pop("idle_since", None)
         else:
