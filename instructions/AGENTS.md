@@ -207,9 +207,13 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - One build tree per purpose (`build/agent`, `build/player`), never one per task. Third-party dependencies
   are built once per revision and toolchain into a shared prefix outside the repo and consumed through
   `find_package`; a build tree holds only its own project's objects.
-- Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator) never fan out: a
-  session and its subagents run one at a time. Subagents edit in parallel and take turns for the heavy
-  step.
+- Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator, a container) start
+  through `heavy.py run --cores N --memory GIB -- <command>`, never a raw `flock`: it waits until the
+  machine has that many cores and that much memory spare, after the load, the other runs' reservations
+  and a desktop reserve, and frees them when the run ends. A run's `-j` or worker count matches its
+  `--cores`. `heavy.py status` names every running job and flags one whose processes have used no
+  CPU for a while; a waiting run prints the same. Subagents edit in parallel and their heavy steps
+  queue through it.
 
 ## Machines
 
@@ -217,7 +221,7 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
   (`ssh -o ConnectTimeout=5 ally true`). It runs the same Fedora and glibc. Builds stay here;
   binaries and their libraries are copied to `~/agents/<project>/` there, about 10 GB each. Game
   files live in `~/ROM/<System>/` there, laid out like `/mnt/Boy/ROM/<System>/` here: use them,
-  and add missing ones from here under the same name; they stay. Heavy runs there take turns through `flock ~/agents/.heavy.lock`, use hidden
+  and add missing ones from here under the same name; they stay. Heavy runs there go through its own `heavy.py` (`~/.local/bin`, copied from here when it changes), use hidden
   windows only, and may close the user's apps there to free RAM, never the desktop session.
 - Every project that produces a runnable executable (a game port, a desktop app) also gets a desktop
   shortcut from its maintainer tools: a `.desktop` entry in `~/.local/share/applications` and one on

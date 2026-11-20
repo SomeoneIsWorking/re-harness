@@ -18,6 +18,7 @@ links all three into agent homes. Nothing in `tools/` reads this repo's docs.
 | `tools/libclang_ast.py` | libclang ctypes binding: parse a unit, first-party declarations, qualified watched references |
 | `tools/unit_cache.py` | per-unit result cache keyed by command and every file the parse read |
 | `tools/go_public.py` | history audit: assets, home paths, private references; filter-repo rules |
+| `tools/heavy.py` | heavy runs: start when cores and memory are spare, reservations under `~/agents/heavy/`, hung-job flag |
 | `tools/agent_session.py` | Claude Code background sessions: start one per project, list with versions, update and respawn |
 | `tools/perf_compare.py` | cost compare: two builds' run-end `[perf]` lines, per-line delta against each side's run-to-run spread |
 | `tools/perf_run.py` | cost of any command: N runs under `perf stat` (or per thread by `perf record`), `[perf]` lines and their spread |
