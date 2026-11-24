@@ -1,63 +1,50 @@
 ---
 name: slant-stage
-description: The Slant Stage title selector - a port or multi-game app's games running live side by side, split by a slanted edge; the selected one is wider and runs, the other is held grey; picking slides the edge off and the picked game plays on without a reload. Use when building or changing a title or game selector that chooses between two games (or editions) a product can run.
+description: The Slant Stage title selector - a port or multi-game app's games side by side as still pictures from the player's own files, split by slanted seams; the selected one is wider and in colour, the others grey; picking slides the seams off and boots the picked game. Use when building or changing a title or game selector that chooses between the games (or editions) a product can run.
 ---
 
 # Slant Stage
 
-The title selector where the games themselves are the menu. The user named and specified it
-(2026-11-17); it is the selector for any product that runs more than one game.
+The title selector for any product that runs more than one game. The user named it (2026-11-17) and
+changed it to still pictures (2026-11-24): nothing runs until a game is picked.
 
 ## The format
 
-- Every game that is set up is loaded at once, each in its own emulated system or guest instance,
-  with its own settings and saves. No game is booted twice and no savestate swaps one in for another.
-- One slanted edge splits the window. The selected game's side is the wider one (about 64% of the
-  width) and only that game is stepped, with its sound. The other is not stepped: its last frame is
-  shown greyed and darkened.
-- Left and right (pad, keys) or a click on the other side move the selection. The edge eases across;
-  the newly selected game resumes from the frame where it stopped and the other freezes grey.
-- A, Start or a click on the selected side picks it. The edge eases out past the window's side while
-  the picked game keeps running, it fills the window and plays on in the same instance, and the other
-  instance is unloaded.
-- Each side's picture covers its four-cornered shape. A game without a frame yet, or not set up,
-  shows its icon (from the player's own files) on a plain tile.
-- A dark band along the bottom holds each game's title (bright for the selected one, dim for the
-  other) and the hint line for the last device used. The options and setup screens open over it as
-  they would anywhere else.
-- One game in the library: its side is the whole window. More than two is not this format.
+- Every game that is set up has a panel, side by side across the window, split by slanted seams.
+  The selected panel is the wider one (about 64% of the width); the others share the rest.
+- A panel shows the game's own art (its title illustration or wordmark), read from the player's own
+  disc or files with the game's own codec and drawn the way its title screen draws it. No game art is
+  committed or cached as a picture of ours. A game with no art found yet is a plain tile.
+- Every panel draws its art at one whole-pixel scale: the largest at which every art fits the window's
+  height and the selected panel's clear width. The selected panel is in colour, the others greyscale.
+  Selection changes widths and colour, never the scale.
+- Left and right (pad, keys) or a click move the selection round the ring; the seams ease across.
+- A, Start or a click on the selected panel picks it: the seams ease out past the window's sides, then
+  the game boots. Returning from the game ends its session and shows the selector again on that game.
+- A dark band along the bottom holds each game's title (bright for the selected one) and the hint line
+  for the last device used. The options and setup screens open over it as they would anywhere else.
+- One game in the library: no selector.
 
 ## What the host must provide
 
-1. **Several guest instances in one process.** Find every process-wide singleton the core reaches,
-   such as a static system instance, `Global<>` accessors, or singletons inside HLE services. Put
-   them behind a current-instance pointer that the frontend sets before it loads, steps, saves or
-   shuts down an instance; the default instance remains for frontends that run one. Survey what
-   else is static: console identity and input can be shared, guest state cannot.
-2. **The window stays the menu's.** The core renders without presenting and without holding a
-   swapchain or context on the window, so the menu's own renderer draws there. The stepped game's
-   screen is read back each frame through the core's screenshot path and uploaded as a texture.
-   When a game is picked, the core takes the window on its next frame, after the menu renderer is
-   destroyed.
-3. **Input belongs to the menu.** While the stage runs, the games receive no host input (a pad
-   mode with no table). The menu pumps the events itself, and the core's end-of-frame hook only
-   counts the frame.
-4. **Hand-over, not reload.** The selector returns the picked instance to the play loop. Only a
-   game set up just now, which has no instance yet, is booted by the play loop.
-
-The stage is drawn with the menu's existing canvas, font and hint line. It is never a second
-implementation of them inside the core's overlay.
+1. **Art from the player's files.** Each game names where its art lives (recorded in its decomp) and
+   decodes it there; the host draws the result. The decode runs once per selector start.
+2. **The window stays the host's.** The selector draws with the menu's existing renderer, canvas, font
+   and hint line, never a second implementation inside a game's overlay. The window and device outlive
+   every game session.
+3. **One session at a time.** A pick creates the game's session; a return destroys it.
 
 ## Proof
 
-- Logs: the selector writes `picker: on <title>` on each selection and `picker: picked <title>`
-  on each pick; input tests wait on these lines.
-- Frames: the stage with the first game selected and running, after a move (the edge on the other
-  side, the first game grey at its last frame), partway through the pick's slide, and then the
-  game in play, showing it continued and did not restart.
+- Logs: `picker: on <title>` on each selection, `picker: picking <title>` on each pick; input tests
+  wait on these lines.
+- Frames at the player's resolution: every panel's art at one scale, after a move (widths and colour
+  changed, scale not), partway through the pick's slide, the picked game booted, and the selector again
+  after a return. Two runs give the same pictures.
 
 ## Reference implementation
 
-`3ds/z3d-mods`: `app/src/title_picker.{hpp,cpp}` (the stage), `emulator.cpp` (each `Emulator`
-owns a `Core::System` and makes it current), and the Azahar fork's `System::MakeCurrent` and
-`Settings::values.present_to_window`. The design record is `docs/plans/title-stage.md`.
+`psxport`: `runtime/psx/host/picker_*`, `panel_art.*`, `runtime/psx/present/art_scene.*`, and each title's
+`GameRuntime::panelArt` (psx-tomba `game/core/assets/title_art.cpp`, psx-spyro `game/core/wad_wordmark.cpp`).
+The design record is psxport `docs/plans/static-title-picker.md`. `3ds/z3d-mods` still runs the earlier live
+stage.
