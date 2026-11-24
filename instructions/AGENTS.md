@@ -207,6 +207,9 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 - One build tree per purpose (`build/agent`, `build/player`), never one per task. Third-party dependencies
   are built once per revision and toolchain into a shared prefix outside the repo and consumed through
   `find_package`; a build tree holds only its own project's objects.
+- Tool data (SDKs, toolchains, caches such as `~/.gradle`, emulator images) lives in real
+  directories, never behind a symlink to another disk. VMs and containers may keep their storage on
+  `/mnt/Boy`, set through the tool's own config (podman's `graphroot`, a VM's disk path), not a link.
 - Heavy runs (a full build, a lint pass, a check suite, a bot sweep, an emulator, a container) start
   through `heavy.py run --cores N --memory GIB -- <command>`, never a raw `flock`: it waits until the
   machine has that many cores and that much memory spare, after the load, the other runs' reservations
