@@ -21,8 +21,10 @@ is up in that directory. It prints the id and the commands to follow it.
 ``update`` runs ``claude update``, then restarts each background session that
 runs an older binary: an idle one through ``claude respawn <id>``; a working
 one is stopped and resumed with a note that it was updated and should carry
-on, since a restart interrupts its turn and kills its background jobs. It ends
-by listing each session's running version.
+on, since a restart interrupts its turn and kills its background jobs. The
+remote-control user service (claude_rc.py) on an older binary is restarted a
+minute later, so the session that ran the update can finish its reply, and it
+reattaches its conversation. It ends by listing each session's running version.
 """
 
 from __future__ import annotations
@@ -36,6 +38,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+import claude_rc
 
 
 def sessions() -> list[dict]:
@@ -207,7 +211,6 @@ def update(args: argparse.Namespace) -> int:
         if running_version(session.get("pid")) in (after, "stopped"):
             continue
         if not session.get("id"):
-            print("left %s running: not a background session" % session.get("name"))
             continue
         working = session.get("state") == "working" or session.get("status") == "busy"
         if working:
@@ -216,6 +219,11 @@ def update(args: argparse.Namespace) -> int:
             code = subprocess.run(["claude", "respawn", session["id"]]).returncode
         if code != 0:
             failed.append(session["id"])
+    if not claude_rc.restart_if_stale(after, delay=60):
+        stale = [s.get("name") for s in sessions() if not s.get("id")
+                 and running_version(s.get("pid")) not in (after, "stopped")]
+        for name in stale:
+            print("left %s running: not a background session or the claude-rc service" % name)
     list_sessions(args)
     if failed:
         print("could not restart: %s" % " ".join(failed), file=sys.stderr)
@@ -239,7 +247,7 @@ def main() -> int:
     show = commands.add_parser("list", help="list live sessions")
     show.set_defaults(run=list_sessions)
     upgrade = commands.add_parser(
-        "update", help="update Claude Code and restart idle background sessions on it")
+        "update", help="update Claude Code and restart background sessions and the claude-rc service on it")
     upgrade.set_defaults(run=update)
     args = parser.parse_args()
     return args.run(args)
