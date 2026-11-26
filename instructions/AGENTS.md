@@ -87,6 +87,12 @@ name the proper fix and the stopgap's risk, and let the user decide; an approved
 
 ## Communication
 
+- Recording comes first. Every problem the user reports, design they describe or instruction they
+  give is written into the repo, in their words with the date and device, before any other work:
+  a problem in `docs/issues/`, a feature or design in `docs/plans/`, a maybe in `docs/ideas.md`, a
+  rule here or in a skill; committed and pushed at once. Summaries, task lists and memory are not
+  records. Build the design as recorded, every element of it; never drop parts or substitute a
+  simpler one. After a compaction, check the user's messages against the docs for anything missing.
 - Be brutally honest. No flattery or affirmation openers; if the user is wrong on fact or logic, say
   so plainly and proceed correctly.
 - The user's observation of the running product outranks your evidence. Treat a reported regression
