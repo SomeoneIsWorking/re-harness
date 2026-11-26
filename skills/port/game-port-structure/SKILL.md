@@ -68,6 +68,16 @@ in `project-state.md`'s comparison baseline.
 
 Use `first-run-setup` (`shared/setup-ui`); a port never designs its own setup dialog or prompt.
 
+## In-game bug report
+
+Every port with a window has one: keyboard B freezes the game and opens a form over it, and the
+report is a `lucent/bug_report.h` folder in the per-user data directory beside the saves. The report
+attaches the frame as shown, the facts that place the moment (title, scene or room, player position,
+active options) and a snapshot or input recording with `Reproduction.command`, so an agent can
+replay it without the player. The form is `shared/bug-report` where the port has RmlUi, otherwise the
+port's own menu UI over the same Lucent report; psxport (`psx::debug::BugReportSession`) is the
+worked example. The README names the key and the report folder.
+
 ## Shared port assets
 
 Use `${PORT_ASSETS_DIR}` when set, otherwise `${SHARED_DIR}/port-assets` when `SHARED_DIR` is set.
