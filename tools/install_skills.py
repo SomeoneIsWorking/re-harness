@@ -26,7 +26,6 @@ TOOL_NAMES = (
     "codemap.py",
     "cpp_policy.py",
     "go_public.py",
-    "heavy.py",
     "godot_templates.py",
     "perf_compare.py",
     "perf_run.py",
