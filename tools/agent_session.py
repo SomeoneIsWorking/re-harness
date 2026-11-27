@@ -8,7 +8,8 @@ read its logs, or stop it like any session they started themselves.
 
   agent_session.py start <repo> --name <name> --prompt-file <file>
   agent_session.py start <repo> --name <name> --prompt "<text>"
-  agent_session.py list
+  agent_session.py list [--all]
+  agent_session.py revive <name-or-id>...
   agent_session.py update
 
 ``start`` accepts Claude Code's trust prompt for a directory under ~/repo (the
@@ -17,6 +18,13 @@ already has the name or the directory,
 runs ``claude --bg`` with the repo as its working directory (no ``cd`` in a
 shell), then confirms through ``claude agents --json`` that the new session
 is up in that directory. It prints the id and the commands to follow it.
+
+``revive`` brings an ended background session back as itself through
+``claude respawn <id>``, as the agents view does: the same id, conversation and
+Remote Control entry, and no new message. A name picks the newest ended session
+with it; a name that is already running is refused, so a project never has two.
+Never revive by ``claude --resume`` into a new session: that makes a second
+session with the same name.
 
 ``update`` runs ``claude update``, then restarts each background session that
 runs an older binary: an idle one through ``claude respawn <id>``; a working
@@ -42,10 +50,15 @@ from pathlib import Path
 import claude_rc
 
 
-def sessions() -> list[dict]:
-    reply = subprocess.run(["claude", "agents", "--json"], check=True,
-                           capture_output=True, text=True)
+def sessions(ended: bool = False) -> list[dict]:
+    """Live sessions; with `ended`, background sessions that finished or were stopped too."""
+    argv = ["claude", "agents", "--json"] + (["--all"] if ended else [])
+    reply = subprocess.run(argv, check=True, capture_output=True, text=True)
     return json.loads(reply.stdout or "[]")
+
+
+# States `claude agents --json --all` gives a background session that is no longer running.
+ENDED_STATES = ("done", "stopped")
 
 
 CONFIG = Path.home() / ".claude.json"
@@ -149,8 +162,32 @@ def installed_version() -> str:
     return Path(claude).resolve().name
 
 
-def list_sessions(_: argparse.Namespace) -> int:
-    live = sessions()
+def revive(args: argparse.Namespace) -> int:
+    known = sessions(ended=True)
+    failed = []
+    for wanted in args.sessions:
+        running = [s for s in known if wanted in (s.get("name"), s.get("id"))
+                   and s.get("state") not in ENDED_STATES]
+        if running:
+            print("%s is already running (id %s)" % (wanted, running[0].get("id")))
+            continue
+        ended = sorted((s for s in known if wanted in (s.get("name"), s.get("id"))
+                        and s.get("id")), key=lambda s: s.get("startedAt") or 0)
+        if not ended:
+            print("no background session named or with id %r" % wanted, file=sys.stderr)
+            failed.append(wanted)
+            continue
+        session = ended[-1]
+        if subprocess.run(["claude", "respawn", session["id"]], cwd=session["cwd"]).returncode != 0:
+            failed.append(wanted)
+    if failed:
+        print("could not revive: %s" % " ".join(failed), file=sys.stderr)
+        return 1
+    return 0
+
+
+def list_sessions(args: argparse.Namespace) -> int:
+    live = sessions(ended=getattr(args, "all", False))
     current = installed_version()
     for session in live:
         version = running_version(session.get("pid"))
@@ -245,7 +282,12 @@ def main() -> int:
     begin.add_argument("--allow-shared-dir", action="store_true")
     begin.set_defaults(run=start)
     show = commands.add_parser("list", help="list live sessions")
+    show.add_argument("--all", action="store_true", help="also list ended background sessions")
     show.set_defaults(run=list_sessions)
+    back = commands.add_parser(
+        "revive", help="bring ended background sessions back as themselves (claude respawn), with no message")
+    back.add_argument("sessions", nargs="+", metavar="name-or-id")
+    back.set_defaults(run=revive)
     upgrade = commands.add_parser(
         "update", help="update Claude Code and restart background sessions and the claude-rc service on it")
     upgrade.set_defaults(run=update)
